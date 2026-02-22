@@ -1,0 +1,11 @@
+# Dependencies and tooling
+node_modules/
+.cursor/
+
+# Env (keep example only)
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
