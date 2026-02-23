@@ -348,6 +348,30 @@ export async function deletePlateAppearance(paId: string): Promise<boolean> {
   return !error;
 }
 
+/** Delete all plate appearances for a single game. Returns number deleted. */
+export async function deletePlateAppearancesByGame(gameId: string): Promise<number> {
+  if (!supabase || !gameId) return 0;
+  const { data, error } = await supabase
+    .from("plate_appearances")
+    .delete()
+    .eq("game_id", gameId)
+    .select("id");
+  if (error) throw new Error(error.message);
+  return data?.length ?? 0;
+}
+
+/** Delete all plate appearances (clears all stats). Returns number deleted. */
+export async function deleteAllPlateAppearances(): Promise<number> {
+  if (!supabase) return 0;
+  const { data, error } = await supabase
+    .from("plate_appearances")
+    .delete()
+    .gte("inning", 1)
+    .select("id");
+  if (error) throw new Error(error.message);
+  return data?.length ?? 0;
+}
+
 export async function getGame(id: string): Promise<Game | null> {
   if (!supabase) return null;
   const { data } = await supabase.from("games").select("*").eq("id", id).single();

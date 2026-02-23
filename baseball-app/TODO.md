@@ -4,7 +4,7 @@
 - [x] **Games & Players UI** — Add/edit games and players from Analyst → Games and Analyst → Players (Settings page removed).
 - [ ] **Game lineup table** — Use `game_lineups` so Coach Lineup shows today’s game lineup, not “first 9 players”.
 - [ ] **RLS** — Restrict coach to read-only; e.g. coach role can only call API routes that return computed views (no direct table select).
-- [ ] **Optional auth** — Simple login (e.g. Supabase Auth) to separate analyst vs coach if needed.
+- [ ] **Optional auth** — Simple login (e.g. Supabase Auth) to separate analyst vs coach if needed. Planned: protect Analyst side; Coach can stay open or read-only.
 
 ## Analyst mode
 - [ ] **Rating overrides** — Form on player profile to edit 1–5 and call `upsertPlayerRating` (with overridden_at/overridden_by).

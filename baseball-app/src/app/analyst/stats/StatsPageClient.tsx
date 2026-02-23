@@ -2,6 +2,8 @@
 
 import { useState, useMemo, Fragment } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { clearAllStatsAction } from "@/app/analyst/games/actions";
 import type { BattingStats, BattingStatsWithSplits, Player } from "@/lib/types";
 
 export type SplitView = "overall" | "vsL" | "vsR";
@@ -92,11 +94,14 @@ function getStatsForSplit(splits: Record<string, BattingStatsWithSplits>, player
 }
 
 export function StatsPageClient({ initialPlayers, initialBattingStatsWithSplits }: StatsPageClientProps) {
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [splitView, setSplitView] = useState<SplitView>("overall");
   const [sortKey, setSortKey] = useState<SortKey>("pa");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+  const [clearingAll, setClearingAll] = useState(false);
+  const [clearMessage, setClearMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   const initialBattingStats = useMemo(() => {
     const out: Record<string, BattingStats> = {};
@@ -334,6 +339,44 @@ export function StatsPageClient({ initialPlayers, initialBattingStatsWithSplits 
           {search.trim() ? "No players match your search." : "No players yet."}
         </p>
       )}
+
+      <div className="mt-8 rounded-lg border p-4" style={{ borderColor: "var(--danger)" }}>
+        <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ color: "var(--danger)" }}>
+          Clear all stats
+        </h3>
+        <p className="mt-1 text-sm text-[var(--text-muted)]">
+          Permanently delete every plate appearance in the database. Batting stats and trends will reset.
+        </p>
+        <button
+          type="button"
+          disabled={clearingAll}
+          onClick={async () => {
+            if (!confirm("Delete ALL plate appearances for every game? This cannot be undone.")) return;
+            setClearingAll(true);
+            setClearMessage(null);
+            const result = await clearAllStatsAction();
+            setClearingAll(false);
+            if (result.ok) {
+              setClearMessage({
+                type: "ok",
+                text: result.count > 0 ? `Cleared ${result.count} plate appearance(s).` : "No PAs to clear.",
+              });
+              router.refresh();
+            } else {
+              setClearMessage({ type: "err", text: result.error ?? "Failed to clear stats." });
+            }
+          }}
+          className="mt-3 rounded-lg border px-3 py-2 text-sm font-medium transition disabled:opacity-50"
+          style={{ borderColor: "var(--danger)", color: "var(--danger)" }}
+        >
+          {clearingAll ? "Clearing…" : "Clear all stats"}
+        </button>
+        {clearMessage && (
+          <p className={`mt-3 text-sm ${clearMessage.type === "ok" ? "text-[var(--success)]" : "text-[var(--danger)]"}`}>
+            {clearMessage.text}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

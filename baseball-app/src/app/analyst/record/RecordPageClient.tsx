@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { BaseStateSelector } from "@/components/shared/BaseStateSelector";
 import { GameBattingTable } from "@/components/analyst/GameBattingTable";
 import { formatDateMMDDYYYY } from "@/lib/format";
+import { clearPAsForGameAction } from "@/app/analyst/games/actions";
+import { isDemoId } from "@/lib/db/mockData";
 import type {
   Game,
   Player,
@@ -119,6 +121,7 @@ export default function RecordPageClient({
   const [notes, setNotes] = useState("");
   const [autoAdvanceBatter, setAutoAdvanceBatter] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [clearingPAs, setClearingPAs] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [allPAsForGame, setAllPAsForGame] = useState<PlateAppearance[]>([]);
   const [lineupOrder, setLineupOrder] = useState<string[] | null>(null);
@@ -348,9 +351,32 @@ export default function RecordPageClient({
 
       {selectedGameId && selectedGame && (
         <>
-          <p className="text-sm font-medium text-[var(--text)]">
-            {formatDateMMDDYYYY(selectedGame.date)} — {selectedGame.away_team} @ {selectedGame.home_team}
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-medium text-[var(--text)]">
+              {formatDateMMDDYYYY(selectedGame.date)} — {selectedGame.away_team} @ {selectedGame.home_team}
+            </p>
+            {!isDemoId(selectedGameId) && (
+              <button
+                type="button"
+                disabled={clearingPAs}
+                onClick={async () => {
+                  if (!confirm("Clear all plate appearances for this game? This cannot be undone.")) return;
+                  setClearingPAs(true);
+                  const result = await clearPAsForGameAction(selectedGameId);
+                  setClearingPAs(false);
+                  if (result.ok) {
+                    showMsg("success", result.count > 0 ? `Cleared ${result.count} PA(s).` : "No PAs to clear.");
+                    loadPAs();
+                  } else {
+                    showMsg("error", result.error ?? "Failed to clear PAs.");
+                  }
+                }}
+                className="rounded border border-[var(--danger)] px-3 py-1.5 text-sm font-medium text-[var(--danger)] hover:bg-[var(--danger-dim)] disabled:opacity-50"
+              >
+                {clearingPAs ? "Clearing…" : "Clear PAs for this game"}
+              </button>
+            )}
+          </div>
 
           {message && (
             <div

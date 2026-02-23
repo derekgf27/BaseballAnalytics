@@ -2,6 +2,46 @@
 
 Follow these steps to put your app online so anyone can use it via a link.
 
+**If you see "404: NOT_FOUND"** after deploying:
+1. **Settings → General → Root Directory** must be **`baseball-app`**. Save.
+2. Turn **off** “Include files outside the root directory in the Build Step” (can confuse the build).
+3. **Settings → General → Build & Development Settings**: leave **Build Command** and **Output Directory** empty (so Vercel uses Next.js defaults).
+4. In **Deployments**, open the latest deployment and check the **Build** log: it must show “Build Completed” and run from the `baseball-app` folder. If the build failed, fix the error and redeploy.
+5. **Redeploy** after any setting change: Deployments → … on latest → Redeploy.
+
+---
+
+## Connect the database to Vercel
+
+After the app is deployed, connect it to Supabase so it can load and save data.
+
+### A. Supabase project (if you don’t have one yet)
+
+1. Go to **[supabase.com](https://supabase.com)** → sign in → **New project** (name e.g. `baseball-analytics`, set a DB password, choose region) → **Create**.
+2. When the project is ready: **SQL Editor** → **New query** → paste the full contents of **`supabase/schema.sql`** from this repo → **Run**. You should see “Success. No rows returned.”
+
+### B. Add env vars in Vercel
+
+1. Open your project on **[vercel.com](https://vercel.com)** → **Settings** → **Environment Variables**.
+2. Add two variables (for **Production**, or all environments):
+
+   | Name | Value |
+   |------|--------|
+   | `NEXT_PUBLIC_SUPABASE_URL` | From Supabase: **Project Settings** → **API** → **Project URL** (copy). |
+   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Same page → **Project API keys** → **anon** **public** (copy). |
+
+3. Save each one.
+
+### C. Redeploy
+
+1. Go to **Deployments**.
+2. Open the **…** menu on the latest deployment → **Redeploy**.
+3. Wait for the new deployment to finish.
+
+Your live site will now use the database. For full local setup, see **SETUP-SUPABASE.md**.
+
+---
+
 ## 1. Push your code to GitHub
 
 If the app isn’t in a GitHub repo yet:

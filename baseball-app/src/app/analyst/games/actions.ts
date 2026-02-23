@@ -9,6 +9,8 @@ import {
   getSavedLineupWithSlots,
   getPlayers,
   deleteGame as deleteGameQuery,
+  deletePlateAppearancesByGame,
+  deleteAllPlateAppearances,
 } from "@/lib/db/queries";
 import { isDemoId } from "@/lib/db/mockData";
 import type { Game } from "@/lib/types";
@@ -79,4 +81,27 @@ export async function fetchGameLineupSlots(
     player_id: s.player_id,
     position: s.position ?? null,
   }));
+}
+
+/** Clear all plate appearances for one game. Returns count deleted. */
+export async function clearPAsForGameAction(gameId: string): Promise<{ ok: boolean; count: number; error?: string }> {
+  if (isDemoId(gameId)) return { ok: false, count: 0, error: "Cannot clear demo game." };
+  try {
+    const count = await deletePlateAppearancesByGame(gameId);
+    return { ok: true, count };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Failed to clear PAs";
+    return { ok: false, count: 0, error: message };
+  }
+}
+
+/** Clear all plate appearances (all stats). Returns count deleted. */
+export async function clearAllStatsAction(): Promise<{ ok: boolean; count: number; error?: string }> {
+  try {
+    const count = await deleteAllPlateAppearances();
+    return { ok: true, count };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Failed to clear stats";
+    return { ok: false, count: 0, error: message };
+  }
 }

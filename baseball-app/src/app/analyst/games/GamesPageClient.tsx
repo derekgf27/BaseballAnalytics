@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { isDemoId } from "@/lib/db/mockData";
 import { updateGame } from "@/lib/db/queries";
-import { createGameWithLineupAction, updateGameWithLineupAction, deleteGameAction, fetchCurrentGameLineupName, fetchGameLineupSlots } from "./actions";
+import { createGameWithLineupAction, updateGameWithLineupAction, deleteGameAction, fetchCurrentGameLineupName, fetchGameLineupSlots, clearPAsForGameAction } from "./actions";
 import { formatDateMMDDYYYY } from "@/lib/format";
 import type { Game, Player } from "@/lib/types";
 import type { SavedLineup } from "@/lib/types";
@@ -24,6 +24,7 @@ export function GamesPageClient({ initialGames, initialSavedLineups, initialPlay
   const [editingGame, setEditingGame] = useState<Game | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [clearingGameId, setClearingGameId] = useState<string | null>(null);
 
   const isFormOpen = editingGame !== null || showAddForm;
 
@@ -167,13 +168,35 @@ export function GamesPageClient({ initialGames, initialSavedLineups, initialPlay
                   Box score
                 </Link>
                 {canEdit && !isDemoId(g.id) && (
-                  <button
-                    type="button"
-                    onClick={() => { setEditingGame(g); setShowAddForm(false); }}
-                    className="inline-flex items-center rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-1.5 text-sm font-medium text-[var(--text)] transition hover:bg-[var(--accent-dim)]"
-                  >
-                    Edit
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => { setEditingGame(g); setShowAddForm(false); }}
+                      className="inline-flex items-center rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-1.5 text-sm font-medium text-[var(--text)] transition hover:bg-[var(--accent-dim)]"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      disabled={clearingGameId === g.id}
+                      onClick={async () => {
+                        if (!confirm("Clear all plate appearances for this game? This cannot be undone.")) return;
+                        setClearingGameId(g.id);
+                        const result = await clearPAsForGameAction(g.id);
+                        setClearingGameId(null);
+                        if (result.ok) {
+                          setMessage({ type: "ok", text: result.count > 0 ? `Cleared ${result.count} PA(s) for this game.` : "No PAs to clear for this game." });
+                          refresh();
+                        } else {
+                          setMessage({ type: "err", text: result.error ?? "Failed to clear PAs." });
+                        }
+                      }}
+                      className="inline-flex items-center rounded-lg border border-[var(--border)] px-3 py-1.5 text-sm font-medium transition hover:bg-[var(--danger-dim)]"
+                      style={{ color: "var(--danger)" }}
+                    >
+                      {clearingGameId === g.id ? "Clearing…" : "Clear PAs"}
+                    </button>
+                  </>
                 )}
               </div>
             </li>
