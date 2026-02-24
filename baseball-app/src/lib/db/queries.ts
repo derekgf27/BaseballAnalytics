@@ -134,6 +134,21 @@ export async function getPlateAppearancesByGame(gameId: string): Promise<PlateAp
   return (data ?? []) as PlateAppearance[];
 }
 
+/** All PAs for run expectancy: game, inning, half, base_state, outs, rbi, created_at. Excludes demo games. */
+export async function getAllPlateAppearancesForRunExpectancy(): Promise<
+  Pick<PlateAppearance, "game_id" | "inning" | "inning_half" | "base_state" | "outs" | "rbi" | "created_at">[]
+> {
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("plate_appearances")
+    .select("game_id, inning, inning_half, base_state, outs, rbi, created_at")
+    .order("game_id")
+    .order("inning")
+    .order("created_at");
+  const rows = (data ?? []) as Pick<PlateAppearance, "game_id" | "inning" | "inning_half" | "base_state" | "outs" | "rbi" | "created_at">[];
+  return rows.filter((r) => !isDemoId(r.game_id));
+}
+
 export async function getPlateAppearancesByBatter(batterId: string): Promise<PlateAppearance[]> {
   if (!supabase || isDemoId(batterId)) return [];
   const { data } = await supabase

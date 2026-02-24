@@ -24,6 +24,8 @@
   /* Decision-first coach UI */
   --decision-green: #22c55e;
   --decision-green-dim: rgba(34, 197, 94, 0.2);
+  --decision-hot: #dc2626;
+  --decision-hot-dim: rgba(220, 38, 38, 0.2);
   --decision-yellow: #eab308;
   --decision-yellow-dim: rgba(234, 179, 8, 0.2);
   --decision-red: #ef4444;

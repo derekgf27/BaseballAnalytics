@@ -55,8 +55,8 @@ export default async function CoachTodayPage() {
             : null;
           let recentStats: Parameters<typeof CoachTodayClient>[0]["recommendedLineup"][0]["recentStats"] = undefined;
           if ((trend === "hot" || trend === "cold") && recentPAs.length > 0) {
-            const last15 = recentPAs.slice(0, 15);
-            const stats = battingStatsFromPAs(last15);
+            const last20 = recentPAs.slice(0, 20);
+            const stats = battingStatsFromPAs(last20);
             if (stats) {
               recentStats = {
                 pa: stats.pa ?? 0,

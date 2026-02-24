@@ -6,6 +6,7 @@ import { GameBattingTable } from "@/components/analyst/GameBattingTable";
 import { formatDateMMDDYYYY } from "@/lib/format";
 import { clearPAsForGameAction } from "@/app/analyst/games/actions";
 import { isDemoId } from "@/lib/db/mockData";
+import { getBaseStateAfterResult } from "@/lib/compute/runExpectancy";
 import type {
   Game,
   Player,
@@ -32,6 +33,60 @@ const RESULT_OPTIONS: { value: PAResult; label: string }[] = [
 ];
 
 const RESULT_IS_OUT = new Set<PAResult>(["out", "so"]);
+/** Results that add one out (used to advance outs/inning after save). */
+const RESULT_ADDS_ONE_OUT = new Set<PAResult>(["out", "so", "sac_fly", "sac_bunt", "sac"]);
+
+/** Compute new runner IDs after a play (for 1st, 2nd, 3rd). Used to advance state after save. */
+function getRunnerIdsAfterResult(
+  runner1b: string | null,
+  runner2b: string | null,
+  runner3b: string | null,
+  batterId: string,
+  result: PAResult
+): [string | null, string | null, string | null] {
+  if (result === "hr") return [null, null, null];
+  if (result === "triple") return [null, null, batterId];
+  if (result === "double") return [runner1b, batterId, runner2b];
+  if (result === "single" || result === "bb" || result === "ibb" || result === "hbp" || result === "other") {
+    return [batterId, runner1b, runner2b]; // batter to 1st; other runners advance (user can adjust manually for ROE)
+  }
+  if (result === "sac_fly" || result === "sac") {
+    return [runner1b, runner2b, null]; // runner from 3rd scores
+  }
+  if (result === "sac_bunt") {
+    return [batterId, runner1b, runner2b ?? runner3b]; // advance, 3rd might score
+  }
+  return [runner1b, runner2b, runner3b]; // out, so: no change
+}
+
+/** Infer which player IDs scored on this play from runner IDs and RBI (for runs_scored_player_ids). */
+function getPlayersWhoScoredOnPlay(
+  result: PAResult,
+  rbi: number,
+  runner1b: string | null,
+  runner2b: string | null,
+  runner3b: string | null,
+  batterId: string
+): string[] {
+  if (rbi <= 0) return [];
+  const runnersByOrder = [runner3b, runner2b, runner1b].filter(Boolean) as string[];
+  if (result === "hr") {
+    return [batterId, ...runnersByOrder].slice(0, 4);
+  }
+  if (result === "triple") {
+    return runnersByOrder.slice(0, rbi);
+  }
+  if (result === "double" || result === "single" || result === "bb" || result === "ibb" || result === "hbp") {
+    return runnersByOrder.slice(0, rbi);
+  }
+  if (result === "sac_fly" || result === "sac") {
+    return runner3b ? [runner3b] : [];
+  }
+  if (result === "sac_bunt") {
+    return runner3b && rbi >= 1 ? [runner3b] : [];
+  }
+  return [];
+}
 
 const PLAY_PRESETS = [
   "6-4-3",
@@ -102,6 +157,9 @@ export default function RecordPageClient({
   const [inningHalf, setInningHalf] = useState<"top" | "bottom" | null>(null);
   const [outs, setOuts] = useState(0);
   const [baseState, setBaseState] = useState<BaseState>("000");
+  const [runnerOn1bId, setRunnerOn1bId] = useState<string | null>(null);
+  const [runnerOn2bId, setRunnerOn2bId] = useState<string | null>(null);
+  const [runnerOn3bId, setRunnerOn3bId] = useState<string | null>(null);
   const [batterId, setBatterId] = useState<string | null>(players[0]?.id ?? null);
   const [result, setResult] = useState<PAResult | null>(null);
   const [showDetails, setShowDetails] = useState(true);
@@ -187,6 +245,14 @@ export default function RecordPageClient({
     loadPAs();
   }, [loadPAs]);
 
+  // Auto-set RBI for HR: 1 (batter) + runners on base (e.g. loaded = 4)
+  useEffect(() => {
+    if (result === "hr") {
+      const runners = (baseState.match(/1/g) || []).length;
+      setRbi(1 + runners);
+    }
+  }, [result, baseState]);
+
   const showMsg = (type: "success" | "error", text: string) => {
     setMessage({ type, text });
     setTimeout(() => setMessage(null), 3000);
@@ -194,12 +260,26 @@ export default function RecordPageClient({
 
   const handleSave = async () => {
     if (!selectedGameId || !batterId || result === null) return;
+    if (pitcherHand === null) {
+      showMsg("error", "Pitcher handedness is required.");
+      return;
+    }
     setSaving(true);
     try {
       const playFormatted =
         formatPlayWithDashes(playNote.trim()) ||
         (PLAY_ABBREVIATIONS[playNote.trim().toLowerCase()] ?? playNote.trim());
       const notesCombined = [playFormatted, notes.trim()].filter(Boolean).join(" — ") || null;
+      const autoScored = getPlayersWhoScoredOnPlay(
+        result,
+        rbi,
+        runnerOn1bId,
+        runnerOn2bId,
+        runnerOn3bId,
+        batterId
+      );
+      const runsScoredIds =
+        autoScored.length > 0 ? autoScored : runsScoredPlayerIds.length > 0 ? runsScoredPlayerIds : undefined;
       const pa: Omit<PlateAppearance, "id" | "created_at"> = {
         game_id: selectedGameId,
         batter_id: batterId,
@@ -215,9 +295,9 @@ export default function RecordPageClient({
         hit_direction: hitDirection,
         pitches_seen: pitchesSeen === "" ? null : pitchesSeen,
         rbi,
-        runs_scored_player_ids: runsScoredPlayerIds.length > 0 ? runsScoredPlayerIds : undefined,
+        runs_scored_player_ids: runsScoredIds,
         stolen_bases: stolenBasePlayerIds.length > 0 ? stolenBasePlayerIds.length : undefined,
-        pitcher_hand: pitcherHand ?? undefined,
+        pitcher_hand: pitcherHand,
         inning_half: inningHalf ?? undefined,
         notes: notesCombined,
       };
@@ -247,14 +327,34 @@ export default function RecordPageClient({
         const nextIdx = idx < 0 ? 0 : (idx + 1) % battersForDropdown.length;
         setBatterId(battersForDropdown[nextIdx].id);
       }
-      if (RESULT_IS_OUT.has(result)) {
+      const newBaseState = getBaseStateAfterResult(baseState, result);
+      const [newR1, newR2, newR3] = getRunnerIdsAfterResult(
+        runnerOn1bId,
+        runnerOn2bId,
+        runnerOn3bId,
+        batterId,
+        result
+      );
+      if (RESULT_ADDS_ONE_OUT.has(result)) {
         if (outs >= 2) {
           setInning((i) => Math.min(i + 1, 10));
           setOuts(0);
           setBaseState("000");
+          setRunnerOn1bId(null);
+          setRunnerOn2bId(null);
+          setRunnerOn3bId(null);
         } else {
           setOuts((o) => o + 1);
+          setBaseState(newBaseState);
+          setRunnerOn1bId(newR1);
+          setRunnerOn2bId(newR2);
+          setRunnerOn3bId(newR3);
         }
+      } else {
+        setBaseState(newBaseState);
+        setRunnerOn1bId(newR1);
+        setRunnerOn2bId(newR2);
+        setRunnerOn3bId(newR3);
       }
       loadPAs({ resetBatter: false });
     } finally {
@@ -282,6 +382,9 @@ export default function RecordPageClient({
   };
 
   const validationHints: string[] = [];
+  if (pitcherHand === null && (result !== null || batterId)) {
+    validationHints.push("Pitcher handedness is required.");
+  }
   if (result && RESULT_IS_HIT.has(result) && baseState !== "000" && rbi === 0) {
     validationHints.push("Runners on base but RBI = 0.");
   }
@@ -445,12 +548,23 @@ export default function RecordPageClient({
               <div>
                 <span className="font-heading text-sm font-semibold text-[var(--text)]">Runners</span>
                 <div className="mt-0.5">
-                  <BaseStateSelector value={baseState} onChange={setBaseState} />
+                  <BaseStateSelector
+                    value={baseState}
+                    onChange={setBaseState}
+                    runnerIds={[runnerOn1bId, runnerOn2bId, runnerOn3bId]}
+                    onRunnerChange={(idx, id) => {
+                      if (idx === 0) setRunnerOn1bId(id);
+                      else if (idx === 1) setRunnerOn2bId(id);
+                      else setRunnerOn3bId(id);
+                    }}
+                    runnerOptions={battersForDropdown.map((p) => ({ id: p.id, name: p.name, jersey: p.jersey ?? null }))}
+                    currentBatterId={batterId}
+                  />
                 </div>
               </div>
             </div>
             <div>
-              <span className="font-heading text-sm font-semibold text-[var(--text)]">Pitcher</span>
+              <span className="font-heading text-sm font-semibold text-[var(--text)]">Pitcher (required)</span>
               <div className="mt-0.5 flex gap-2">
                 {(["L", "R"] as const).map((hand) => (
                   <button
@@ -906,7 +1020,7 @@ export default function RecordPageClient({
               <button
                 type="button"
                 onClick={handleSave}
-                disabled={!batterId || result === null || saving}
+                disabled={!batterId || result === null || pitcherHand === null || saving}
                 className="min-w-[8rem] flex-1 cursor-pointer rounded-lg bg-[var(--accent)] py-2 text-sm font-semibold text-[var(--bg-base)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
               >
                 {saving ? "Saving…" : "Save PA"}

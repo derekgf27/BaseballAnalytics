@@ -6,8 +6,8 @@
  */
 const ALERT_STYLES = {
   hot: {
-    bg: "bg-[var(--decision-green-dim)]",
-    border: "border-[var(--decision-green)]/40",
+    bg: "bg-[var(--decision-hot-dim)]",
+    border: "border-[var(--decision-hot)]/40",
     label: "Hot",
     icon: "↑",
   },

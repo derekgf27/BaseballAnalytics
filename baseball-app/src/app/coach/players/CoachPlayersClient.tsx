@@ -6,7 +6,7 @@ import { PlayerTagList } from "@/components/ui/PlayerTag";
 import type { Player } from "@/lib/types";
 
 const TREND_LABELS = {
-  hot: { label: "Hot", color: "text-[var(--decision-green)]" },
+  hot: { label: "Hot", color: "text-[var(--decision-hot)]" },
   cold: { label: "Cold", color: "text-[var(--decision-red)]" },
   neutral: { label: "—", color: "text-[var(--text-muted)]" },
 } as const;

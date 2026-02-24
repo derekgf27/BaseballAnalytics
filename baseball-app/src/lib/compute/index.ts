@@ -24,3 +24,14 @@ export {
 } from "./alerts";
 export { trendFromRecentPAs, type Trend } from "./trends";
 export { platoonFromSplits, type PlatoonPreference } from "./platoon";
+export {
+  buildRETable,
+  getExpectedRunsRemaining,
+  getRunValueOfEvent,
+  getRunImpact,
+  buildRECounts,
+  getBaseStateAfterResult,
+  BASE_STATES,
+  OUTS,
+} from "./runExpectancy";
+export type { RETable, REState, PAForRE } from "./runExpectancy";

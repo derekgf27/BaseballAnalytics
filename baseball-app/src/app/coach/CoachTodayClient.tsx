@@ -19,7 +19,7 @@ export interface TodayGameInfo {
 export type Trend = "hot" | "cold" | "neutral";
 export type PlatoonPreference = "vsLHP" | "vsRHP" | null;
 
-/** Stats over last 15 PAs, shown when player is hot or cold. */
+/** Stats over last 20 PAs, shown when player is hot or cold. */
 export interface RecentStats {
   pa: number;
   ab: number;
@@ -44,7 +44,7 @@ export interface TodayLineupSlot {
   tags: PlayerTagType[];
   trend?: Trend;
   platoon?: PlatoonPreference;
-  /** Last 15 PA stats when trend is hot or cold. */
+  /** Last 20 PA stats when trend is hot or cold. */
   recentStats?: RecentStats;
 }
 
@@ -178,7 +178,7 @@ export function CoachTodayClient({
                       </td>
                       <td className="w-24 border-r border-[var(--border)] px-2 py-2 text-center text-sm">
                         {slot.trend === "hot" && (
-                          <span className="text-lg text-[var(--decision-green)]" title="Hot" aria-label="Hot">🔥</span>
+                          <span className="text-lg text-[var(--decision-hot)]" title="Hot" aria-label="Hot">🔥</span>
                         )}
                         {slot.trend === "cold" && (
                           <span className="text-lg text-[var(--decision-red)]" title="Cold" aria-label="Cold">❄️</span>
@@ -205,62 +205,74 @@ export function CoachTodayClient({
           const hot = recommendedLineup.filter((s) => s.trend === "hot" && s.recentStats);
           const cold = recommendedLineup.filter((s) => s.trend === "cold" && s.recentStats);
           if (hot.length === 0 && cold.length === 0) return null;
-          function statLine(stats: RecentStats) {
-            const extras = [
-              stats.double > 0 && `${stats.double} 2B`,
-              stats.triple > 0 && `${stats.triple} 3B`,
-              stats.hr > 0 && `${stats.hr} HR`,
-              `RBI ${stats.rbi}`,
-              stats.bb > 0 && `${stats.bb} BB`,
-              stats.so > 0 && `${stats.so} SO`,
-            ].filter(Boolean).join(", ");
-            return `Last 15: ${stats.h}-for-${stats.ab}${extras ? ` · ${extras}` : ""} · ${stats.avg.toFixed(3).replace(/^0/, "")} AVG / ${stats.ops.toFixed(3).replace(/^0/, "")} OPS`;
+          function RecentStatRow({ slot }: { slot: TodayLineupSlot }) {
+            const s = slot.recentStats!;
+            const avgStr = s.avg.toFixed(3).replace(/^0/, "");
+            const opsStr = s.ops.toFixed(3).replace(/^0/, "");
+            const counting = [
+              s.hr > 0 && `${s.hr} HR`,
+              `RBI ${s.rbi}`,
+              s.bb > 0 && `${s.bb} BB`,
+              s.so > 0 && `${s.so} SO`,
+            ].filter(Boolean);
+            return (
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-base)] p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <Link
+                    href={`/coach/players/${slot.playerId}`}
+                    className="font-semibold text-[var(--accent-coach)] hover:underline"
+                  >
+                    {slot.playerName}
+                  </Link>
+                  <span className="text-xs font-medium text-[var(--text-muted)]">Last 20</span>
+                </div>
+                <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                  <span className="text-sm font-semibold text-[var(--text)]">
+                    {s.h}-for-{s.ab}
+                  </span>
+                  <span className="text-sm text-[var(--text-muted)]">
+                    <span className="font-medium text-[var(--text)]">{avgStr}</span> AVG
+                  </span>
+                  <span className="text-sm text-[var(--text-muted)]">
+                    <span className="font-medium text-[var(--text)]">{opsStr}</span> OPS
+                  </span>
+                </div>
+                {counting.length > 0 && (
+                  <p className="mt-1.5 text-xs text-[var(--text-muted)]">
+                    {counting.join(" · ")}
+                  </p>
+                )}
+              </div>
+            );
           }
           return (
-            <div className="mt-4 space-y-3 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
+            <div className="mt-4 space-y-4 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                Last 15 PA stats (hot & cold)
+                Last 20 PA (hot & cold)
               </h3>
               {hot.length > 0 && (
                 <div>
-                  <p className="mb-1 flex items-center gap-1.5 text-sm font-medium text-[var(--decision-green)]">
-                    <span aria-hidden>🔥</span> Hot
+                  <p className="mb-2 flex items-center gap-1.5 text-sm font-medium">
+                    <span aria-hidden>🔥</span>
+                    <span style={{ color: "var(--decision-hot)" }}>Hot</span>
                   </p>
-                  <ul className="space-y-1.5 text-sm text-[var(--text)]">
+                  <div className="space-y-2">
                     {hot.map((slot) => (
-                      <li key={slot.playerId}>
-                        <Link href={`/coach/players/${slot.playerId}`} className="font-medium text-[var(--accent-coach)] hover:underline">
-                          {slot.playerName}
-                        </Link>
-                        {slot.recentStats && (
-                          <span className="ml-2 text-[var(--text-muted)]">
-                            {statLine(slot.recentStats)}
-                          </span>
-                        )}
-                      </li>
+                      <RecentStatRow key={slot.playerId} slot={slot} />
                     ))}
-                  </ul>
+                  </div>
                 </div>
               )}
               {cold.length > 0 && (
                 <div>
-                  <p className="mb-1 flex items-center gap-1.5 text-sm font-medium text-[var(--decision-red)]">
+                  <p className="mb-2 flex items-center gap-1.5 text-sm font-medium text-[var(--decision-red)]">
                     <span aria-hidden>❄️</span> Cold
                   </p>
-                  <ul className="space-y-1.5 text-sm text-[var(--text)]">
+                  <div className="space-y-2">
                     {cold.map((slot) => (
-                      <li key={slot.playerId}>
-                        <Link href={`/coach/players/${slot.playerId}`} className="font-medium text-[var(--accent-coach)] hover:underline">
-                          {slot.playerName}
-                        </Link>
-                        {slot.recentStats && (
-                          <span className="ml-2 text-[var(--text-muted)]">
-                            {statLine(slot.recentStats)}
-                          </span>
-                        )}
-                      </li>
+                      <RecentStatRow key={slot.playerId} slot={slot} />
                     ))}
-                  </ul>
+                  </div>
                 </div>
               )}
             </div>
@@ -303,7 +315,7 @@ export function CoachTodayClient({
                 key={m.id}
                 className={`flex gap-2 rounded-lg border px-3 py-2 text-sm ${
                   m.kind === "advantage"
-                    ? "border-[var(--decision-green)]/30 bg-[var(--decision-green-dim)] text-[var(--text)]"
+                    ? "border-[var(--decision-hot)]/30 bg-[var(--decision-hot-dim)] text-[var(--text)]"
                     : m.kind === "risk"
                       ? "border-[var(--decision-red)]/30 bg-[var(--decision-red-dim)] text-[var(--text)]"
                       : "border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-muted)]"

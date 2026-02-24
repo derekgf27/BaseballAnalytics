@@ -9,7 +9,7 @@ import type { Player, Ratings } from "@/lib/types";
 import type { Confidence } from "@/data/mock";
 
 const TREND_STYLES = {
-  hot: "bg-[var(--decision-green-dim)] text-[var(--decision-green)] border-[var(--decision-green)]/30",
+  hot: "bg-[var(--decision-hot-dim)] text-[var(--decision-hot)] border-[var(--decision-hot)]/30",
   cold: "bg-[var(--decision-red-dim)] text-[var(--decision-red)] border-[var(--decision-red)]/30",
   neutral: "bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border)]",
 } as const;

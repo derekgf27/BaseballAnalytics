@@ -14,6 +14,7 @@ const LINKS = [
   { href: "/analyst/stats", label: "Stats", icon: "📋" },
   { href: "/analyst/lineup", label: "Lineup construction", icon: "📝" },
   { href: "/analyst/charts", label: "Charts", icon: "📈" },
+  { href: "/analyst/run-expectancy", label: "Run expectancy", icon: "🏃" },
 ] as const;
 
 export function AnalystNav() {
