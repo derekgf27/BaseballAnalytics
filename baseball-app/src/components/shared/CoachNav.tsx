@@ -5,11 +5,11 @@ import { usePathname } from "next/navigation";
 
 const LINKS = [
   { href: "/coach", label: "Today", icon: "📋", exact: true },
-  { href: "/coach/lineup", label: "Lineup", icon: "📝" },
-  { href: "/coach/players", label: "Players", icon: "👤" },
-  { href: "/coach/green-light", label: "Green light", icon: "🟢" },
-  { href: "/coach/situation", label: "Situation", icon: "⚾" },
-  { href: "/coach/alerts", label: "Alerts", icon: "⚠️" },
+  { href: "/coach/lineup", label: "Lineup", icon: "📝", exact: false },
+  { href: "/coach/players", label: "Players", icon: "👤", exact: false },
+  { href: "/coach/green-light", label: "Green light", icon: "🟢", exact: false },
+  { href: "/coach/situation", label: "Situation", icon: "⚾", exact: false },
+  { href: "/coach/alerts", label: "Alerts", icon: "⚠️", exact: false },
 ] as const;
 
 export function CoachNav() {
@@ -26,7 +26,9 @@ export function CoachNav() {
         </Link>
       </div>
       <nav className="flex flex-1 flex-col gap-0.5 py-3">
-        {LINKS.map(({ href, label, icon, exact }) => {
+        {LINKS.map((link) => {
+          const { href, label, icon } = link;
+          const exact = "exact" in link && link.exact;
           const active = exact
             ? pathname === href
             : pathname.startsWith(href);
