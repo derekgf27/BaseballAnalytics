@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { isDemoId } from "@/lib/db/mockData";
 import { insertPlayer, updatePlayer } from "@/lib/db/queries";
 import { heightInToFeetInches, feetInchesToHeightIn } from "@/lib/height";
+import { StyledDatePicker } from "@/components/shared/StyledDatePicker";
 import type { Player } from "@/lib/types";
 
 const POSITION_OPTIONS = ["P", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"] as const;
@@ -213,13 +214,9 @@ function PlayerForm({
   const [hometown, setHometown] = useState<string>(player?.hometown ?? "");
   const [birth_date, setBirthDate] = useState<string>(player?.birth_date ?? "");
   const [saving, setSaving] = useState(false);
-  const birthDateInputRef = useRef<HTMLInputElement>(null);
 
   const isEditing = !!player;
 
-  const openBirthdayPicker = () => {
-    birthDateInputRef.current?.showPicker?.();
-  };
 
   const togglePosition = (pos: string) => {
     setPositions((prev) =>
@@ -302,29 +299,12 @@ function PlayerForm({
         </label>
         <label>
           <span className="text-xs text-[var(--text-muted)]">Birthday</span>
-          <div className="mt-1 flex gap-2">
-            <input
-              ref={birthDateInputRef}
-              type="date"
-              value={birth_date}
-              onChange={(e) => setBirthDate(e.target.value)}
-              className="input-tech flex-1 px-3 py-2"
-            />
-            <button
-              type="button"
-              onClick={openBirthdayPicker}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--bg-input)] text-[var(--text-muted)] hover:border-[var(--border-focus)] hover:text-[var(--text)]"
-              title="Open calendar"
-              aria-label="Open calendar"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect width="18" height="18" x="3" y="4" rx="2" ry="2" />
-                <line x1="16" x2="16" y1="2" y2="6" />
-                <line x1="8" x2="8" y1="2" y2="6" />
-                <line x1="3" x2="21" y1="10" y2="10" />
-              </svg>
-            </button>
-          </div>
+          <StyledDatePicker
+            value={birth_date}
+            onChange={setBirthDate}
+            className="input-tech mt-1 block w-full px-3 py-2"
+            placeholder="Select date"
+          />
         </label>
         <div className="sm:col-span-2">
           <span className="text-xs text-[var(--text-muted)]">Positions</span>

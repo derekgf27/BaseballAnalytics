@@ -142,6 +142,8 @@ const PLAY_ABBREVIATIONS: Record<string, string> = {
 interface RecordPageClientProps {
   games: Game[];
   players: Player[];
+  /** When set (e.g. from ?gameId=...), open with this game pre-selected. */
+  initialGameId?: string;
   fetchPAsForGame: (gameId: string) => Promise<PlateAppearance[]>;
   fetchGameLineupOrder: (
     gameId: string
@@ -157,12 +159,13 @@ const RESULT_IS_HIT = new Set<PAResult>(["single", "double", "triple", "hr"]);
 export default function RecordPageClient({
   games,
   players,
+  initialGameId,
   fetchPAsForGame,
   fetchGameLineupOrder,
   savePlateAppearance,
   deletePlateAppearance,
 }: RecordPageClientProps) {
-  const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
+  const [selectedGameId, setSelectedGameId] = useState<string | null>(initialGameId ?? null);
   const [inning, setInning] = useState(1);
   const [inningHalf, setInningHalf] = useState<"top" | "bottom" | null>(null);
   const [outs, setOuts] = useState(0);

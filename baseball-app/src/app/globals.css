@@ -126,6 +126,44 @@ body {
   box-shadow: 0 0 0 3px var(--accent-dim);
 }
 
+/* Date input calendar icon — match accent purple */
+input[type="date"].input-tech::-webkit-calendar-picker-indicator,
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.5) sepia(1) saturate(5) hue-rotate(230deg);
+  cursor: pointer;
+}
+
+/* Styled date picker popup (react-day-picker) — dark theme, purple accent */
+.rdp-dark {
+  --rdp-accent-color: var(--accent);
+  --rdp-accent-background-color: var(--accent-dim);
+  --rdp-today-color: var(--accent);
+  --rdp-range_middle-background-color: var(--accent-dim);
+  --rdp-range_start-date-background-color: var(--accent);
+  --rdp-range_end-date-background-color: var(--accent);
+  color: var(--text);
+}
+.rdp-dark .rdp-root {
+  --rdp-accent-color: var(--accent);
+  --rdp-accent-background-color: var(--accent-dim);
+  --rdp-today-color: var(--accent);
+}
+.rdp-dark .rdp-day_button:hover:not([disabled]):not(.rdp-selected) {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+.rdp-dark .rdp-caption_label,
+.rdp-dark .rdp-weekday {
+  color: var(--text-muted);
+}
+.rdp-dark .rdp-chevron {
+  fill: var(--accent);
+}
+.rdp-dark .rdp-button_next:hover:not([disabled]),
+.rdp-dark .rdp-button_previous:hover:not([disabled]) {
+  color: var(--accent);
+}
+
 /* Nav */
 .nav-link {
   border-radius: 6px;

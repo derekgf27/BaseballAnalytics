@@ -261,6 +261,29 @@ export async function getBattingStatsForPlayers(
   return result;
 }
 
+/** Team-level batting stats: all PAs for the given roster, single aggregate (AVG, OBP, SLG, OPS, HR, RBI, R, etc.). */
+export async function getTeamBattingStats(
+  playerIds: string[]
+): Promise<BattingStats | null> {
+  if (!supabase || playerIds.length === 0) return null;
+  const ids = playerIds.filter((id) => !isDemoId(id));
+  if (ids.length === 0) return null;
+  const { data } = await supabase
+    .from("plate_appearances")
+    .select("*")
+    .in("batter_id", ids);
+  const allPAs = (data ?? []) as PlateAppearance[];
+  if (allPAs.length === 0) return null;
+  const teamRuns = allPAs.reduce(
+    (sum, pa) => sum + (pa.runs_scored_player_ids?.length ?? 0),
+    0
+  );
+  const stats = battingStatsFromPAs(allPAs);
+  if (!stats) return null;
+  stats.r = teamRuns;
+  return stats;
+}
+
 /** Same as getBattingStatsForPlayers but also returns vs LHP / vs RHP splits (by pitcher_hand on PAs). */
 export async function getBattingStatsWithSplitsForPlayers(
   playerIds: string[]

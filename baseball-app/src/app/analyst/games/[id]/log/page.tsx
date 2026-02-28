@@ -1,8 +1,8 @@
+import { redirect } from "next/navigation";
 import { getGame } from "@/lib/db/queries";
-import { formatDateMMDDYYYY } from "@/lib/format";
-import { GameLogPageClient } from "./GameLogPageClient";
 import { notFound } from "next/navigation";
 
+/** /analyst/games/[id]/log redirects to Record PAs with this game pre-selected. */
 export default async function GameLogPage({
   params,
 }: {
@@ -11,10 +11,5 @@ export default async function GameLogPage({
   const { id } = await params;
   const game = await getGame(id);
   if (!game) notFound();
-  return (
-    <GameLogPageClient
-      gameId={id}
-      gameLabel={`${formatDateMMDDYYYY(game.date)} ${game.away_team} @ ${game.home_team}`}
-    />
-  );
+  redirect(`/analyst/record?gameId=${id}`);
 }

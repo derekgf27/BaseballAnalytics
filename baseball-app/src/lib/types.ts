@@ -31,6 +31,8 @@ export interface Game {
   home_team: string;
   away_team: string;
   our_side: "home" | "away";
+  /** Game time (e.g. "19:05:00" from DB); optional. */
+  game_time?: string | null;
   final_score_home: number | null;
   final_score_away: number | null;
   created_at?: string;

@@ -192,7 +192,10 @@ export function GameBattingTable({
             </tr>
           </thead>
           <tbody>
-            {rowsWithPending.map((row) => (
+            {rowsWithPending.map((row, index) => {
+              const orderNum = index + 1;
+              const nameWithOrder = row.position ? `${orderNum}. ${row.name} ${row.position}` : `${orderNum}. ${row.name}`;
+              return (
               <tr
                 key={row.playerId}
                 className={`border-b border-[var(--border)] ${
@@ -202,7 +205,7 @@ export function GameBattingTable({
                 }`}
               >
                 <td className={compact ? "px-1.5 py-1 font-medium text-[var(--text)]" : "px-3 py-2 font-medium text-[var(--text)]"}>
-                  {row.position ? `${row.name} ${row.position}` : row.name}
+                  {nameWithOrder}
                 </td>
                 <td className={compact ? "px-1 py-1 text-right tabular-nums text-[var(--text)]" : "px-2 py-2 text-right tabular-nums text-[var(--text)]"}>{row.ab}</td>
                 <td className={compact ? "px-1 py-1 text-right tabular-nums text-[var(--text)]" : "px-2 py-2 text-right tabular-nums text-[var(--text)]"}>{row.r}</td>
@@ -213,7 +216,8 @@ export function GameBattingTable({
                 <td className={compact ? "px-1 py-1 text-right tabular-nums text-[var(--text)]" : "px-2 py-2 text-right tabular-nums text-[var(--text)]"}>{formatAvgOps(row.avg)}</td>
                 <td className={compact ? "px-1 py-1 text-right tabular-nums text-[var(--text)]" : "px-2 py-2 text-right tabular-nums text-[var(--text)]"}>{formatAvgOps(row.ops)}</td>
               </tr>
-            ))}
+            );
+            })}
             <tr className="border-t-2 border-[var(--border)] bg-[var(--bg-elevated)] font-medium">
               <td className={compact ? "px-1.5 py-1 text-[var(--text)]" : "px-3 py-2 text-[var(--text)]"}>Totals</td>
               <td className={compact ? "px-1 py-1 text-right tabular-nums text-[var(--text)]" : "px-2 py-2 text-right tabular-nums text-[var(--text)]"}>{rowsWithPending.reduce((s, r) => s + r.ab, 0)}</td>

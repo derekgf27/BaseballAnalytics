@@ -7,6 +7,7 @@ import { isDemoId } from "@/lib/db/mockData";
 import { updateGame } from "@/lib/db/queries";
 import { createGameWithLineupAction, updateGameWithLineupAction, deleteGameAction, fetchCurrentGameLineupName, fetchGameLineupSlots, clearPAsForGameAction } from "./actions";
 import { formatDateMMDDYYYY } from "@/lib/format";
+import { StyledDatePicker } from "@/components/shared/StyledDatePicker";
 import type { Game, Player } from "@/lib/types";
 import type { SavedLineup } from "@/lib/types";
 import { fetchSavedLineupWithSlots } from "@/app/analyst/lineup/actions";
@@ -23,12 +24,32 @@ export function GamesPageClient({ initialGames, initialSavedLineups, initialPlay
   const [games, setGames] = useState(initialGames);
   const [editingGame, setEditingGame] = useState<Game | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [message, setMessage] = useState<{ type: "ok" | "err" | "deleted"; text: string } | null>(null);
+  const [messageDismissing, setMessageDismissing] = useState(false);
   const [clearingGameId, setClearingGameId] = useState<string | null>(null);
 
   const isFormOpen = editingGame !== null || showAddForm;
 
   const refresh = () => router.refresh();
+
+  // Auto-dismiss message after 4s, with fade-out
+  useEffect(() => {
+    if (!message) return;
+    const showMs = 4000;
+    const fadeMs = 300;
+    const t1 = setTimeout(() => setMessageDismissing(true), showMs);
+    return () => clearTimeout(t1);
+  }, [message]);
+
+  useEffect(() => {
+    if (!messageDismissing) return;
+    const fadeMs = 300;
+    const t2 = setTimeout(() => {
+      setMessage(null);
+      setMessageDismissing(false);
+    }, fadeMs);
+    return () => clearTimeout(t2);
+  }, [messageDismissing]);
 
   const handleSaveGame = async (
     game: Omit<Game, "id" | "created_at">,
@@ -94,12 +115,17 @@ export function GamesPageClient({ initialGames, initialSavedLineups, initialPlay
 
       {message && (
         <div
-          className={`rounded-lg border p-4 ${
+          className={`rounded-lg border p-4 transition-opacity duration-300 ${
             message.type === "ok"
               ? "text-[var(--success)]"
               : "text-[var(--danger)]"
-          }`}
-          style={{ background: message.type === "ok" ? "var(--success-dim)" : "var(--danger-dim)", borderColor: "var(--border)" }}
+          } ${messageDismissing ? "opacity-0" : "opacity-100"}`}
+          style={{
+            background: message.type === "ok" ? "var(--success-dim)" : "var(--danger-dim)",
+            borderColor: "var(--border)",
+          }}
+          role="alert"
+          aria-live="polite"
         >
           {message.text}
         </div>
@@ -120,7 +146,7 @@ export function GamesPageClient({ initialGames, initialSavedLineups, initialPlay
             setGames((prev) => prev.filter((g) => g.id !== gameId));
             setEditingGame(null);
             setShowAddForm(false);
-            setMessage({ type: "ok", text: "Game deleted." });
+            setMessage({ type: "deleted", text: "Game deleted." });
             refresh();
           } else {
             setMessage({ type: "err", text: "Could not delete game." });
@@ -162,8 +188,14 @@ export function GamesPageClient({ initialGames, initialSavedLineups, initialPlay
               </div>
               <div className="flex flex-wrap gap-2">
                 <Link
-                  href={`/analyst/games/${g.id}/review`}
+                  href={`/analyst/record?gameId=${g.id}`}
                   className="inline-flex items-center rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-[var(--bg-base)] transition hover:opacity-90"
+                >
+                  Record PAs
+                </Link>
+                <Link
+                  href={`/analyst/games/${g.id}/review`}
+                  className="inline-flex items-center rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-1.5 text-sm font-medium text-[var(--text)] transition hover:opacity-90"
                 >
                   Box score
                 </Link>
@@ -228,9 +260,19 @@ function GameForm({
 }) {
   const isEditing = !!game;
   const [date, setDate] = useState(game?.date ?? new Date().toISOString().slice(0, 10));
-  const [home_team, setHomeTeam] = useState(game?.home_team ?? "");
-  const [away_team, setAwayTeam] = useState(game?.away_team ?? "");
   const [our_side, setOurSide] = useState<"home" | "away">(game?.our_side ?? "home");
+  const [our_team, setOurTeam] = useState<string>(() =>
+    game ? (game.our_side === "home" ? game.home_team : game.away_team) : ""
+  );
+  const [opponent, setOpponent] = useState<string>(() =>
+    game ? (game.our_side === "home" ? game.away_team : game.home_team) : ""
+  );
+  const [game_time, setGameTime] = useState<string>(() => {
+    const t = game?.game_time;
+    if (!t) return "";
+    const part = t.trim().split(":").slice(0, 2).join(":");
+    return part || "";
+  });
   const [lineupId, setLineupId] = useState<string>(
     isEditing ? "__keep__" : (savedLineups[0]?.id ?? "")
   );
@@ -247,6 +289,19 @@ function GameForm({
     });
     return () => { cancelled = true; };
   }, [game?.id]);
+
+  useEffect(() => {
+    const t = game?.game_time;
+    if (t == null) setGameTime("");
+    else setGameTime(t.trim().split(":").slice(0, 2).join(":") || "");
+  }, [game?.id, game?.game_time]);
+
+  useEffect(() => {
+    if (!game?.id) return;
+    setOurSide(game.our_side);
+    setOurTeam(game.our_side === "home" ? game.home_team : game.away_team);
+    setOpponent(game.our_side === "home" ? game.away_team : game.home_team);
+  }, [game?.id, game?.our_side, game?.home_team, game?.away_team]);
   const [reviewLineup, setReviewLineup] = useState<{ name: string; slots: { slot: number; player_id: string; position: string | null }[] } | null>(null);
   const [reviewLoading, setReviewLoading] = useState(false);
 
@@ -284,12 +339,15 @@ function GameForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    const home_team = our_side === "home" ? our_team.trim() : opponent.trim();
+    const away_team = our_side === "home" ? opponent.trim() : our_team.trim();
     await onSave(
       {
         date,
-        home_team: home_team.trim(),
-        away_team: away_team.trim(),
+        home_team,
+        away_team,
         our_side,
+        game_time: game_time.trim() || null,
         final_score_home: null,
         final_score_away: null,
       },
@@ -303,89 +361,129 @@ function GameForm({
   return (
     <form onSubmit={handleSubmit} className="card-tech p-5">
       <h3 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">{isEditing ? "Edit game" : "Add game"}</h3>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <label>
-          <span className="text-xs text-[var(--text-muted)]">Date</span>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="input-tech mt-1 block w-full px-3 py-2"
-            required
-          />
-        </label>
-        <label>
-          <span className="text-xs text-[var(--text-muted)]">Our side</span>
-          <select
-            value={our_side}
-            onChange={(e) => setOurSide(e.target.value as "home" | "away")}
-            className="input-tech mt-1 block w-full px-3 py-2"
-          >
-            <option value="home">Home</option>
-            <option value="away">Away</option>
-          </select>
-        </label>
-        <label>
-          <span className="text-xs text-[var(--text-muted)]">Away team</span>
-          <input
-            type="text"
-            value={away_team}
-            onChange={(e) => setAwayTeam(e.target.value)}
-            className="input-tech mt-1 block w-full px-3 py-2"
-            
-            required
-          />
-        </label>
-        <label>
-          <span className="text-xs text-[var(--text-muted)]">Home team</span>
-          <input
-            type="text"
-            value={home_team}
-            onChange={(e) => setHomeTeam(e.target.value)}
-            className="input-tech mt-1 block w-full px-3 py-2"
-           
-            required
-          />
-        </label>
-        <div className="sm:col-span-2 space-y-1">
-          <span className="text-xs text-[var(--text-muted)] block">Lineup</span>
-          <div className="flex gap-2">
-            <select
-              value={lineupId}
-              onChange={(e) => setLineupId(e.target.value)}
-              className="input-tech min-w-[14rem] w-64 max-w-full px-3 py-2"
-              aria-label="Lineup template"
-            >
-              {isEditing ? (
-                <>
-                  <option value="__keep__">{currentLineupName}</option>
-                  {savedLineups.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name}
-                    </option>
-                  ))}
-                </>
-              ) : (
-                <>
-                  {savedLineups.length === 0 ? (
-                    <option value="">No saved lineups</option>
-                  ) : null}
-                  {savedLineups.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name}
-                    </option>
-                  ))}
-                </>
-              )}
-            </select>
-            <button
-              type="button"
-              onClick={openReviewModal}
-              className="shrink-0 rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-medium text-white transition hover:opacity-90"
-            >
-              Review lineup
-            </button>
+
+      {/* When */}
+      <div className="mt-4">
+        <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">When</span>
+        <div className="mt-2 grid gap-3 sm:grid-cols-2">
+          <label>
+            <span className="text-xs text-[var(--text-muted)]">Date</span>
+            <StyledDatePicker
+              value={date}
+              onChange={setDate}
+              className="input-tech mt-1 block w-full px-3 py-2"
+              required
+            />
+          </label>
+          <label>
+            <span className="text-xs text-[var(--text-muted)]">Time (optional)</span>
+            <input
+              type="time"
+              value={game_time}
+              onChange={(e) => setGameTime(e.target.value)}
+              className="input-tech mt-1 block w-full px-3 py-2"
+            />
+          </label>
+        </div>
+      </div>
+
+      {/* Matchup */}
+      <div className="mt-6">
+        <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Matchup</span>
+        <div className="mt-2 space-y-3">
+          <div>
+            <span className="text-xs text-[var(--text-muted)] block mb-1">Our side</span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setOurSide("home")}
+                className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                  our_side === "home"
+                    ? "border-[var(--accent)] bg-[var(--accent)] text-white"
+                    : "border-[var(--border)] bg-[var(--bg-input)] text-[var(--text-muted)] hover:border-[var(--border-focus)] hover:text-[var(--text)]"
+                }`}
+              >
+                Home
+              </button>
+              <button
+                type="button"
+                onClick={() => setOurSide("away")}
+                className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                  our_side === "away"
+                    ? "border-[var(--accent)] bg-[var(--accent)] text-white"
+                    : "border-[var(--border)] bg-[var(--bg-input)] text-[var(--text-muted)] hover:border-[var(--border-focus)] hover:text-[var(--text)]"
+                }`}
+              >
+                Away
+              </button>
+            </div>
           </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label>
+              <span className="text-xs text-[var(--text-muted)]">Our team</span>
+              <input
+                type="text"
+                value={our_team}
+                onChange={(e) => setOurTeam(e.target.value)}
+                className="input-tech mt-1 block w-full px-3 py-2"
+                placeholder="Your team name"
+                required
+              />
+            </label>
+            <label>
+              <span className="text-xs text-[var(--text-muted)]">Opponent</span>
+              <input
+                type="text"
+                value={opponent}
+                onChange={(e) => setOpponent(e.target.value)}
+                className="input-tech mt-1 block w-full px-3 py-2"
+                placeholder="Opposing team"
+                required
+              />
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* Lineup */}
+      <div className="mt-6">
+        <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] block">Lineup</span>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <select
+            value={lineupId}
+            onChange={(e) => setLineupId(e.target.value)}
+            className="input-tech min-w-[14rem] max-w-full px-3 py-2"
+            aria-label="Lineup template"
+          >
+            {isEditing ? (
+              <>
+                <option value="__keep__">{currentLineupName}</option>
+                {savedLineups.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
+              </>
+            ) : (
+              <>
+                {savedLineups.length === 0 ? (
+                  <option value="">No saved lineups</option>
+                ) : null}
+                {savedLineups.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
+              </>
+            )}
+          </select>
+          <button
+            type="button"
+            onClick={openReviewModal}
+            className="shrink-0 rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-medium text-white transition hover:opacity-90"
+          >
+            Review lineup
+          </button>
         </div>
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-2">

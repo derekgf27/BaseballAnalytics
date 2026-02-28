@@ -8,6 +8,7 @@ create table if not exists public.games (
   home_team text not null,
   away_team text not null,
   our_side text not null check (our_side in ('home', 'away')),
+  game_time time,
   final_score_home int,
   final_score_away int,
   created_at timestamptz default now()

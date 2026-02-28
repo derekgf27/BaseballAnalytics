@@ -9,7 +9,7 @@ import { CoachTodayClient } from "./CoachTodayClient";
  */
 export const dynamic = "force-dynamic";
 
-export default async function CoachTodayPage() {
+export default async function CoachPage() {
   const games = await getGames();
   const game = games[0] ?? null;
 

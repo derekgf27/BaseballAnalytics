@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const LINKS = [
-  { href: "/coach", label: "Today", icon: "📋" },
+  { href: "/coach", label: "Today", icon: "📋", exact: true },
   { href: "/coach/lineup", label: "Lineup", icon: "📝" },
   { href: "/coach/players", label: "Players", icon: "👤" },
   { href: "/coach/green-light", label: "Green light", icon: "🟢" },
@@ -26,11 +26,10 @@ export function CoachNav() {
         </Link>
       </div>
       <nav className="flex flex-1 flex-col gap-0.5 py-3">
-        {LINKS.map(({ href, label, icon }) => {
-          const active =
-            href === "/coach"
-              ? pathname === "/coach"
-              : pathname.startsWith(href);
+        {LINKS.map(({ href, label, icon, exact }) => {
+          const active = exact
+            ? pathname === href
+            : pathname.startsWith(href);
           return (
             <Link
               key={href}
