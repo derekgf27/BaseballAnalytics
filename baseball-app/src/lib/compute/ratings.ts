@@ -7,7 +7,7 @@ import type { PlateAppearance, Ratings, PAResult } from "@/lib/types";
 
 const DAMAGE_RESULTS: PAResult[] = ["double", "triple", "hr"];
 const CONTACT_RESULTS: PAResult[] = ["single", "double", "triple", "hr"];
-const OUT_RESULTS: PAResult[] = ["out", "so"];
+const OUT_RESULTS: PAResult[] = ["out", "so", "so_looking"];
 
 function clampRating(v: number): number {
   return Math.max(1, Math.min(5, Math.round(v)));
@@ -20,7 +20,7 @@ function clampRating(v: number): number {
 function contactReliability(pas: PlateAppearance[]): number {
   if (pas.length === 0) return 3;
   const hits = pas.filter((pa) => CONTACT_RESULTS.includes(pa.result)).length;
-  const strikeouts = pas.filter((pa) => pa.result === "so").length;
+  const strikeouts = pas.filter((pa) => pa.result === "so" || pa.result === "so_looking").length;
   const withQuality = pas.filter(
     (pa) => pa.contact_quality === "hard" || pa.contact_quality === "medium"
   ).length;

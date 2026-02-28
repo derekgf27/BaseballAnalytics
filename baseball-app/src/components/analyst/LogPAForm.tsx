@@ -11,6 +11,7 @@ const RESULT_OPTIONS: { value: PAResult; label: string }[] = [
   { value: "hr", label: "HR" },
   { value: "out", label: "Out" },
   { value: "so", label: "SO" },
+  { value: "so_looking", label: "ꓘ" },
   { value: "bb", label: "BB" },
   { value: "ibb", label: "IBB" },
   { value: "hbp", label: "HBP" },
@@ -41,8 +42,6 @@ export function LogPAForm({
   const [balls, setBalls] = useState(0);
   const [strikes, setStrikes] = useState(0);
   const [result, setResult] = useState<PAResult | null>(null);
-  const [contactQuality, setContactQuality] = useState<"soft" | "medium" | "hard" | null>(null);
-  const [chase, setChase] = useState<boolean | null>(null);
   const [pitchesSeen, setPitchesSeen] = useState<number | "">("");
   const [rbi, setRbi] = useState(0);
   const [notes, setNotes] = useState("");
@@ -63,8 +62,6 @@ export function LogPAForm({
         count_balls: balls,
         count_strikes: strikes,
         result,
-        contact_quality: contactQuality,
-        chase,
         hit_direction: null,
         pitches_seen: pitchesSeen === "" ? null : pitchesSeen,
         rbi,
@@ -170,44 +167,6 @@ export function LogPAForm({
               {opt.label}
             </button>
           ))}
-        </div>
-      </div>
-
-      <div>
-        <span className="text-xs text-[var(--text-muted)]">Contact (optional)</span>
-        <div className="mt-1 flex gap-2">
-          {(["soft", "medium", "hard"] as const).map((q) => (
-            <button
-              key={q}
-              type="button"
-              onClick={() => setContactQuality(contactQuality === q ? null : q)}
-              className={`rounded-lg border px-3 py-1 text-sm ${
-                contactQuality === q ? "border-[var(--accent)] bg-[var(--accent-dim)]" : ""
-              }`}
-            >
-              {q}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <span className="text-xs text-[var(--text-muted)]">Chase?</span>
-        <div className="mt-1 flex gap-2">
-          <button
-            type="button"
-            onClick={() => setChase(true)}
-            className={`rounded-lg border px-3 py-1 text-sm ${chase === true ? "bg-amber-100" : ""}`}
-          >
-            Yes
-          </button>
-          <button
-            type="button"
-            onClick={() => setChase(false)}
-            className={`rounded-lg border px-3 py-1 text-sm ${chase === false ? "bg-emerald-100" : ""}`}
-          >
-            No
-          </button>
         </div>
       </div>
 

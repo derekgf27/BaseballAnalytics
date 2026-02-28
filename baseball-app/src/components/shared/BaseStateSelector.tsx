@@ -123,7 +123,7 @@ export function BaseStateSelector({
                   <g className="pointer-events-none select-none">
                     <text
                       x={x}
-                      y={jersey != null ? y - 6 : y}
+                      y={jersey != null ? y - 10 : y}
                       textAnchor="middle"
                       dominantBaseline="middle"
                       fill="var(--bg-base)"
@@ -135,7 +135,7 @@ export function BaseStateSelector({
                     {jersey != null && (
                       <text
                         x={x}
-                        y={y + 6}
+                        y={y + 10}
                         textAnchor="middle"
                         dominantBaseline="middle"
                         fill="var(--bg-base)"

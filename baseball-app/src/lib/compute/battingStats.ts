@@ -41,7 +41,7 @@ export function battingStatsFromPAs(
   const double = countByResult(pas, "double");
   const triple = countByResult(pas, "triple");
   const hr = countByResult(pas, "hr");
-  const so = countByResult(pas, "so");
+  const so = countByResult(pas, "so") + countByResult(pas, "so_looking");
   const rbi = pas.reduce((sum, p) => sum + (p.rbi ?? 0), 0);
   const sb = pas.reduce((sum, p) => sum + (p.stolen_bases ?? 0), 0);
 

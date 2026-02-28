@@ -63,7 +63,8 @@ function formatStat(value: number | undefined, format: "int" | "avg" | "pct"): s
   if (value === undefined) return "—";
   if (format === "int") return String(value);
   if (format === "pct") return `${(value * 100).toFixed(1)}%`;
-  return value.toFixed(3);
+  const s = value.toFixed(3);
+  return s.startsWith("0.") ? s.slice(1) : s;
 }
 
 function getStatValue(

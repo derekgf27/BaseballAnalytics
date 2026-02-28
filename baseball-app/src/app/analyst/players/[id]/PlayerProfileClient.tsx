@@ -18,7 +18,8 @@ function parseLocalDate(isoDate: string): Date {
 }
 
 function formatAvg(n: number): string {
-  return n.toFixed(3);
+  const s = n.toFixed(3);
+  return s.startsWith("0.") ? s.slice(1) : s;
 }
 
 export function PlayerProfileClient({

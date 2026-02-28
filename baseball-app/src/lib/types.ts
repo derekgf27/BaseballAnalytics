@@ -14,6 +14,7 @@ export type PAResult =
   | "ibb"
   | "hbp"
   | "so"
+  | "so_looking"
   | "sac"
   | "sac_fly"
   | "sac_bunt"

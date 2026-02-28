@@ -25,7 +25,7 @@ export interface GameBattingRow {
 function formatAvgOps(value: number): string {
   if (value === 0) return ".000";
   const s = value.toFixed(3);
-  return s.startsWith("0") ? s : s;
+  return s.startsWith("0.") ? s.slice(1) : s;
 }
 
 function computeGameBatting(

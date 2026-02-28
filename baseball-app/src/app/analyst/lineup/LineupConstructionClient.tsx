@@ -45,7 +45,8 @@ const BATTING_STAT_LABELS: { key: keyof BattingStats; label: string; format: "av
 
 function formatStat(value: number, format: "avg" | "int"): string {
   if (format === "int") return String(value);
-  return value.toFixed(3);
+  const s = value.toFixed(3);
+  return s.startsWith("0.") ? s.slice(1) : s;
 }
 
 type PoolSortKey = "name" | "obp" | "woba" | "ops" | "avg";
@@ -577,9 +578,9 @@ export default function LineupConstructionClient({
           </button>
           {lineupQuality != null && (
             <span className="text-sm text-[var(--text-muted)]">
-              Lineup avg OBP: <strong className="text-[var(--text)]">{lineupQuality.obp.toFixed(3)}</strong>
+              Lineup avg OBP: <strong className="text-[var(--text)]">{formatStat(lineupQuality.obp, "avg")}</strong>
               {" · "}
-              Avg wOBA: <strong className="text-[var(--text)]">{lineupQuality.woba.toFixed(3)}</strong>
+              Avg wOBA: <strong className="text-[var(--text)]">{formatStat(lineupQuality.woba, "avg")}</strong>
             </span>
           )}
         </div>
