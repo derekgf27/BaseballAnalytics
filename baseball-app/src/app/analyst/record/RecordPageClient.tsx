@@ -285,6 +285,8 @@ export default function RecordPageClient({
         count_balls: countBalls,
         count_strikes: countStrikes,
         result,
+        contact_quality: null,
+        chase: null,
         hit_direction: hitDirection,
         pitches_seen: pitchesSeen === "" ? null : pitchesSeen,
         rbi,
