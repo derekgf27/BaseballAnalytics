@@ -62,6 +62,8 @@ export function LogPAForm({
         count_balls: balls,
         count_strikes: strikes,
         result,
+        contact_quality: null,
+        chase: null,
         hit_direction: null,
         pitches_seen: pitchesSeen === "" ? null : pitchesSeen,
         rbi,
