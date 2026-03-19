@@ -14,7 +14,7 @@ export function GameLogPageClient({
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold tracking-tight text-[var(--text)]">Game</h1>
+        <h1 className="font-display text-xl font-semibold tracking-tight text-[var(--text)]">Game</h1>
         <Link href="/analyst/games" className="text-sm font-medium text-[var(--accent)] hover:underline">
           ← Games
         </Link>

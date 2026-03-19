@@ -64,7 +64,7 @@ export function AnalystNav() {
       <div className="border-b border-[var(--border)] p-2">
         <Link
           href="/analyst"
-          className="flex items-center gap-2 py-2 pl-2 text-sm font-semibold tracking-tight text-[var(--text)]"
+          className="font-display flex items-center gap-2 py-2 pl-2 text-sm font-semibold tracking-tight text-[var(--text)]"
         >
           <span className="sidebar-icon shrink-0 opacity-90">📊</span>
           <span className="sidebar-label truncate text-[var(--accent)]">Analyst</span>

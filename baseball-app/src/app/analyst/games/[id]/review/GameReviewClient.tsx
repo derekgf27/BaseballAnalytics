@@ -29,7 +29,7 @@ export function GameReviewClient({
     <div className="space-y-6 pb-8">
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-[var(--text)]">
+          <h1 className="font-display text-2xl font-semibold tracking-tight text-[var(--text)]">
             Box score
           </h1>
           <p className="mt-1 text-sm text-[var(--text-muted)]">{gameLabel}</p>
@@ -41,7 +41,7 @@ export function GameReviewClient({
 
       {/* Box score */}
       <section>
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+        <h2 className="font-display mb-2 text-sm font-semibold uppercase tracking-wider text-white">
           Box score
         </h2>
         <BoxScore game={game} pas={pas} />

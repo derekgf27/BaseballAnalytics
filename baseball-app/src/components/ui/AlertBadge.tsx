@@ -44,7 +44,7 @@ export function AlertBadge({
         <span className="text-sm font-semibold text-[var(--text)]" aria-hidden>
           {s.icon}
         </span>
-        <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+        <span className="font-display text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
           {title}
         </span>
       </div>

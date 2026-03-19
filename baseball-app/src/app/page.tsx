@@ -2,63 +2,60 @@ import Link from "next/link";
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-[var(--bg-base)]">
-      <div className="mx-auto max-w-2xl px-4 py-16 sm:py-24">
-        <div className="text-center">
-          <div className="inline-flex h-14 w-14 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--bg-card)] text-2xl shadow-[0_0_40px_-12px_var(--accent)]">
-            ⚾
-          </div>
-          <h1 className="mt-6 text-3xl font-semibold tracking-tight text-[var(--text)] sm:text-4xl">
-            Baseball Analytics
-          </h1>
-          <p className="mt-2 text-sm text-[var(--text-muted)] tracking-wide">
-            Internal — choose your mode
-          </p>
+    <div className="home-page flex min-h-screen flex-col bg-[var(--bg-base)]">
+      {/* Compact hero */}
+      <header className="shrink-0 py-8 text-center sm:py-10">
+        <div
+          className="home-icon-pulse inline-flex h-12 w-12 items-center justify-center rounded-xl border-2 border-[var(--accent)]/40 bg-[var(--bg-card)] text-2xl shadow-[0_0_24px_var(--accent)]"
+          aria-hidden
+        >
+          ⚾
         </div>
-
-        <div className="mt-14 grid gap-4 sm:grid-cols-2">
-          <Link
-            href="/analyst"
-            className="group card-tech card-hover flex flex-col p-6"
-          >
-            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--accent-dim)] text-lg text-[var(--accent)]">
-              📊
-            </span>
-            <h2 className="mt-4 text-lg font-semibold tracking-tight text-[var(--text)]">
-              Analyst
-            </h2>
-            <p className="mt-2 flex-1 text-sm text-[var(--text-muted)] leading-relaxed">
-              Log games, manage players, view charts and overrides.
-            </p>
-            <span className="mt-4 text-xs font-medium uppercase tracking-wider text-[var(--accent)] opacity-90 group-hover:opacity-100">
-              Enter →
-            </span>
-          </Link>
-
-          <Link
-            href="/coach"
-            className="group card-tech card-hover flex flex-col p-6"
-          >
-            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--accent-coach-dim)] text-lg text-[var(--accent-coach)]">
-              👟
-            </span>
-            <h2 className="mt-4 text-lg font-semibold tracking-tight text-[var(--text)]">
-              Coach
-            </h2>
-            <p className="mt-2 flex-1 text-sm text-[var(--text-muted)] leading-relaxed">
-              Today’s lineup, players, green lights, situation — decision-first, no raw stats.
-            </p>
-            <span className="mt-4 text-xs font-medium uppercase tracking-wider text-[var(--accent-coach)] opacity-90 group-hover:opacity-100">
-              Enter →
-            </span>
-          </Link>
-        </div>
-
-        <p className="mt-10 text-center text-xs text-[var(--text-faint)]">
-          <code className="rounded border border-[var(--border)] bg-[var(--bg-card)] px-1.5 py-0.5">npm run dev</code>
-          {" "}→ localhost:3000
+        <h1 className="home-title-glow mt-4 text-xl font-semibold text-[var(--text)] sm:text-3xl">
+          Baseball Analytics
+        </h1>
+        <p className="mt-1 text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">
+          Log it. Decide better.
         </p>
-      </div>
+      </header>
+
+      {/* Two mode panes — app theme (neo cyan), full-page layout */}
+      <nav
+        className="flex min-h-0 flex-1 flex-col gap-4 px-4 pb-8 sm:flex-row sm:items-stretch sm:gap-6"
+        aria-label="Select mode"
+      >
+        <Link
+          href="/analyst"
+          className="home-mode-pane home-mode-pane-analyst group relative flex min-h-[45vh] flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-[var(--accent)]/60 bg-[var(--accent-dim)]/40 px-6 py-12 shadow-[0_0_32px_rgba(102,224,255,0.35)] transition sm:min-h-0 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 focus:ring-offset-[var(--bg-base)] hover:border-[var(--accent)] hover:bg-[var(--accent-dim)]/60"
+        >
+          <span className="text-4xl sm:text-5xl" aria-hidden>📊</span>
+          <span className="font-display text-xl font-semibold uppercase tracking-wider text-[var(--text)] sm:text-2xl">
+            Analyst
+          </span>
+          <p className="max-w-[260px] text-center text-sm text-[var(--text-muted)]">
+            Log games, manage players, view charts and overrides.
+          </p>
+          <span className="mt-1 text-xs font-medium uppercase tracking-wider text-[var(--accent)] opacity-0 transition group-hover:opacity-100">
+            Enter →
+          </span>
+        </Link>
+
+        <Link
+          href="/coach"
+          className="home-mode-pane home-mode-pane-coach group relative flex min-h-[45vh] flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-[var(--accent-coach)]/60 bg-[var(--accent-coach-dim)]/40 px-6 py-12 shadow-[0_0_32px_rgba(102,224,255,0.35)] transition sm:min-h-0 focus:outline-none focus:ring-2 focus:ring-[var(--accent-coach)] focus:ring-offset-2 focus:ring-offset-[var(--bg-base)] hover:border-[var(--accent-coach)] hover:bg-[var(--accent-coach-dim)]/60"
+        >
+          <span className="text-4xl sm:text-5xl" aria-hidden>👟</span>
+          <span className="font-display text-xl font-semibold uppercase tracking-wider text-[var(--text)] sm:text-2xl">
+            Coach
+          </span>
+          <p className="max-w-[260px] text-center text-sm text-[var(--text-muted)]">
+            Today’s lineup, players, green lights, situation.
+          </p>
+          <span className="mt-1 text-xs font-medium uppercase tracking-wider text-[var(--accent-coach)] opacity-0 transition group-hover:opacity-100">
+            Enter →
+          </span>
+        </Link>
+      </nav>
     </div>
   );
 }

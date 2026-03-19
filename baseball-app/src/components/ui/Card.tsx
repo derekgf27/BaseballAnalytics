@@ -29,7 +29,7 @@ export function CardTitle({
 }) {
   return (
     <h2
-      className={`text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)] ${className}`}
+      className={`font-display text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)] ${className}`}
     >
       {children}
     </h2>

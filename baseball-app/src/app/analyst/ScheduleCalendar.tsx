@@ -81,7 +81,7 @@ export function ScheduleCalendar({ games }: ScheduleCalendarProps) {
   return (
     <div className="card-tech overflow-hidden rounded-xl border">
       <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text)]">
+        <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-[var(--text)]">
           Schedule
         </h2>
         <div className="flex items-center gap-1">
@@ -114,7 +114,7 @@ export function ScheduleCalendar({ games }: ScheduleCalendarProps) {
               {DAYS.map((d) => (
                 <th
                   key={d}
-                  className="border-b border-[var(--border)] py-2 text-center text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]"
+                  className="font-display border-b border-[var(--border)] py-2 text-center text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]"
                 >
                   {d}
                 </th>

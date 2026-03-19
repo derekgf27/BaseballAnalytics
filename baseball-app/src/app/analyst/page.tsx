@@ -43,7 +43,7 @@ export default async function AnalystDashboard() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight text-[var(--text)]">
+        <h1 className="font-display text-xl font-semibold tracking-tight text-[var(--text)]">
           Dashboard
         </h1>
         <p className="mt-1 text-sm text-[var(--text-muted)]">
@@ -123,7 +123,7 @@ export default async function AnalystDashboard() {
       {/* Team batting stats */}
       {teamStats && (
         <div className="card-tech rounded-xl border p-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
             Team stats
           </h2>
           <div className="mt-4 flex flex-wrap items-baseline gap-x-6 gap-y-3 sm:gap-x-8">
@@ -190,7 +190,7 @@ export default async function AnalystDashboard() {
 
       {/* Quick actions — same card pattern as Charts / Games */}
       <div className="card-tech rounded-xl border p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+        <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
           Quick actions
         </h2>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

@@ -91,7 +91,7 @@ export function GamesPageClient({ initialGames, initialSavedLineups, initialPlay
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-[var(--text)]">Games</h1>
+          <h1 className="font-display text-xl font-semibold tracking-tight text-[var(--text)]">Games</h1>
           <p className="mt-1 text-sm text-[var(--text-muted)]">
             Select a game to log plate appearances.
           </p>
@@ -159,7 +159,7 @@ export function GamesPageClient({ initialGames, initialSavedLineups, initialPlay
       {games.length === 0 ? (
         <div className="card-tech rounded-lg border-dashed p-8 text-center">
           <span className="text-4xl opacity-60">📅</span>
-          <h2 className="mt-4 font-semibold text-[var(--text)]">No games yet</h2>
+          <h2 className="font-display mt-4 font-semibold text-[var(--text)]">No games yet</h2>
           <p className="mt-2 text-sm text-[var(--text-muted)]">
             {canEdit ? "Use the form above to add a game." : "Connect Supabase to add games."}
           </p>
@@ -399,7 +399,7 @@ function GameForm({
                 onClick={() => setOurSide("home")}
                 className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition ${
                   our_side === "home"
-                    ? "border-[var(--accent)] bg-[var(--accent)] text-white"
+                    ? "border-[var(--accent)] bg-[var(--accent)] text-black"
                     : "border-[var(--border)] bg-[var(--bg-input)] text-[var(--text-muted)] hover:border-[var(--border-focus)] hover:text-[var(--text)]"
                 }`}
               >
@@ -410,7 +410,7 @@ function GameForm({
                 onClick={() => setOurSide("away")}
                 className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition ${
                   our_side === "away"
-                    ? "border-[var(--accent)] bg-[var(--accent)] text-white"
+                    ? "border-[var(--accent)] bg-[var(--accent)] text-black"
                     : "border-[var(--border)] bg-[var(--bg-input)] text-[var(--text-muted)] hover:border-[var(--border-focus)] hover:text-[var(--text)]"
                 }`}
               >
@@ -480,7 +480,7 @@ function GameForm({
           <button
             type="button"
             onClick={openReviewModal}
-            className="shrink-0 rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-medium text-white transition hover:opacity-90"
+            className="shrink-0 rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-medium text-black transition hover:opacity-90"
           >
             Review lineup
           </button>
@@ -533,7 +533,7 @@ function GameForm({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-              <h2 id="review-lineup-title" className="text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+              <h2 id="review-lineup-title" className="font-display text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                 {reviewLineup ? reviewLineup.name : "Lineup"}
               </h2>
               <button

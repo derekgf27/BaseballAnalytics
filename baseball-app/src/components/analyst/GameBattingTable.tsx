@@ -135,8 +135,8 @@ export function GameBattingTable({
     ...r,
     sb: r.sb + (pendingStolenBasesByBatterId?.[r.playerId] ?? 0),
   }));
-  const isHome = game.our_side === "home";
-  const teamLabel = isHome ? game.home_team : game.away_team;
+  // We only record stats for our team; heading always shows our team name.
+  const ourTeamName = game.our_side === "home" ? game.home_team : game.away_team;
 
   const totals = rowsWithPending.reduce(
     (acc, r) => ({
@@ -157,8 +157,8 @@ export function GameBattingTable({
   if (rowsWithPending.length === 0) {
     return (
       <section>
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-          Batters – {teamLabel}
+        <h2 className="font-display mb-2 text-sm font-semibold uppercase tracking-wider text-white">
+          Batters – {ourTeamName}
         </h2>
         <p className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-4 text-sm text-[var(--text-muted)]">
           No plate appearances recorded for this game.
@@ -169,26 +169,26 @@ export function GameBattingTable({
 
   return (
     <section className={compact ? "space-y-1" : "space-y-4"}>
-      <h2 className={compact ? "text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]" : "text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]"}>
-        Batters – {teamLabel}
+      <h2 className={compact ? "font-display text-xs font-semibold uppercase tracking-wider text-white" : "font-display text-sm font-semibold uppercase tracking-wider text-white"}>
+        Batters – {ourTeamName}
       </h2>
       <div className="overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--bg-card)]">
         <table className={`w-full border-collapse text-left ${compact ? "min-w-0 text-xs" : "min-w-[520px] text-sm"}`}>
           <thead>
             <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
-              <th className={compact ? "px-1.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]" : "px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"}>
+              <th className={compact ? "font-display px-1.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-white" : "font-display px-3 py-2 text-xs font-semibold uppercase tracking-wider text-white"}>
                 Player
               </th>
-              <th className={compact ? "w-6 px-1 py-1 text-right text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]" : "w-10 px-2 py-2 text-right text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"}>
+              <th className={compact ? "font-display w-6 px-1 py-1 text-right text-[10px] font-semibold uppercase tracking-wider text-white" : "font-display w-10 px-2 py-2 text-right text-xs font-semibold uppercase tracking-wider text-white"}>
                 AB
               </th>
-              <th className={compact ? "w-6 px-1 py-1 text-right text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]" : "w-10 px-2 py-2 text-right text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"}>R</th>
-              <th className={compact ? "w-6 px-1 py-1 text-right text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]" : "w-10 px-2 py-2 text-right text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"}>H</th>
-              <th className={compact ? "w-6 px-1 py-1 text-right text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]" : "w-10 px-2 py-2 text-right text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"}>RBI</th>
-              <th className={compact ? "w-6 px-1 py-1 text-right text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]" : "w-10 px-2 py-2 text-right text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"}>BB</th>
-              <th className={compact ? "w-6 px-1 py-1 text-right text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]" : "w-10 px-2 py-2 text-right text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"}>K</th>
-              <th className={compact ? "w-8 px-1 py-1 text-right text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]" : "w-12 px-2 py-2 text-right text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"}>AVG</th>
-              <th className={compact ? "w-8 px-1 py-1 text-right text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]" : "w-12 px-2 py-2 text-right text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"}>OPS</th>
+              <th className={compact ? "font-display w-6 px-1 py-1 text-right text-[10px] font-semibold uppercase tracking-wider text-white" : "font-display w-10 px-2 py-2 text-right text-xs font-semibold uppercase tracking-wider text-white"}>R</th>
+              <th className={compact ? "font-display w-6 px-1 py-1 text-right text-[10px] font-semibold uppercase tracking-wider text-white" : "font-display w-10 px-2 py-2 text-right text-xs font-semibold uppercase tracking-wider text-white"}>H</th>
+              <th className={compact ? "font-display w-6 px-1 py-1 text-right text-[10px] font-semibold uppercase tracking-wider text-white" : "font-display w-10 px-2 py-2 text-right text-xs font-semibold uppercase tracking-wider text-white"}>RBI</th>
+              <th className={compact ? "font-display w-6 px-1 py-1 text-right text-[10px] font-semibold uppercase tracking-wider text-white" : "font-display w-10 px-2 py-2 text-right text-xs font-semibold uppercase tracking-wider text-white"}>BB</th>
+              <th className={compact ? "font-display w-6 px-1 py-1 text-right text-[10px] font-semibold uppercase tracking-wider text-white" : "font-display w-10 px-2 py-2 text-right text-xs font-semibold uppercase tracking-wider text-white"}>K</th>
+              <th className={compact ? "font-display w-8 px-1 py-1 text-right text-[10px] font-semibold uppercase tracking-wider text-white" : "font-display w-12 px-2 py-2 text-right text-xs font-semibold uppercase tracking-wider text-white"}>AVG</th>
+              <th className={compact ? "font-display w-8 px-1 py-1 text-right text-[10px] font-semibold uppercase tracking-wider text-white" : "font-display w-12 px-2 py-2 text-right text-xs font-semibold uppercase tracking-wider text-white"}>OPS</th>
             </tr>
           </thead>
           <tbody>
@@ -235,7 +235,7 @@ export function GameBattingTable({
 
       {battingNotes.length > 0 && (
         <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-3">
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          <h3 className="font-display mb-2 text-xs font-semibold uppercase tracking-wider text-white">
             Batting
           </h3>
           <dl className="space-y-1.5 text-sm text-[var(--text)]">

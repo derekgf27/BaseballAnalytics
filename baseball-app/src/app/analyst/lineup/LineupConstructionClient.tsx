@@ -94,8 +94,21 @@ function getStatsForLineupSplit(splits: Record<string, BattingStatsWithSplits>, 
   return s.vsR ?? undefined;
 }
 
-const batsLabel: Record<string, string> = { L: "Left", R: "Right", S: "Switch" };
-const throwsLabel: Record<string, string> = { L: "Left", R: "Right" };
+// Normalize handedness codes coming from data (e.g. "BL", "BR", "BS", "TL", "TR")
+const batsLabel: Record<string, string> = {
+  L: "Left",
+  R: "Right",
+  S: "Switch",
+  BL: "Left",
+  BR: "Right",
+  BS: "Switch",
+};
+const throwsLabel: Record<string, string> = {
+  L: "Left",
+  R: "Right",
+  TL: "Left",
+  TR: "Right",
+};
 
 function formatHandedness(bats: string | null | undefined, throws: string | null | undefined): string {
   const b = bats != null && bats !== "" ? batsLabel[bats] ?? bats : "—";
@@ -161,7 +174,9 @@ function DraggablePlayer({ player, compact }: { player: Player; compact?: boolea
 
 function batsShort(bats: string | null | undefined): string {
   if (bats == null || bats === "") return "—";
-  return bats === "S" ? "S" : bats === "L" ? "L" : bats === "R" ? "R" : bats;
+  const code = bats.toUpperCase();
+  const c = code[0];
+  return c === "S" ? "S" : c === "L" ? "L" : c === "R" ? "R" : code;
 }
 
 function LineupTableRow({
@@ -184,21 +199,25 @@ function LineupTableRow({
   return (
     <tr
       ref={setNodeRef}
-      className={`border-b border-[var(--border)] transition ${
-        isOver ? "bg-[var(--accent-dim)]" : rowStriped ? "bg-[var(--bg-card)]" : "bg-[var(--bg-elevated)]"
+      className={`border-b border-[var(--neo-border)] transition ${
+        isOver
+          ? "bg-[var(--neo-accent-dim)]"
+          : rowStriped
+            ? "bg-[#10151a]"
+            : "bg-[#12181f]"
       }`}
     >
-      <td className="w-12 border-r border-[var(--border)] px-3 py-2 text-center">
-        <span className="inline-flex h-7 w-7 items-center justify-center rounded bg-[var(--accent)] text-sm font-bold text-[var(--bg-base)]">
+      <td className="w-12 border-r border-[var(--neo-border)] px-3 py-2 text-center">
+        <span className="inline-flex h-7 w-7 items-center justify-center rounded bg-[var(--neo-accent)] text-sm font-bold text-[var(--bg-base)] shadow-[0_0_16px_rgba(102,224,255,0.6)]">
           {slotIndex + 1}
         </span>
       </td>
-      <td className="min-w-[5.5rem] w-24 border-r border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-2 text-center">
+      <td className="min-w-[5.5rem] w-24 border-r border-[var(--neo-border)] bg-black/20 px-2 py-2 text-center">
         {player ? (
           <select
             value={position || LINEUP_POSITIONS[0]}
             onChange={(e) => onPositionChange(slotIndex, e.target.value)}
-            className="min-w-[3rem] w-full rounded border border-[var(--border)] bg-[var(--bg-card)] px-2 py-1 text-center text-sm font-medium text-[var(--text)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+            className="min-w-[3rem] w-full rounded border border-[var(--neo-border)] bg-[#111619] px-2 py-1 text-center text-sm font-medium text-[var(--neo-text)] focus:border-[var(--neo-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--neo-accent)]"
             aria-label={`Position for slot ${slotIndex + 1}`}
           >
             {LINEUP_POSITIONS.map((pos) => (
@@ -230,7 +249,7 @@ function PlayerPoolDroppable({ children }: { children: React.ReactNode }) {
   return (
     <div
       ref={setNodeRef}
-      className={`transition-opacity ${isOver ? "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[var(--bg)] rounded-lg" : ""}`}
+      className={`transition-opacity ${isOver ? "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[var(--bg-base)] rounded-lg" : ""}`}
     >
       {children}
     </div>
@@ -259,11 +278,11 @@ function PlayerStatsTable({
         <thead>
           <tr className="border-b border-[var(--border)] text-[var(--text-muted)]">
             {showSpot && (
-              <th className="py-1.5 pr-2 text-center text-xs font-semibold uppercase">#</th>
+              <th className="font-display py-1.5 pr-2 text-center text-xs font-semibold uppercase">#</th>
             )}
-            <th className="py-1.5 pr-2 text-xs font-semibold uppercase">Player</th>
+            <th className="font-display py-1.5 pr-2 text-xs font-semibold uppercase">Player</th>
             {BATTING_STAT_LABELS.map(({ key, label }) => (
-              <th key={key} className="py-1.5 px-2 text-center text-xs font-semibold uppercase">
+              <th key={key} className="font-display py-1.5 px-2 text-center text-xs font-semibold uppercase">
                 {label}
               </th>
             ))}
@@ -485,48 +504,44 @@ export default function LineupConstructionClient({
   }
 
   return (
-    <div className="space-y-6 pb-8">
+    <div className="app-shell space-y-6 pb-8">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight text-[var(--text)]">
-          Lineup construction
-        </h1>
-        <p className="mt-1 text-sm text-[var(--text-muted)]">
+        <div className="section-label">Lineup construction</div>
+        <p className="mt-1 text-sm text-[var(--neo-text-muted)]">
           Drag players from the roster into the lineup slots (1–9).
         </p>
       </header>
 
       {/* Lineup templates: load / delete — at top so users can pick a template first */}
-      <section className="card-tech rounded-lg border border-[var(--border)] p-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-          Lineup templates
-        </h2>
-        <p className="mt-1 text-xs text-[var(--text-faint)]">
+      <section className="neo-card p-4">
+        <div className="section-label">Lineup templates</div>
+        <p className="mt-1 text-xs text-[var(--neo-text-muted)]">
           Load a saved template into the batting order below, or delete one.
         </p>
         {initialSavedLineups.length > 0 && (
           <div className="mt-4">
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--text-faint)]">
+            <h3 className="font-display mb-2 text-xs font-semibold uppercase tracking-wider text-white">
               Saved templates
             </h3>
             <ul className="flex flex-wrap gap-3" role="list">
               {initialSavedLineups.map((l) => (
                 <li
                   key={l.id}
-                  className="flex items-center gap-4 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3"
+                  className="flex items-center gap-4 rounded-lg border border-[var(--neo-border)] bg-[#10151a] px-4 py-3"
                 >
-                  <span className="font-medium text-[var(--text)]">{l.name}</span>
+                  <span className="font-medium text-[var(--neo-text)]">{l.name}</span>
                   <button
                     type="button"
                     onClick={() => handleLoadTemplate(l.id)}
                     disabled={loadStatus === "loading"}
-                    className="text-sm text-[var(--accent)] hover:underline disabled:opacity-50"
+                    className="text-sm text-[var(--neo-accent)] hover:underline disabled:opacity-50"
                   >
                     Load
                   </button>
                   <button
                     type="button"
                     onClick={() => handleDeleteTemplate(l.id)}
-                    className="text-sm text-[var(--text-muted)] hover:text-[var(--danger)]"
+                    className="text-sm text-[var(--neo-text-muted)] hover:text-[var(--danger)]"
                     aria-label={`Delete ${l.name}`}
                   >
                     Delete
@@ -539,20 +554,18 @@ export default function LineupConstructionClient({
       </section>
 
       {/* Lineup optimization: suggest order, lineup quality, split */}
-      <section className="card-tech rounded-lg border border-[var(--border)] p-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-          Lineup optimization
-        </h2>
-        <p className="mt-1 text-xs text-[var(--text-faint)]">
+      <section className="neo-card p-4">
+        <div className="section-label">Lineup optimization</div>
+        <p className="mt-1 text-xs text-[var(--neo-text-muted)]">
           Use stats to suggest a batting order, or sort the pool by a stat when building manually. Choose a split to optimize vs LHP or vs RHP.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+          <label className="flex items-center gap-2 text-xs text-[var(--neo-text-muted)]">
             <span>Stats</span>
             <select
               value={lineupSplitView}
               onChange={(e) => setLineupSplitView(e.target.value as LineupSplitView)}
-              className="rounded border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none"
+              className="rounded border border-[var(--neo-border)] bg-[var(--neo-bg-base)] px-2 py-1 text-sm text-[var(--neo-text)] focus:border-[var(--neo-accent)] focus:outline-none"
               aria-label="Batting split for lineup stats"
             >
               <option value="overall">Overall</option>
@@ -564,7 +577,7 @@ export default function LineupConstructionClient({
             type="button"
             onClick={() => handleSuggestBy("obp")}
             disabled={initialPlayers.length === 0}
-            className="rounded-lg border border-[var(--accent)]/50 bg-[var(--accent-dim)] px-3 py-1.5 text-sm font-medium text-[var(--accent)] transition hover:bg-[var(--accent)]/20 disabled:opacity-50 disabled:pointer-events-none"
+            className="rounded-lg border border-[var(--neo-accent)]/50 bg-[var(--neo-accent-dim)] px-3 py-1.5 text-sm font-medium text-[var(--neo-accent)] transition hover:bg-[var(--neo-accent)]/20 disabled:opacity-50 disabled:pointer-events-none"
           >
             Suggest by OBP
           </button>
@@ -572,15 +585,15 @@ export default function LineupConstructionClient({
             type="button"
             onClick={() => handleSuggestBy("woba")}
             disabled={initialPlayers.length === 0}
-            className="rounded-lg border border-[var(--accent)]/50 bg-[var(--accent-dim)] px-3 py-1.5 text-sm font-medium text-[var(--accent)] transition hover:bg-[var(--accent)]/20 disabled:opacity-50 disabled:pointer-events-none"
+            className="rounded-lg border border-[var(--neo-accent)]/50 bg-[var(--neo-accent-dim)] px-3 py-1.5 text-sm font-medium text-[var(--neo-accent)] transition hover:bg-[var(--neo-accent)]/20 disabled:opacity-50 disabled:pointer-events-none"
           >
             Suggest by wOBA
           </button>
           {lineupQuality != null && (
-            <span className="text-sm text-[var(--text-muted)]">
-              Lineup avg OBP: <strong className="text-[var(--text)]">{formatStat(lineupQuality.obp, "avg")}</strong>
+            <span className="text-sm text-[var(--neo-text-muted)]">
+              Lineup avg OBP: <strong className="text-[var(--neo-text)]">{formatStat(lineupQuality.obp, "avg")}</strong>
               {" · "}
-              Avg wOBA: <strong className="text-[var(--text)]">{formatStat(lineupQuality.woba, "avg")}</strong>
+              Avg wOBA: <strong className="text-[var(--neo-text)]">{formatStat(lineupQuality.woba, "avg")}</strong>
             </span>
           )}
         </div>
@@ -591,20 +604,18 @@ export default function LineupConstructionClient({
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
           {/* Left: Available players (droppable to return players from lineup) */}
           <PlayerPoolDroppable>
-            <div className="card-tech rounded-lg border p-4">
+            <div className="neo-card flex min-h-[20rem] flex-col p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                  Available players
-                </h2>
-                <label className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+                <h2 className="section-label">Available players</h2>
+                <label className="flex items-center gap-2 text-xs text-[var(--neo-text-muted)]">
                   <span>Sort by</span>
                   <select
                     value={poolSortBy}
                     onChange={(e) => setPoolSortBy(e.target.value as PoolSortKey)}
-                    className="input-tech rounded border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-[var(--text)]"
+                    className="input-tech rounded border border-[var(--neo-border)] bg-[var(--neo-bg-base)] px-2 py-1 text-[var(--neo-text)]"
                     aria-label="Sort pool by stat"
                   >
                     <option value="name">Name</option>
@@ -615,12 +626,12 @@ export default function LineupConstructionClient({
                   </select>
                 </label>
               </div>
-              <p className="mt-1 text-xs text-[var(--text-faint)]">
+              <p className="mt-1 text-xs text-[var(--neo-text-muted)]">
                 Drag players here to return them to the pool.
               </p>
               <ul className="mt-3 space-y-2" role="list">
                 {sortedAvailablePlayers.length === 0 ? (
-                  <li className="rounded-lg border border-dashed border-[var(--border)] py-6 text-center text-sm text-[var(--text-muted)]">
+                  <li className="rounded-lg border border-dashed border-[var(--neo-border)] py-6 text-center text-sm text-[var(--neo-text-muted)]">
                     All players are in the lineup or no players yet.{" "}
                     <Link href="/analyst/players" className="text-[var(--accent)] hover:underline">
                       Add players
@@ -638,11 +649,9 @@ export default function LineupConstructionClient({
           </PlayerPoolDroppable>
 
           {/* Right: Lineup slots */}
-          <div className="card-tech rounded-lg border p-4">
+          <div className="neo-card flex min-h-[20rem] flex-col p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                Batting order
-              </h2>
+              <h2 className="section-label">Batting order</h2>
               <div className="flex flex-wrap items-center gap-2">
                 <input
                   type="text"
@@ -656,12 +665,12 @@ export default function LineupConstructionClient({
                   type="button"
                   onClick={handleSaveTemplate}
                   disabled={saveStatus === "saving" || !templateName.trim() || !hasAnyPlayerInLineup}
-                  className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-[var(--bg-base)] transition hover:opacity-90 disabled:opacity-50"
+                  className="rounded-lg bg-[var(--neo-accent)] px-3 py-1.5 text-sm font-medium text-[var(--bg-base)] transition hover:opacity-90 disabled:opacity-50"
                 >
                   {saveStatus === "saving" ? "Saving…" : "Save lineup"}
                 </button>
                 {saveStatus === "ok" && (
-                  <span className="text-sm text-[var(--success)]">Saved.</span>
+                  <span className="text-sm text-[var(--neo-success)]">Saved.</span>
                 )}
                 {saveStatus === "err" && (
                   <span className="text-sm text-[var(--danger)]" title={saveErrorMessage ?? undefined}>
@@ -672,7 +681,7 @@ export default function LineupConstructionClient({
                   type="button"
                   onClick={clearLineup}
                   disabled={!hasAnyPlayerInLineup}
-                  className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-1.5 text-sm font-medium text-[var(--text-muted)] transition hover:bg-[var(--bg-elevated)] hover:text-[var(--text)] disabled:opacity-50 disabled:pointer-events-none"
+                  className="rounded-lg border border-[var(--neo-border)] bg-transparent px-3 py-1.5 text-sm font-medium text-[var(--neo-text-muted)] transition hover:bg-[#151b21] hover:text-[var(--neo-text)] disabled:opacity-50 disabled:pointer-events-none"
                 >
                   Clear lineup
                 </button>
@@ -694,20 +703,20 @@ export default function LineupConstructionClient({
                 </p>
               ) : null;
             })()}
-            <div className="mt-3 overflow-hidden rounded-lg border border-[var(--border)]">
+            <div className="mt-3 overflow-hidden rounded-lg border border-[var(--neo-border)] bg-[#0f141a]">
               <table className="w-full border-collapse text-left">
                 <thead>
-                  <tr className="bg-[var(--bg-elevated)]">
-                    <th className="border-b border-r border-[var(--border)] px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                  <tr className="bg-[#151b21]">
+                    <th className="font-display border-b border-r border-[var(--neo-border)] px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
                       #
                     </th>
-                    <th className="border-b border-r border-[var(--border)] px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                    <th className="font-display border-b border-r border-[var(--neo-border)] px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
                       POS
                     </th>
-                    <th className="border-b border-r border-[var(--border)] px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                    <th className="font-display border-b border-r border-[var(--neo-border)] px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
                       Player
                     </th>
-                    <th className="border-b border-[var(--border)] px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                    <th className="font-display border-b border-[var(--neo-border)] px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
                       Bats
                     </th>
                   </tr>
@@ -737,14 +746,12 @@ export default function LineupConstructionClient({
           </div>
         </div>
 
-        {/* Single stats container below both columns */}
-        <section className="mt-6 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-            Player stats
-          </h2>
-          <div className="mt-3 grid gap-6 lg:grid-cols-2">
-            <div>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--text-faint)]">
+      {/* Single stats container below both columns */}
+      <section className="mt-6 neo-card p-4">
+        <div className="section-label">Player stats</div>
+          <div className="mt-3 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="min-w-0">
+              <h3 className="font-display mb-2 text-xs font-semibold uppercase tracking-wider text-white">
                 Lineup
               </h3>
               <PlayerStatsTable
@@ -754,8 +761,8 @@ export default function LineupConstructionClient({
                 showSpot
               />
             </div>
-            <div>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--text-faint)]">
+            <div className="min-w-0">
+              <h3 className="font-display mb-2 text-xs font-semibold uppercase tracking-wider text-white">
                 Pool
               </h3>
               <PlayerStatsTable
@@ -769,7 +776,7 @@ export default function LineupConstructionClient({
 
         <DragOverlay dropAnimation={null}>
           {activePlayer ? (
-            <div className="cursor-grabbing rounded-lg border border-[var(--border)] bg-[var(--bg-card)] shadow-lg">
+            <div className="cursor-grabbing rounded-lg border border-[var(--neo-border)] bg-[var(--neo-bg-card)] shadow-lg">
               <PlayerCard player={activePlayer} />
             </div>
           ) : null}

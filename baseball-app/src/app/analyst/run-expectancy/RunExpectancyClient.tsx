@@ -77,7 +77,7 @@ export function RunExpectancyClient({
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight text-[var(--text)]">
+        <h1 className="font-display text-xl font-semibold tracking-tight text-[var(--text)]">
           Run expectancy
         </h1>
         <p className="mt-1 text-sm text-[var(--text-muted)]">
@@ -94,7 +94,7 @@ export function RunExpectancyClient({
 
       {/* RE Table */}
       <div className="card-tech rounded-lg border p-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+        <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-white">
           Expected runs remaining in inning
         </h2>
         <p className="mt-0.5 text-xs text-[var(--text-muted)]">
@@ -154,7 +154,7 @@ export function RunExpectancyClient({
 
       {/* Run value of an event */}
       <div className="card-tech rounded-lg border p-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+        <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-white">
           Run value of an event
         </h2>
         <p className="mt-0.5 text-xs text-[var(--text-muted)]">
@@ -225,7 +225,7 @@ export function RunExpectancyClient({
 
       {/* Run impact of a decision */}
       <div className="card-tech rounded-lg border p-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+        <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-white">
           Run impact of a decision
         </h2>
         <p className="mt-0.5 text-xs text-[var(--text-muted)]">
@@ -264,7 +264,7 @@ export function RunExpectancyClient({
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="rounded border border-[var(--border)] p-3">
-              <span className="text-xs font-semibold uppercase text-[var(--text-muted)]">
+              <span className="font-display text-xs font-semibold uppercase text-[var(--text-muted)]">
                 Option A
               </span>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -292,7 +292,7 @@ export function RunExpectancyClient({
               </div>
             </div>
             <div className="rounded border border-[var(--border)] p-3">
-              <span className="text-xs font-semibold uppercase text-[var(--text-muted)]">
+              <span className="font-display text-xs font-semibold uppercase text-[var(--text-muted)]">
                 Option B
               </span>
               <div className="mt-2 flex flex-wrap gap-2">

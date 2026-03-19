@@ -149,6 +149,30 @@ export async function getAllPlateAppearancesForRunExpectancy(): Promise<
   return rows.filter((r) => !isDemoId(r.game_id));
 }
 
+/** Base-hit PAs with hit_direction for team spray chart. Excludes demo games.
+ *  Only returns rows with hit_direction set.
+ *  Includes batter_id and pitcher_hand for RHB/LHB split (switch hitters inferred: vs LHP → R, vs RHP → L).
+ */
+export async function getTeamPlateAppearancesForSpray(): Promise<
+  { game_id: string; batter_id: string; hit_direction: string; result: string; pitcher_hand: "L" | "R" | null }[]
+> {
+  if (!supabase) return [];
+  const BASE_HIT_RESULTS = new Set(["single", "double", "triple", "hr"]);
+  const { data } = await supabase
+    .from("plate_appearances")
+    .select("game_id, batter_id, hit_direction, result, pitcher_hand");
+  const rows = (data ?? []) as { game_id: string; batter_id: string; hit_direction: string | null; result: string; pitcher_hand: string | null }[];
+  return rows.filter(
+    (r) =>
+      !isDemoId(r.game_id) &&
+      BASE_HIT_RESULTS.has(r.result) &&
+      r.hit_direction != null &&
+      r.hit_direction !== "" &&
+      r.batter_id &&
+      !isDemoId(r.batter_id)
+  ).map((r) => ({ ...r, hit_direction: r.hit_direction!, pitcher_hand: r.pitcher_hand === "L" || r.pitcher_hand === "R" ? r.pitcher_hand : null })) as { game_id: string; batter_id: string; hit_direction: string; result: string; pitcher_hand: "L" | "R" | null }[];
+}
+
 export async function getPlateAppearancesByBatter(batterId: string): Promise<PlateAppearance[]> {
   if (!supabase || isDemoId(batterId)) return [];
   const { data } = await supabase

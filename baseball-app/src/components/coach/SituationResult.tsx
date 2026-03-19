@@ -17,7 +17,7 @@ export function SituationResult({ tone, sentence }: SituationResultProps) {
   const { color } = TONE_STYLE[tone];
   return (
     <div className="card-tech p-5">
-      <p className="text-xs font-semibold uppercase tracking-wider" style={{ color }}>
+      <p className="font-display text-xs font-semibold uppercase tracking-wider" style={{ color }}>
         {tone}
       </p>
       <p className="mt-2 text-[var(--text)] leading-relaxed">{sentence}</p>

@@ -1,41 +1,61 @@
 @import "tailwindcss";
 
-/* Softer dark theme with violet accent */
+/* High-tech / tactical palette — neo colors applied app-wide */
 :root {
-  --bg-base: #121214;
-  --bg-elevated: #1a1a1e;
-  --bg-card: #222226;
-  --bg-input: #18181c;
-  --border: #2e2e34;
-  --border-focus: #45454c;
-  --accent: #8b5cf6;
-  --accent-dim: rgba(139, 92, 246, 0.15);
-  --accent-coach: #a78bfa;
-  --accent-coach-dim: rgba(167, 139, 250, 0.15);
-  --text: #fafafa;
-  --text-muted: #a1a1aa;
-  --text-faint: #71717a;
-  --success: #22c55e;
-  --success-dim: rgba(34, 197, 94, 0.15);
-  --warning: #eab308;
-  --warning-dim: rgba(234, 179, 8, 0.15);
-  --danger: #ef4444;
-  --danger-dim: rgba(239, 68, 68, 0.15);
+  /* Neo palette (source of truth) */
+  --neo-bg-base: #0C0F14;
+  --neo-bg-elevated: #151b22;
+  --neo-bg-card: #111619;
+  --neo-bg-input: #0d1117;
+  --neo-accent: #66E0FF;
+  --neo-accent-dim: rgba(102, 224, 255, 0.12);
+  --neo-secondary: #FF4C6D;
+  --neo-secondary-dim: rgba(255, 76, 109, 0.12);
+  --neo-success: #8AFFC1;
+  --neo-warning: #FFD86F;
+  --neo-text: #E6EDF3;
+  --neo-text-muted: #7D8590;
+  --neo-text-faint: #6e7681;
+  --neo-border: rgba(102, 224, 255, 0.18);
+  --neo-border-focus: rgba(102, 224, 255, 0.4);
+
+  /* App-wide vars mapped to neo (all pages use this palette) */
+  --bg-base: var(--neo-bg-base);
+  --bg-elevated: var(--neo-bg-elevated);
+  --bg-card: var(--neo-bg-card);
+  --bg-input: var(--neo-bg-input);
+  --border: var(--neo-border);
+  --border-focus: var(--neo-border-focus);
+  --accent: var(--neo-accent);
+  --accent-dim: var(--neo-accent-dim);
+  --accent-coach: var(--neo-accent);
+  --accent-coach-dim: var(--neo-accent-dim);
+  --text: var(--neo-text);
+  --text-muted: var(--neo-text-muted);
+  --text-faint: var(--neo-text-faint);
+  --success: var(--neo-success);
+  --success-dim: rgba(138, 255, 193, 0.15);
+  --warning: var(--neo-warning);
+  --warning-dim: rgba(255, 216, 111, 0.15);
+  --danger: var(--neo-secondary);
+  --danger-dim: var(--neo-secondary-dim);
   /* Decision-first coach UI */
-  --decision-green: #22c55e;
-  --decision-green-dim: rgba(34, 197, 94, 0.2);
-  --decision-hot: #dc2626;
-  --decision-hot-dim: rgba(220, 38, 38, 0.2);
-  --decision-yellow: #eab308;
-  --decision-yellow-dim: rgba(234, 179, 8, 0.2);
-  --decision-red: #ef4444;
-  --decision-red-dim: rgba(239, 68, 68, 0.2);
-  --decision-gray: #71717a;
-  --decision-gray-dim: rgba(113, 113, 122, 0.2);
+  --decision-green: var(--neo-success);
+  --decision-green-dim: rgba(138, 255, 193, 0.2);
+  --decision-hot: var(--neo-secondary);
+  --decision-hot-dim: var(--neo-secondary-dim);
+  --decision-yellow: var(--neo-warning);
+  --decision-yellow-dim: rgba(255, 216, 111, 0.2);
+  --decision-red: var(--neo-secondary);
+  --decision-red-dim: var(--neo-secondary-dim);
+  --decision-gray: var(--neo-text-muted);
+  --decision-gray-dim: rgba(125, 133, 144, 0.2);
 
   /* Type scale — IBM Plex Sans (loaded via next/font, variable set on html) */
   --font-sans: var(--font-ibm-plex-sans), "IBM Plex Sans", system-ui, sans-serif;
   --font-heading: var(--font-oswald), "Oswald", system-ui, sans-serif;
+  --font-display: var(--font-orbitron), "Orbitron", system-ui, sans-serif;
+  --font-mono: var(--font-ibm-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
   --text-xs: 0.75rem;
   --text-xs--line-height: 1rem;
   --text-sm: 0.875rem;
@@ -50,6 +70,17 @@
   --text-2xl--line-height: 2rem;
   --text-3xl: 1.875rem;
   --text-3xl--line-height: 2.25rem;
+}
+
+/* Buttons/elements with solid cyan (accent) background: black text for contrast */
+[class*="bg-[var(--accent)]"]:not([class*="bg-[var(--accent)]/"]) {
+  color: #000 !important;
+}
+[class*="bg-[var(--neo-accent)]"]:not([class*="bg-[var(--neo-accent)]/"]) {
+  color: #000 !important;
+}
+[class*="bg-[var(--accent-coach)]"] {
+  color: #000 !important;
 }
 
 @theme inline {
@@ -86,6 +117,222 @@ body {
   line-height: var(--text-base--line-height);
   -webkit-font-smoothing: antialiased;
   letter-spacing: 0.01em;
+}
+
+/* App shell: grid + scanline texture (use on coach/analyst main wrapper) */
+.app-shell {
+  position: relative;
+  min-height: 100%;
+  background: var(--neo-bg-base);
+}
+.app-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    linear-gradient(rgba(102, 224, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(102, 224, 255, 0.03) 1px, transparent 1px),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0,
+      transparent 2px,
+      rgba(0, 0, 0, 0.12) 2px,
+      rgba(0, 0, 0, 0.12) 4px
+    );
+  background-size: 32px 32px, 32px 32px, 100% 4px;
+  opacity: 0.6;
+}
+.app-shell > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Neo card: glowing border, rounded-xl */
+.neo-card {
+  border-radius: 0.75rem;
+  background: var(--neo-bg-card);
+  border: 1px solid var(--neo-border);
+  box-shadow: 0 0 24px -8px rgba(102, 224, 255, 0.08);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.neo-card:hover {
+  border-color: rgba(102, 224, 255, 0.35);
+  box-shadow: 0 0 0 1px rgba(102, 224, 255, 0.2), 0 0 28px -6px rgba(102, 224, 255, 0.12);
+}
+.section-label {
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #fff;
+}
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* Home page: retro–futuristic / high-tech game feel */
+.home-page {
+  position: relative;
+  min-height: 100vh;
+  background: var(--bg-base);
+}
+.home-page::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(102, 224, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(102, 224, 255, 0.03) 1px, transparent 1px);
+  background-size: 24px 24px;
+  pointer-events: none;
+  z-index: 0;
+}
+.home-page::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+.home-page > * {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes home-glow-pulse {
+  0%, 100% { opacity: 0.9; filter: brightness(1); }
+  50% { opacity: 1; filter: brightness(1.12); }
+}
+.home-icon-pulse {
+  animation: home-glow-pulse 4s ease-in-out infinite;
+}
+.home-title-glow {
+  font-family: var(--font-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-shadow:
+    0 0 20px rgba(102, 224, 255, 0.5),
+    0 0 40px rgba(102, 224, 255, 0.25),
+    0 0 60px rgba(102, 224, 255, 0.1);
+}
+.home-card-hud {
+  border-left-width: 3px;
+  border-left-style: solid;
+}
+.home-prompt {
+  animation: home-prompt-blink 1.5s ease-in-out infinite;
+}
+
+/* Terminal prompt — CLI style with blinking cursor */
+.home-terminal {
+  font-family: var(--font-mono);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  font-size: 0.875rem;
+}
+.home-terminal-prompt {
+  color: var(--accent);
+}
+.home-terminal-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+}
+.home-terminal-line a {
+  color: var(--text);
+  text-decoration: none;
+  border-radius: 2px;
+  padding: 0.15rem 0.25rem;
+  margin: -0.15rem -0.25rem;
+  transition: background 0.15s, color 0.15s;
+}
+.home-terminal-line a:hover {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+.home-terminal-line a[href="/coach"]:hover {
+  background: var(--accent-coach-dim);
+  color: var(--accent-coach);
+}
+.home-terminal-cursor {
+  display: inline-block;
+  width: 0.6em;
+  height: 1em;
+  background: var(--accent);
+  animation: home-terminal-blink 1s step-end infinite;
+  vertical-align: text-bottom;
+}
+@keyframes home-terminal-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* Keycard + scoreboard — card lift, big numeral, ACCESS GRANTED on hover */
+.home-keycard {
+  border-radius: 12px;
+  border: 2px solid var(--border);
+  background: var(--bg-card);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.home-keycard:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+.home-keycard-analyst:hover {
+  border-color: var(--accent);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4), 0 0 24px -4px var(--accent);
+}
+.home-keycard-coach:hover {
+  border-color: var(--accent);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4), 0 0 24px -4px var(--accent);
+}
+.home-scoreboard-num {
+  font-family: var(--font-display);
+  font-size: 3rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  transition: color 0.2s ease, text-shadow 0.2s ease;
+}
+.home-keycard-analyst:hover .home-scoreboard-num,
+.home-keycard-coach:hover .home-scoreboard-num {
+  color: var(--accent);
+  text-shadow: 0 0 20px var(--accent);
+}
+.home-keycard-access {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.home-keycard:hover .home-keycard-access {
+  opacity: 1;
+}
+
+/* Full-page mode panes — app theme, subtle hover tint */
+.home-mode-pane-analyst:hover,
+.home-mode-pane-coach:hover {
+  background: linear-gradient(180deg, rgba(102, 224, 255, 0.14) 0%, var(--bg-base) 40%) !important;
+}
+
+@keyframes home-prompt-blink {
+  0%, 45%, 55%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 /* Tech card — subtle border, glow on hover */
@@ -228,6 +475,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   margin: 0;
 }
 .input-no-spinner {
+  appearance: textfield;
   -moz-appearance: textfield;
 }
 

@@ -1,65 +1,65 @@
-import { getGames, getGameLineup, getPlayers, getSavedLineups, getSavedLineupWithSlots } from "@/lib/db/queries";
+import {
+  getGames,
+  getGameLineup,
+  getPlayers,
+  getSavedLineups,
+  getBattingStatsWithSplitsForPlayers,
+} from "@/lib/db/queries";
 import { CoachLineupClient } from "./CoachLineupClient";
 import type { CoachLineupSlot } from "./CoachLineupClient";
 
 export const dynamic = "force-dynamic";
 
+function buildLineupFromSlots(
+  slots: { slot: number; player_id: string; position: string | null }[],
+  players: Awaited<ReturnType<typeof getPlayers>>
+): CoachLineupSlot[] {
+  const sorted = [...slots].sort((a, b) => a.slot - b.slot);
+  return sorted.map((s) => {
+    const p = players.find((p) => p.id === s.player_id);
+    return {
+      order: s.slot,
+      playerId: s.player_id,
+      playerName: p?.name ?? "—",
+      position: s.position ?? p?.positions?.[0] ?? "—",
+      bats: p?.bats ?? null,
+    };
+  });
+}
+
 /**
- * Read-only lineup for coach. Data from most recent game, or a saved template, or first 9 players.
+ * Coach lineup: view/edit gameday or future game lineups. Passes games, players, stats, templates, and initial lineup.
  */
 export default async function CoachLineupPage() {
-  const players = await getPlayers();
-  const games = await getGames();
-  const savedLineups = await getSavedLineups();
+  const [players, games, savedLineups] = await Promise.all([
+    getPlayers(),
+    getGames(),
+    getSavedLineups(),
+  ]);
+  const playerIds = players.map((p) => p.id);
+  const battingStatsWithSplits = await getBattingStatsWithSplitsForPlayers(playerIds);
 
-  let lineup: CoachLineupSlot[] = [];
-  let templateName: string | null = null;
+  let initialLineup: CoachLineupSlot[] = [];
+  const initialGame = games[0] ?? null;
 
-  const game = games[0] ?? null;
-  if (game) {
-    const slots = await getGameLineup(game.id);
+  if (initialGame) {
+    const slots = await getGameLineup(initialGame.id);
     if (slots.length > 0) {
-      lineup = slots.sort((a, b) => a.slot - b.slot).map((s) => {
-        const p = players.find((p) => p.id === s.player_id);
-        return {
-          order: s.slot,
-          playerId: s.player_id,
-          playerName: p?.name ?? "—",
-          position: s.position ?? p?.positions?.[0] ?? "—",
-          bats: p?.bats ?? null,
-        };
-      });
+      initialLineup = buildLineupFromSlots(
+        slots.map((s) => ({ slot: s.slot, player_id: s.player_id, position: s.position ?? null })),
+        players
+      );
     }
   }
 
-  if (lineup.length === 0 && savedLineups.length > 0) {
-    const first = await getSavedLineupWithSlots(savedLineups[0].id);
-    if (first?.slots?.length) {
-      templateName = first.name;
-      const sorted = [...first.slots].sort((a, b) => a.slot - b.slot);
-      lineup = sorted.map((s) => {
-        const p = players.find((p) => p.id === s.player_id);
-        return {
-          order: s.slot,
-          playerId: s.player_id,
-          playerName: p?.name ?? "—",
-          position: s.position ?? p?.positions?.[0] ?? "—",
-          bats: p?.bats ?? null,
-        };
-      });
-    }
-  }
-
-  if (lineup.length === 0 && players.length > 0) {
-    const nine = players.slice(0, 9);
-    lineup = nine.map((p, i) => ({
-      order: i + 1,
-      playerId: p.id,
-      playerName: p.name,
-      position: p.positions?.[0] ?? "—",
-      bats: p.bats ?? null,
-    }));
-  }
-
-  return <CoachLineupClient lineup={lineup} templateName={templateName} />;
+  return (
+    <CoachLineupClient
+      games={games}
+      players={players}
+      initialBattingStatsWithSplits={battingStatsWithSplits}
+      savedLineups={savedLineups}
+      initialGameId={initialGame?.id ?? null}
+      initialLineup={initialLineup}
+    />
+  );
 }

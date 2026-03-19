@@ -26,17 +26,23 @@ export function PlayersPageClient({ initialPlayers, canEdit }: PlayersPageClient
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [supabaseStatus, setSupabaseStatus] = useState<SupabaseStatus>("loading");
 
-  useEffect(() => {
+  const checkSupabaseStatus = () => {
+    setSupabaseStatus("loading");
     fetch("/api/supabase-status")
       .then((res) => res.json())
       .then((body) => {
         if (body.connected) setSupabaseStatus("connected");
         else setSupabaseStatus({ error: body.error ?? "Connection failed" });
       })
-      .catch((e) => {
-        const msg = e?.message?.toLowerCase?.().includes("fetch") ? "Network error — check connection and if Supabase project is paused (Dashboard → Restore project)." : "Could not reach API";
-        setSupabaseStatus({ error: msg });
+      .catch(() => {
+        setSupabaseStatus({
+          error: "Database may be starting up (e.g. after resuming). Wait a minute and try again.",
+        });
       });
+  };
+
+  useEffect(() => {
+    checkSupabaseStatus();
   }, []);
 
   const refresh = () => router.refresh();
@@ -84,7 +90,7 @@ export function PlayersPageClient({ initialPlayers, canEdit }: PlayersPageClient
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-[var(--text)]">Players</h1>
+          <h1 className="font-display text-xl font-semibold tracking-tight text-[var(--text)]">Players</h1>
           <p className="mt-1 text-sm text-[var(--text-muted)]">
             Roster and internal ratings.
           </p>
@@ -93,19 +99,30 @@ export function PlayersPageClient({ initialPlayers, canEdit }: PlayersPageClient
           <button
             type="button"
             onClick={() => { setShowAddForm(true); setEditingPlayer(null); }}
-            className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--bg-base)] transition hover:opacity-90"
+            className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--bg-base)] transition hover:opacity-90 font-display"
           >
             Add player
           </button>
         )}
       </div>
 
-      <p className="text-xs text-[var(--text-faint)]">
-        Supabase:{" "}
-        {supabaseStatus === "loading" && "Checking…"}
-        {supabaseStatus === "connected" && "Connected"}
-        {typeof supabaseStatus === "object" && supabaseStatus.error}
-      </p>
+      <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--text-faint)]">
+        <span>
+          Supabase:{" "}
+          {supabaseStatus === "loading" && "Checking…"}
+          {supabaseStatus === "connected" && "Connected"}
+          {typeof supabaseStatus === "object" && supabaseStatus.error}
+        </span>
+        {typeof supabaseStatus === "object" && (
+          <button
+            type="button"
+            onClick={checkSupabaseStatus}
+            className="rounded border border-[var(--border)] px-2 py-1 text-[var(--text-muted)] transition hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]"
+          >
+            Retry
+          </button>
+        )}
+      </div>
 
       {!canEdit && (
         <div className="rounded-lg border border-[var(--border)] p-4 text-[var(--text-muted)]" style={{ background: "var(--warning-dim)" }}>
@@ -159,24 +176,29 @@ export function PlayersPageClient({ initialPlayers, canEdit }: PlayersPageClient
                     {p.positions.join(", ")}
                   </span>
                 )}
-                {(p.bats || p.throws) && (
-                  <span className="text-sm font-semibold text-[var(--text)]">
-                    B/T: {[p.bats ?? "—", p.throws ?? "—"].join("/")}
-                  </span>
-                )}
                 {isDemoId(p.id) && (
                   <span className="rounded px-2 py-0.5 text-xs" style={{ background: "var(--warning-dim)", color: "var(--warning)" }}>
                     Demo
                   </span>
                 )}
               </div>
-              <div className="flex gap-3">
+              <div className="flex gap-2">
                 {canEdit && !isDemoId(p.id) && (
-                  <button type="button" onClick={() => { setShowAddForm(false); setEditingPlayer(p); }} className="text-sm font-medium text-[var(--accent)] hover:underline">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddForm(false);
+                      setEditingPlayer(p);
+                    }}
+                    className="rounded-full border border-[var(--accent)] px-3 py-1 text-sm font-medium text-[var(--accent)] transition hover:bg-[var(--accent-dim)] font-display"
+                  >
                     Edit
                   </button>
                 )}
-                <Link href={`/analyst/players/${p.id}`} className="text-sm font-medium text-[var(--accent)] hover:underline">
+                <Link
+                  href={`/analyst/players/${p.id}`}
+                  className="rounded-full border border-[var(--accent)] px-3 py-1 text-sm font-medium text-[var(--accent)] transition hover:bg-[var(--accent-dim)] font-display"
+                >
                   Profile
                 </Link>
               </div>
@@ -253,7 +275,7 @@ function PlayerForm({
 
   return (
     <form onSubmit={handleSubmit} className="card-tech p-5">
-      <h3 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">{isEditing ? "Edit player" : "Add player"}</h3>
+      <h3 className="font-display text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">{isEditing ? "Edit player" : "Add player"}</h3>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <label>
           <span className="text-xs text-[var(--text-muted)]">Name</span>

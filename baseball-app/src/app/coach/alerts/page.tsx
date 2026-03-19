@@ -15,7 +15,7 @@ export default async function CoachAlertsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold tracking-tight text-[var(--text)]">Alerts</h1>
+      <h1 className="font-display text-xl font-semibold tracking-tight text-[var(--text)]">Alerts</h1>
       <p className="text-sm text-[var(--text-muted)]">Defense and late-game subs — short lines only.</p>
       {alerts.length === 0 ? (
         <div className="card-tech rounded-lg border-dashed p-8 text-center">

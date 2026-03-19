@@ -1,4 +1,4 @@
-import { getPlayers, getPlayerRating, getPlateAppearancesByBatter } from "@/lib/db/queries";
+import { getPlayers, getPlayerRating, getPlateAppearancesByBatter, getBattingStatsWithSplitsForPlayers } from "@/lib/db/queries";
 import { ratingsFromEvents } from "@/lib/compute";
 import { CoachPlayerDetailClient } from "./CoachPlayerDetailClient";
 import { notFound } from "next/navigation";
@@ -11,10 +11,11 @@ export default async function CoachPlayerDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [players, storedRating, pas] = await Promise.all([
+  const [players, storedRating, pas, statsWithSplits] = await Promise.all([
     getPlayers(),
     getPlayerRating(id),
     getPlateAppearancesByBatter(id),
+    getBattingStatsWithSplitsForPlayers([id]),
   ]);
   const player = players.find((p) => p.id === id);
   if (!player) notFound();
@@ -29,5 +30,7 @@ export default async function CoachPlayerDetailPage({
       }
     : computed;
 
-  return <CoachPlayerDetailClient player={player} ratings={ratings} />;
+  const battingSplits = statsWithSplits[id] ?? null;
+
+  return <CoachPlayerDetailClient player={player} ratings={ratings} battingSplits={battingSplits} />;
 }

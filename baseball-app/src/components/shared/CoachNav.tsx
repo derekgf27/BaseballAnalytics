@@ -1,7 +1,10 @@
 "use client";
 
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+
+const STORAGE_KEY = "coach-sidebar-collapsed";
 
 const LINKS = [
   { href: "/coach", label: "Today", icon: "📋", exact: true },
@@ -14,15 +17,55 @@ const LINKS = [
 
 export function CoachNav() {
   const pathname = usePathname();
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored !== null) setCollapsed(stored === "true");
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const leaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleMouseEnter = () => {
+    if (leaveTimeoutRef.current) {
+      clearTimeout(leaveTimeoutRef.current);
+      leaveTimeoutRef.current = null;
+    }
+    if (collapsed) setCollapsed(false);
+  };
+
+  const handleMouseLeave = () => {
+    if (collapsed) return;
+    leaveTimeoutRef.current = setTimeout(() => {
+      leaveTimeoutRef.current = null;
+      setCollapsed(true);
+      try {
+        localStorage.setItem(STORAGE_KEY, "true");
+      } catch {
+        // ignore
+      }
+    }, 200);
+  };
+
   return (
-    <aside className="sidebar" aria-label="Coach navigation">
-      <div className="p-4 border-b border-[var(--border)]">
+    <aside
+      className="sidebar"
+      aria-label="Coach navigation"
+      data-collapsed={collapsed ? "true" : undefined}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      <div className="border-b border-[var(--border)] p-2">
         <Link
           href="/coach"
-          className="flex items-center gap-2 text-sm font-semibold tracking-tight text-[var(--text)]"
+          className="font-display flex items-center gap-2 py-2 pl-2 text-sm font-semibold tracking-tight text-[var(--text)]"
         >
-          <span className="sidebar-icon opacity-90">👟</span>
-          <span className="sidebar-label text-[var(--accent-coach)]">Coach</span>
+          <span className="sidebar-icon shrink-0 opacity-90">👟</span>
+          <span className="sidebar-label truncate text-[var(--accent-coach)]">Coach</span>
         </Link>
       </div>
       <nav className="flex flex-1 flex-col gap-0.5 py-3">

@@ -435,7 +435,7 @@ export default function RecordPageClient({
   return (
     <div className="space-y-4 pb-8">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight text-[var(--text)]">
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-[var(--text)]">
           Record PAs
         </h1>
         <p className="mt-1 text-sm text-[var(--text-muted)]">
@@ -445,7 +445,7 @@ export default function RecordPageClient({
 
       <div className="card-tech rounded-lg border p-2.5">
         <label className="block">
-          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          <span className="font-display text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
             Game
           </span>
           <select
@@ -526,7 +526,7 @@ export default function RecordPageClient({
             <div className="grid gap-2 lg:grid-cols-2">
             {/* Game state */}
             <section className="rounded border border-[var(--border)] bg-[var(--bg-elevated)] p-1.5">
-              <h4 className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Game state</h4>
+              <h4 className="font-display mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Game state</h4>
             <div className="grid grid-cols-[auto_auto_1fr] gap-x-2 gap-y-1 sm:grid-cols-[auto_auto_1fr]">
               <label className="w-fit">
                 <span className="font-heading text-xs font-semibold text-[var(--text)]">Inning</span>
@@ -583,7 +583,7 @@ export default function RecordPageClient({
 
             {/* At bat */}
             <section className="rounded border border-[var(--border)] bg-[var(--bg-elevated)] p-1.5">
-              <h4 className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">At bat</h4>
+              <h4 className="font-display mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">At bat</h4>
             <div className="space-y-1">
             <div className="grid grid-cols-2 gap-1.5">
               <div>
@@ -736,7 +736,7 @@ export default function RecordPageClient({
 
             {/* Outcome */}
             <section className="rounded border border-[var(--border)] bg-[var(--bg-elevated)] p-1.5">
-              <h4 className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Outcome</h4>
+              <h4 className="font-display mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Outcome</h4>
               <div className="space-y-1">
                 <div>
                   <span className="font-heading text-xs font-semibold text-[var(--text)]">Result</span>
@@ -778,14 +778,15 @@ export default function RecordPageClient({
                     <input
                       type="number"
                       min={0}
+                      max={4}
                       value={rbi}
-                      onChange={(e) => setRbi(Number(e.target.value))}
+                      onChange={(e) => setRbi(Math.min(4, Math.max(0, Number(e.target.value) || 0)))}
                       className="input-tech input-no-spinner w-12 px-1 py-2 text-center text-sm"
                       aria-label="RBI"
                     />
                     <button
                       type="button"
-                      onClick={() => setRbi((n: number) => n + 1)}
+                      onClick={() => setRbi((n: number) => Math.min(4, n + 1))}
                       className="record-pa-stepper-btn flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border-2 border-[var(--accent)]/40 bg-[var(--accent-dim)] text-lg font-medium text-[var(--accent)] transition duration-200 hover:opacity-90 hover:border-[var(--accent)]/70 touch-manipulation"
                       aria-label="Increase RBI"
                     >
@@ -1017,7 +1018,7 @@ export default function RecordPageClient({
               </div>
               <div className="w-[240px] shrink-0">
                 <section className="rounded border border-[var(--border)] bg-[var(--bg-elevated)] p-1.5">
-                  <h4 className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Runners</h4>
+                  <h4 className="font-display mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Runners</h4>
                   <div className="mt-0.5">
                     <BaseStateSelector
                       value={baseState}

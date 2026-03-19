@@ -46,7 +46,6 @@ export function BaseStateSelector({
   const optionsExcludingBatter = currentBatterId
     ? runnerOptions.filter((p) => p.id !== currentBatterId)
     : runnerOptions;
-  const usedIds = new Set((runnerIds as (string | null)[]).filter(Boolean));
   const setBit = (index: number, on: boolean) => {
     const next = [...bits];
     next[index] = on;
@@ -159,19 +158,17 @@ export function BaseStateSelector({
             const runnerId = runnerIds[baseIdx] ?? null;
             if (!hasRunner) return <div key={baseIdx} className="w-24" />;
             return (
-              <div key={baseIdx} className="flex flex-col items-center gap-0.5">
-                <span className="font-medium text-[var(--text-muted)]">{BASE_LABELS[baseIdx]}</span>
+              <div key={baseIdx} className="flex flex-col items-center gap-1">
+                <span className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">{BASE_LABELS[baseIdx]}</span>
                 <select
                   value={runnerId ?? ""}
                   onChange={(e) => onRunnerChange(baseIdx as 0 | 1 | 2, e.target.value || null)}
                   onClick={(e) => e.stopPropagation()}
-                  className="min-w-[6rem] max-w-[8rem] truncate rounded border border-[var(--border)] bg-[var(--bg-base)] px-1.5 py-1 text-[var(--text)]"
+                  className="input-tech min-h-[40px] min-w-[11rem] w-full max-w-[14rem] rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-2.5 py-1.5 text-sm font-semibold text-[var(--text)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
                   aria-label={`Runner on ${BASE_LABELS[baseIdx]}`}
                 >
                   <option value="">Select…</option>
-                  {optionsExcludingBatter
-                    .filter((p) => p.id === runnerId || !usedIds.has(p.id))
-                    .map((p) => (
+                  {optionsExcludingBatter.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name}
                       </option>

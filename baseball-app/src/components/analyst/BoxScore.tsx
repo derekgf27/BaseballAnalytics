@@ -33,21 +33,21 @@ export function BoxScore({ game, pas }: BoxScoreProps) {
       <table className="w-full min-w-[320px] border-collapse text-left text-sm">
         <thead>
           <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
-            <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+            <th className="font-display px-3 py-2 text-xs font-semibold uppercase tracking-wider text-white">
               Team
             </th>
             {INNINGS.map((i) => (
               <th
                 key={i}
-                className="w-9 px-1 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]"
+                className="font-display w-9 px-1 py-2 text-center text-xs font-semibold uppercase tracking-wider text-white"
               >
                 {i}
               </th>
             ))}
-            <th className="w-9 px-1 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+            <th className="font-display w-9 px-1 py-2 text-center text-xs font-semibold uppercase tracking-wider text-white">
               R
             </th>
-            <th className="w-9 px-1 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+            <th className="font-display w-9 px-1 py-2 text-center text-xs font-semibold uppercase tracking-wider text-white">
               H
             </th>
           </tr>

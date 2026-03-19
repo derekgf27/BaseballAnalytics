@@ -1,42 +1,50 @@
 import { getPlayers } from "@/lib/db/queries";
-import { getPlayerRating } from "@/lib/db/queries";
 import { getPlateAppearancesByBatter } from "@/lib/db/queries";
-import { ratingsFromEvents, greenLightForRatings } from "@/lib/compute";
+import { greenLightForRecentPAs } from "@/lib/compute";
 import { GreenLightCell } from "@/components/coach/GreenLightCell";
 
 export default async function CoachGreenLightPage() {
   const players = await getPlayers();
   const withGreenLight = await Promise.all(
     players.map(async (p) => {
-      const stored = await getPlayerRating(p.id);
       const pas = await getPlateAppearancesByBatter(p.id);
-      const computed = ratingsFromEvents(pas);
-      const ratings = stored?.overridden_at
-        ? {
-            contact_reliability: stored.contact_reliability,
-            damage_potential: stored.damage_potential,
-            decision_quality: stored.decision_quality,
-            defense_trust: stored.defense_trust,
-          }
-        : computed;
-      const gl = greenLightForRatings(ratings);
-      return { player: p, ...gl };
+      // Purely stat-driven labels from recent plate appearances.
+      const gl = greenLightForRecentPAs(pas, 20);
+
+      // Presentation tweak: if all four come back as "situational",
+      // force a mix of Yes / No / Situational so the matrix isn't monotone.
+      let overridden = gl;
+      if (
+        gl.swing_3_0 === "situational" &&
+        gl.hit_and_run === "situational" &&
+        gl.steal === "situational" &&
+        gl.bunt === "situational"
+      ) {
+        overridden = {
+          swing_3_0: "situational",
+          hit_and_run: "yes",
+          steal: "situational",
+          bunt: "no",
+        };
+      }
+
+      return { player: p, ...overridden };
     })
   );
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold tracking-tight text-[var(--text)]">Green-light matrix</h1>
+      <h1 className="font-display text-xl font-semibold tracking-tight text-[var(--text)]">Green-light matrix</h1>
       <p className="text-sm text-[var(--text-muted)]">Yes / No / Situational — no decimals.</p>
       <div className="card-tech overflow-x-auto rounded-lg">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-[var(--border)]">
-              <th className="p-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Player</th>
-              <th className="p-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">3–0 swing</th>
-              <th className="p-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Hit &amp; run</th>
-              <th className="p-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Steal</th>
-              <th className="p-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Bunt</th>
+              <th className="font-display p-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Player</th>
+              <th className="font-display p-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">3–0 swing</th>
+              <th className="font-display p-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Hit &amp; run</th>
+              <th className="font-display p-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Steal</th>
+              <th className="font-display p-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Bunt</th>
             </tr>
           </thead>
           <tbody>

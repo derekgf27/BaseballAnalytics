@@ -1,9 +1,13 @@
 "use client";
 
-import Link from "next/link";
-import { Card, CardTitle } from "@/components/ui/Card";
-import { AlertBadge } from "@/components/ui/AlertBadge";
-import { CoachLineupWithTrends } from "./CoachLineupWithTrends";
+import { CoachLineupTable } from "@/components/coach/CoachLineupTable";
+import { GameStatusHeader } from "@/components/coach/GameStatusHeader";
+import { AggressionMeter } from "@/components/coach/AggressionMeter";
+import { RunPotentialIndicator } from "@/components/coach/RunPotentialIndicator";
+import { TacticalAlertsPanel } from "@/components/coach/TacticalAlertsPanel";
+import { QuickActions } from "@/components/coach/QuickActions";
+import { BenchPanel } from "@/components/coach/BenchPanel";
+import { LineupInsightsCard } from "./LineupInsightsCard";
 import type { Confidence } from "@/data/mock";
 import type { PlayerTagType } from "@/data/mock";
 
@@ -45,7 +49,6 @@ export interface TodayLineupSlot {
   tags: PlayerTagType[];
   trend?: Trend;
   platoon?: PlatoonPreference;
-  /** Last 20 PA stats when trend is hot or cold. */
   recentStats?: RecentStats;
 }
 
@@ -69,9 +72,24 @@ interface CoachTodayClientProps {
   matchupSummary: TodayMatchupBullet[];
 }
 
+const DEFAULT_OPS = 0.7;
+
+function getRunPotentialLevel(
+  lineup: TodayLineupSlot[]
+): { level: "high" | "moderate" | "low"; label: string } {
+  if (lineup.length === 0) return { level: "moderate", label: "—" };
+  const opsList = lineup.map((s) =>
+    s.recentStats?.pa ? s.recentStats.ops : DEFAULT_OPS
+  );
+  const avg = opsList.reduce((a, b) => a + b, 0) / opsList.length;
+  if (avg >= 0.78) return { level: "high", label: "High" };
+  if (avg >= 0.65) return { level: "moderate", label: "Moderate" };
+  return { level: "low", label: "Low" };
+}
+
 /**
- * Today page = one screen: game info, lineup, alerts, matchups.
- * All data comes from server (real game + lineup or empty).
+ * Today page = Tactical Mission Control layout.
+ * Same data from server; new UI with neo design system.
  */
 export function CoachTodayClient({
   game,
@@ -79,97 +97,66 @@ export function CoachTodayClient({
   alerts,
   matchupSummary,
 }: CoachTodayClientProps) {
+  const orderedLineup = [...recommendedLineup].sort((a, b) => a.order - b.order);
+  const runPotential = getRunPotentialLevel(recommendedLineup);
+  // Placeholder: no aggression data yet
+  const aggressionValue = 0.5;
+
   return (
-    <div className="space-y-6 pb-8">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight text-[var(--text)]">
-          Today
-        </h1>
-        <p className="mt-1 text-sm text-[var(--text-muted)]">
-          Your dugout view — lineup, alerts, and matchups at a glance.
-        </p>
-      </header>
-
-      {/* Game info card */}
-      <Card>
-        <CardTitle>Game</CardTitle>
-        {game ? (
-          <>
-            <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[var(--text)]">
-              <span className="font-semibold">
-                {game.venueType === "home" ? "vs" : "@"} {game.opponent}
-              </span>
-              <span className="text-sm text-[var(--text-muted)]">
-                {game.venue}
-              </span>
-              {game.startTime && (
-                <span className="text-sm text-[var(--text-muted)]">
-                  {game.startTime}
-                </span>
-              )}
-            </div>
-            {(game.weatherShort || game.date) && (
-              <p className="mt-1 text-sm text-[var(--text-muted)]">
-                {[game.date, game.weatherShort].filter(Boolean).join(" · ")}
-              </p>
+    <div className="app-shell min-h-full">
+      <div className="mx-auto max-w-6xl space-y-6 pb-8">
+        {/* Top bar: game info + inning/score + aggression + run potential */}
+        <section className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
+          <div className="neo-card flex-1 p-4 lg:p-5">
+            {game ? (
+              <GameStatusHeader
+                opponent={game.opponent}
+                venue={game.venue}
+                venueType={game.venueType}
+                date={game.date}
+                startTime={game.startTime}
+                inning={null}
+                score={null}
+              />
+            ) : (
+              <>
+                <div className="section-label">Current game</div>
+                <p className="mt-2 text-sm text-[var(--neo-text-muted)]">
+                  No game selected. Create a game in Analyst → Games to see today’s lineup here.
+                </p>
+              </>
             )}
-          </>
-        ) : (
-          <p className="mt-2 text-sm text-[var(--text-muted)]">
-            No game selected. Create a game in Analyst → Games to see today’s lineup here.
-          </p>
-        )}
-      </Card>
+          </div>
+          <div className="flex flex-col gap-3 lg:w-72">
+            <div className="neo-card p-3.5 lg:p-4">
+              <AggressionMeter value={aggressionValue} />
+            </div>
+            <div className="neo-card p-3.5 lg:p-4">
+              <RunPotentialIndicator
+                level={runPotential.level}
+                label={runPotential.label}
+              />
+            </div>
+          </div>
+        </section>
 
-      <CoachLineupWithTrends game={game} recommendedLineup={recommendedLineup} />
+        {/* Main grid: lineup table (left 2/3) + lineup intelligence (right 1/3) */}
+        <section className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <div className="space-y-4">
+            <div>
+              <div className="section-label mb-3">Lineup</div>
+              <CoachLineupTable lineup={orderedLineup} />
+            </div>
+            <TacticalAlertsPanel alerts={alerts} matchupSummary={matchupSummary} />
+          </div>
 
-      {/* Alerts */}
-      <section>
-        <CardTitle>Alerts</CardTitle>
-        {alerts.length > 0 ? (
-          <ul className="mt-2 space-y-2" role="list">
-            {alerts.map((a) => (
-              <li key={a.id}>
-                <AlertBadge type={a.type} title={a.title} line={a.line} />
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-2 text-sm text-[var(--text-muted)]">
-            No alerts right now.
-          </p>
-        )}
-      </section>
-
-      {/* Matchup summary */}
-      <section>
-        <CardTitle>Matchup summary</CardTitle>
-        {matchupSummary.length > 0 ? (
-          <ul className="mt-2 space-y-2" role="list">
-            {matchupSummary.map((m) => (
-              <li
-                key={m.id}
-                className={`flex gap-2 rounded-lg border px-3 py-2 text-sm ${
-                  m.kind === "advantage"
-                    ? "border-[var(--decision-hot)]/30 bg-[var(--decision-hot-dim)] text-[var(--text)]"
-                    : m.kind === "risk"
-                      ? "border-[var(--decision-red)]/30 bg-[var(--decision-red-dim)] text-[var(--text)]"
-                      : "border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-muted)]"
-                }`}
-              >
-                <span aria-hidden>
-                  {m.kind === "advantage" ? "✓" : m.kind === "risk" ? "!" : "·"}
-                </span>
-                <span>{m.text}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-2 text-sm text-[var(--text-muted)]">
-            Add matchup notes in Analyst or before the game.
-          </p>
-        )}
-      </section>
+          <div className="flex flex-col gap-4">
+            <LineupInsightsCard recommendedLineup={recommendedLineup} variant="neo" />
+            <BenchPanel />
+            <QuickActions />
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

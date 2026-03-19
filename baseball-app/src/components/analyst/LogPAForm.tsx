@@ -77,7 +77,7 @@ export function LogPAForm({
 
   return (
     <form onSubmit={handleSubmit} className="card-tech space-y-6 p-6">
-      <h3 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">Log PA — {batterName}</h3>
+      <h3 className="font-display text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">Log PA — {batterName}</h3>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block">
@@ -190,8 +190,9 @@ export function LogPAForm({
           <input
             type="number"
             min={0}
+            max={4}
             value={rbi}
-            onChange={(e) => setRbi(Number(e.target.value))}
+            onChange={(e) => setRbi(Math.min(4, Math.max(0, Number(e.target.value) || 0)))}
             className="ml-2 w-14 rounded border px-2 py-1"
           />
         </label>

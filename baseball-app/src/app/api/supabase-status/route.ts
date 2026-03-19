@@ -26,7 +26,12 @@ export async function GET() {
     }
     return NextResponse.json({ connected: true });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Connection failed";
+    const raw = err instanceof Error ? err.message : "Connection failed";
+    const isDown =
+      /521|522|523|524|ECONNREFUSED|ETIMEDOUT|fetch failed|network|web server is down/i.test(raw);
+    const message = isDown
+      ? "Database is still starting up (Supabase was just resumed). Wait 1–2 minutes and try again."
+      : raw;
     return NextResponse.json(
       { connected: false, error: message },
       { status: 503 }

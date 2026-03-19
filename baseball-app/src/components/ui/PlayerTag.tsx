@@ -17,7 +17,7 @@ const TAG_STYLES: Record<PlayerTagType, string> = {
 export function PlayerTag({ tag }: { tag: PlayerTagType }) {
   return (
     <span
-      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${TAG_STYLES[tag]}`}
+      className={`font-display inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${TAG_STYLES[tag]}`}
     >
       {tag}
     </span>

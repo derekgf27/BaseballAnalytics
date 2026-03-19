@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Sans, Oswald } from "next/font/google";
+import { IBM_Plex_Mono, IBM_Plex_Sans, Orbitron, Oswald } from "next/font/google";
 import "./globals.css";
 
 const ibmPlexSans = IBM_Plex_Sans({
@@ -9,11 +9,25 @@ const ibmPlexSans = IBM_Plex_Sans({
   variable: "--font-ibm-plex-sans",
 });
 
+const ibmPlexMono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  display: "swap",
+  variable: "--font-ibm-plex-mono",
+});
+
 const oswald = Oswald({
   subsets: ["latin"],
   weight: ["500", "600", "700"],
   display: "swap",
   variable: "--font-oswald",
+});
+
+const orbitron = Orbitron({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  display: "swap",
+  variable: "--font-orbitron",
 });
 
 export const metadata: Metadata = {
@@ -28,7 +42,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${ibmPlexSans.variable} ${oswald.variable}`}>
+    <html lang="en" className={`${ibmPlexSans.variable} ${ibmPlexMono.variable} ${oswald.variable} ${orbitron.variable}`}>
       <body className={`${ibmPlexSans.className} min-h-screen bg-[var(--bg-base)] text-[var(--text)] antialiased`}>
         {children}
       </body>

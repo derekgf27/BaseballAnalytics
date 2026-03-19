@@ -148,7 +148,7 @@ export function StatsPageClient({ initialPlayers, initialBattingStatsWithSplits 
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight text-[var(--text)]">Batting stats</h1>
+        <h1 className="font-display text-xl font-semibold tracking-tight text-[var(--text)]">Batting stats</h1>
         <p className="mt-1 text-sm text-[var(--text-muted)]">
           {splitView === "overall"
             ? "All players, derived from plate appearances. Sort by clicking column headers."
@@ -188,7 +188,7 @@ export function StatsPageClient({ initialPlayers, initialBattingStatsWithSplits 
         <table className="w-full border-collapse text-left text-sm">
           <thead>
             <tr className="bg-[var(--bg-elevated)]">
-              <th className="border-b border-[var(--border)] px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+              <th className="font-display border-b border-[var(--border)] px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                 #
               </th>
               {COLUMNS.map(({ key, label, align }, idx) => (
@@ -208,10 +208,10 @@ export function StatsPageClient({ initialPlayers, initialBattingStatsWithSplits 
                   </th>
                   {idx === 0 && (
                     <>
-                      <th className="border-b border-[var(--border)] px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                      <th className="font-display border-b border-[var(--border)] px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                         POS
                       </th>
-                      <th className="border-b border-[var(--border)] px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                      <th className="font-display border-b border-[var(--border)] px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                         Bats
                       </th>
                     </>
@@ -342,7 +342,7 @@ export function StatsPageClient({ initialPlayers, initialBattingStatsWithSplits 
       )}
 
       <div className="mt-8 rounded-lg border p-4" style={{ borderColor: "var(--danger)" }}>
-        <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ color: "var(--danger)" }}>
+        <h3 className="font-display text-sm font-semibold uppercase tracking-wider" style={{ color: "var(--danger)" }}>
           Clear all stats
         </h3>
         <p className="mt-1 text-sm text-[var(--text-muted)]">
