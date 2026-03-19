@@ -18,6 +18,21 @@ export function BenchPanel({
     { label: "Best late defender", value: lateDefense },
   ];
 
+  const hasAny = pinchHit != null || pinchRun != null || lateDefense != null;
+
+  if (!hasAny) {
+    return (
+      <section className="neo-card px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <span className="section-label mb-0">Bench</span>
+          <p className="text-right text-xs text-[var(--neo-text-muted)]">
+            Pinch-hit / run / late-DP suggestions when roster data is wired.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="neo-card p-4">
       <div className="section-label mb-2">Bench</div>

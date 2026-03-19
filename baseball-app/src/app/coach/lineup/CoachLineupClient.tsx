@@ -122,7 +122,7 @@ function formatHandedness(bats: string | null | undefined, throws: string | null
   return `Bats: ${b} · Throws: ${t}`;
 }
 
-interface CoachLineupClientProps {
+export interface CoachLineupClientProps {
   games: Game[];
   players: Player[];
   initialBattingStatsWithSplits: Record<string, BattingStatsWithSplits>;

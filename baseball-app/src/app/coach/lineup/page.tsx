@@ -5,7 +5,7 @@ import {
   getSavedLineups,
   getBattingStatsWithSplitsForPlayers,
 } from "@/lib/db/queries";
-import { CoachLineupClient } from "./CoachLineupClient";
+import { CoachLineupClientGate } from "./CoachLineupClientGate";
 import type { CoachLineupSlot } from "./CoachLineupClient";
 
 export const dynamic = "force-dynamic";
@@ -53,7 +53,7 @@ export default async function CoachLineupPage() {
   }
 
   return (
-    <CoachLineupClient
+    <CoachLineupClientGate
       games={games}
       players={players}
       initialBattingStatsWithSplits={battingStatsWithSplits}

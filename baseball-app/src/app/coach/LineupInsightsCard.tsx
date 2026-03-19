@@ -86,10 +86,6 @@ export function LineupInsightsCard({ recommendedLineup, variant = "default" }: L
   const weakest = weakestSeg?.label ?? null;
   const weakestActuallyLower = weakestSeg && byAvg[0] && weakestSeg.avg < byAvg[0].avg;
 
-  // Hot / cold counts
-  const hotCount = ordered.filter((s) => s.trend === "hot").length;
-  const coldCount = ordered.filter((s) => s.trend === "cold").length;
-
   // Platoon balance
   const rightBats = ordered.filter((s) => (s.bats ?? "").toUpperCase() === "R").length;
   const leftBats = ordered.filter((s) => (s.bats ?? "").toUpperCase() === "L").length;
@@ -125,24 +121,7 @@ export function LineupInsightsCard({ recommendedLineup, variant = "default" }: L
           </div>
         )}
 
-        {/* 3. Hot / cold summary */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          {hotCount > 0 && (
-            <span className={`text-sm ${textMain}`}>
-              <span aria-hidden>🔥</span> {hotCount} hot hitter{hotCount !== 1 ? "s" : ""} in lineup
-            </span>
-          )}
-          {coldCount > 0 && (
-            <span className={`text-sm ${textMain}`}>
-              <span aria-hidden>❄️</span> {coldCount} cold hitter{coldCount !== 1 ? "s" : ""}
-            </span>
-          )}
-          {hotCount === 0 && coldCount === 0 && (
-            <span className={`text-sm ${textMuted}`}>No strong hot or cold trends in lineup.</span>
-          )}
-        </div>
-
-        {/* 4. Platoon balance */}
+        {/* 3. Platoon balance */}
         <div className="flex items-center gap-2">
           <span className="text-base" aria-hidden>⚖️</span>
           <p className={`text-sm ${textMuted}`}>

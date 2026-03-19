@@ -8,6 +8,8 @@ import { CoachTodayClient } from "./CoachTodayClient";
  * Coach Today: real game + lineup from DB, with trend (hot/cold) and platoon (vs LHP/RHP).
  */
 export const dynamic = "force-dynamic";
+// Demo presentation mode: force a visible hot/cold mix in lineup intelligence.
+const DEMO_FORCE_TRENDS = true;
 
 export default async function CoachPage() {
   const games = await getGames();
@@ -86,6 +88,51 @@ export default async function CoachPage() {
             recentStats,
           };
         });
+
+      if (DEMO_FORCE_TRENDS && recommendedLineup.length > 0) {
+        // Keep it deterministic for demos: first two hot, next two cold, rest neutral.
+        recommendedLineup = recommendedLineup.map((slot, idx) => {
+          if (idx < 2) {
+            return {
+              ...slot,
+              trend: "hot" as const,
+              recentStats: {
+                pa: 20,
+                ab: 17,
+                h: 8,
+                double: 2,
+                triple: 0,
+                hr: 1,
+                rbi: 5,
+                bb: 3,
+                so: 3,
+                avg: 0.471,
+                ops: 1.08,
+              },
+            };
+          }
+          if (idx < 4) {
+            return {
+              ...slot,
+              trend: "cold" as const,
+              recentStats: {
+                pa: 20,
+                ab: 18,
+                h: 3,
+                double: 0,
+                triple: 0,
+                hr: 0,
+                rbi: 1,
+                bb: 2,
+                so: 7,
+                avg: 0.167,
+                ops: 0.49,
+              },
+            };
+          }
+          return slot;
+        });
+      }
     }
   }
 
@@ -93,8 +140,6 @@ export default async function CoachPage() {
     <CoachTodayClient
       game={gameInfo}
       recommendedLineup={recommendedLineup}
-      alerts={[]}
-      matchupSummary={[]}
     />
   );
 }

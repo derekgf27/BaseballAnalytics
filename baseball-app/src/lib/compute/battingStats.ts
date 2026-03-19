@@ -99,3 +99,67 @@ export function battingStatsFromPAs(
     bbPct,
   };
 }
+
+export type LineupAggregateRates = Pick<BattingStats, "avg" | "obp" | "slg" | "ops" | "opsPlus" | "woba">;
+
+/**
+ * True combined rates for a lineup: sum counting stats across batters, then apply the same
+ * formulas as single-player stats (AVG, OBP, SLG, OPS, OPS+, wOBA). Falls back to simple
+ * averages of each rate if PA totals are missing (e.g. legacy rows without counts).
+ */
+export function lineupAggregateFromBattingStats(
+  batters: BattingStats[],
+  leagueOPS = DEFAULT_LEAGUE_OPS
+): LineupAggregateRates | null {
+  if (batters.length === 0) return null;
+
+  const pa = batters.reduce((s, b) => s + (b.pa ?? 0), 0);
+  const ab = batters.reduce((s, b) => s + (b.ab ?? 0), 0);
+
+  if (pa >= 1 && ab >= 0) {
+    const bb = batters.reduce((s, b) => s + (b.bb ?? 0), 0);
+    const ibb = batters.reduce((s, b) => s + (b.ibb ?? 0), 0);
+    const hbp = batters.reduce((s, b) => s + (b.hbp ?? 0), 0);
+    const sf = batters.reduce((s, b) => s + (b.sf ?? 0), 0);
+    const double = batters.reduce((s, b) => s + (b.double ?? 0), 0);
+    const triple = batters.reduce((s, b) => s + (b.triple ?? 0), 0);
+    const hr = batters.reduce((s, b) => s + (b.hr ?? 0), 0);
+    const h =
+      batters.reduce((s, b) => s + (b.h ?? 0), 0) ||
+      double + triple + hr;
+
+    const walks = bb + ibb;
+    const obp = pa > 0 ? (h + walks + hbp) / pa : 0;
+    const single = Math.max(0, h - double - triple - hr);
+    const tb = single + 2 * double + 3 * triple + 4 * hr;
+    const slg = ab >= 1 ? tb / ab : 0;
+    const avg = ab >= 1 ? h / ab : 0;
+    const ops = obp + slg;
+    const opsPlus = leagueOPS > 0 ? Math.round(100 * (ops / leagueOPS)) : 100;
+
+    const wobaDenom = ab + bb + hbp + sf;
+    const woba =
+      wobaDenom >= 1
+        ? (WOBA_WEIGHTS.bb * walks +
+            WOBA_WEIGHTS.hbp * hbp +
+            WOBA_WEIGHTS.single * single +
+            WOBA_WEIGHTS.double * double +
+            WOBA_WEIGHTS.triple * triple +
+            WOBA_WEIGHTS.hr * hr) /
+          wobaDenom
+        : 0;
+
+    return { avg, obp, slg, ops, opsPlus, woba };
+  }
+
+  const n = batters.length;
+  const mean = (key: keyof BattingStats): number =>
+    batters.reduce((s, b) => s + Math.max(0, Number(b[key]) || 0), 0) / n;
+  const avg = mean("avg");
+  const obp = mean("obp");
+  const slg = mean("slg");
+  const ops = mean("ops");
+  const opsPlus = Math.round(mean("opsPlus"));
+  const woba = mean("woba");
+  return { avg, obp, slg, ops, opsPlus, woba };
+}

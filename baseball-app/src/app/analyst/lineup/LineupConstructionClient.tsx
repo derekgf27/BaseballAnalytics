@@ -15,6 +15,7 @@ import {
 } from "@dnd-kit/core";
 import Link from "next/link";
 import type { BattingStats, BattingStatsWithSplits, Player, SavedLineup } from "@/lib/types";
+import { lineupAggregateFromBattingStats } from "@/lib/compute/battingStats";
 
 export type LineupSplitView = "overall" | "vsL" | "vsR";
 import { fetchSavedLineupWithSlots, saveLineupTemplate, deleteSavedLineup } from "./actions";
@@ -63,7 +64,7 @@ function getStatValue(statsMap: Record<string, BattingStats>, playerId: string, 
 function suggestOrder(
   players: Player[],
   statsMap: Record<string, BattingStats>,
-  stat: "obp" | "woba"
+  stat: "obp" | "avg"
 ): { player: Player; position: string }[] {
   const key = stat;
   const withStat = players.map((p) => ({
@@ -80,7 +81,7 @@ function suggestOrder(
   });
 }
 
-interface LineupConstructionClientProps {
+export interface LineupConstructionClientProps {
   initialPlayers: Player[];
   initialBattingStatsWithSplits: Record<string, BattingStatsWithSplits>;
   initialSavedLineups: SavedLineup[];
@@ -363,23 +364,14 @@ export default function LineupConstructionClient({
   });
 
   const lineupPlayers = lineup.map((s) => s.player).filter((p): p is Player => p != null);
-  const lineupQuality =
+  const lineupBattingStatsNine =
     lineupPlayers.length === 9
-      ? {
-          obp:
-            lineupPlayers.reduce(
-              (s, p) => s + Math.max(0, getStatValue(initialBattingStats, p.id, "obp")),
-              0
-            ) / 9,
-          woba:
-            lineupPlayers.reduce(
-              (s, p) => s + Math.max(0, getStatValue(initialBattingStats, p.id, "woba")),
-              0
-            ) / 9,
-        }
-      : null;
+      ? lineupPlayers.map((p) => initialBattingStats[p.id]).filter((s): s is BattingStats => s != null)
+      : [];
+  const lineupQuality =
+    lineupBattingStatsNine.length === 9 ? lineupAggregateFromBattingStats(lineupBattingStatsNine) : null;
 
-  function handleSuggestBy(stat: "obp" | "woba") {
+  function handleSuggestBy(stat: "obp" | "avg") {
     const nine =
       lineupPlayers.length === 9 ? lineupPlayers : [...lineupPlayers, ...availablePlayers].slice(0, 9);
     if (nine.length === 0) return;
@@ -559,42 +551,65 @@ export default function LineupConstructionClient({
         <p className="mt-1 text-xs text-[var(--neo-text-muted)]">
           Use stats to suggest a batting order, or sort the pool by a stat when building manually. Choose a split to optimize vs LHP or vs RHP.
         </p>
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 text-xs text-[var(--neo-text-muted)]">
-            <span>Stats</span>
-            <select
-              value={lineupSplitView}
-              onChange={(e) => setLineupSplitView(e.target.value as LineupSplitView)}
-              className="rounded border border-[var(--neo-border)] bg-[var(--neo-bg-base)] px-2 py-1 text-sm text-[var(--neo-text)] focus:border-[var(--neo-accent)] focus:outline-none"
-              aria-label="Batting split for lineup stats"
+        <div className="mt-3 flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 text-xs text-[var(--neo-text-muted)]">
+              <span>Stats</span>
+              <select
+                value={lineupSplitView}
+                onChange={(e) => setLineupSplitView(e.target.value as LineupSplitView)}
+                className="rounded border border-[var(--neo-border)] bg-[var(--neo-bg-base)] px-2 py-1 text-sm text-[var(--neo-text)] focus:border-[var(--neo-accent)] focus:outline-none"
+                aria-label="Batting split for lineup stats"
+              >
+                <option value="overall">Overall</option>
+                <option value="vsL">vs LHP</option>
+                <option value="vsR">vs RHP</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={() => handleSuggestBy("obp")}
+              disabled={initialPlayers.length === 0}
+              className="rounded-lg border border-[var(--neo-accent)]/50 bg-[var(--neo-accent-dim)] px-3 py-1.5 text-sm font-medium text-[var(--neo-accent)] transition hover:bg-[var(--neo-accent)]/20 disabled:opacity-50 disabled:pointer-events-none"
             >
-              <option value="overall">Overall</option>
-              <option value="vsL">vs LHP</option>
-              <option value="vsR">vs RHP</option>
-            </select>
-          </label>
-          <button
-            type="button"
-            onClick={() => handleSuggestBy("obp")}
-            disabled={initialPlayers.length === 0}
-            className="rounded-lg border border-[var(--neo-accent)]/50 bg-[var(--neo-accent-dim)] px-3 py-1.5 text-sm font-medium text-[var(--neo-accent)] transition hover:bg-[var(--neo-accent)]/20 disabled:opacity-50 disabled:pointer-events-none"
-          >
-            Suggest by OBP
-          </button>
-          <button
-            type="button"
-            onClick={() => handleSuggestBy("woba")}
-            disabled={initialPlayers.length === 0}
-            className="rounded-lg border border-[var(--neo-accent)]/50 bg-[var(--neo-accent-dim)] px-3 py-1.5 text-sm font-medium text-[var(--neo-accent)] transition hover:bg-[var(--neo-accent)]/20 disabled:opacity-50 disabled:pointer-events-none"
-          >
-            Suggest by wOBA
-          </button>
+              Suggest by OBP
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSuggestBy("avg")}
+              disabled={initialPlayers.length === 0}
+              className="rounded-lg border border-[var(--neo-accent)]/50 bg-[var(--neo-accent-dim)] px-3 py-1.5 text-sm font-medium text-[var(--neo-accent)] transition hover:bg-[var(--neo-accent)]/20 disabled:opacity-50 disabled:pointer-events-none"
+            >
+              Suggest by AVG
+            </button>
+          </div>
           {lineupQuality != null && (
-            <span className="text-sm text-[var(--neo-text-muted)]">
-              Lineup avg OBP: <strong className="text-[var(--neo-text)]">{formatStat(lineupQuality.obp, "avg")}</strong>
-              {" · "}
-              Avg wOBA: <strong className="text-[var(--neo-text)]">{formatStat(lineupQuality.woba, "avg")}</strong>
-            </span>
+            <p className="text-sm leading-relaxed text-[var(--neo-text-muted)]">
+              <span className="mr-1 font-display text-xs font-semibold uppercase tracking-wider text-white">
+                Combined lineup
+              </span>
+              <span className="inline-flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span>
+                  AVG <strong className="tabular-nums text-[var(--neo-text)]">{formatStat(lineupQuality.avg, "avg")}</strong>
+                </span>
+                <span className="text-[var(--neo-border)]">·</span>
+                <span>
+                  OBP <strong className="tabular-nums text-[var(--neo-text)]">{formatStat(lineupQuality.obp, "avg")}</strong>
+                </span>
+                <span className="text-[var(--neo-border)]">·</span>
+                <span>
+                  SLG <strong className="tabular-nums text-[var(--neo-text)]">{formatStat(lineupQuality.slg, "avg")}</strong>
+                </span>
+                <span className="text-[var(--neo-border)]">·</span>
+                <span>
+                  OPS <strong className="tabular-nums text-[var(--neo-text)]">{formatStat(lineupQuality.ops, "avg")}</strong>
+                </span>
+                <span className="text-[var(--neo-border)]">·</span>
+                <span>
+                  OPS+ <strong className="tabular-nums text-[var(--neo-text)]">{formatStat(lineupQuality.opsPlus, "int")}</strong>
+                </span>
+              </span>
+            </p>
           )}
         </div>
       </section>
