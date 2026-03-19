@@ -107,15 +107,28 @@ function transitionState(
     // Runners advance 2; batter on 2nd. Simplified: 000->010, 100->010, 010->010, 001->010, 110->010, 101->010, 011->010, 111->010
     return { base_state: "010", outs: o };
   }
-  if (result === "single" || result === "bb" || result === "ibb" || result === "hbp") {
-    // All advance 1, batter to 1st. 000->100, 100->110, 010->110, 001->101, 110->111, 101->111, 011->111, 111->111
+  if (result === "single") {
+    // Simplified single: all runners advance one, batter to 1st.
     const one = b[0] === "1" ? 1 : 0;
     const two = b[1] === "1" ? 1 : 0;
-    const three = b[2] === "1" ? 1 : 0;
     const n1 = 1;
     const n2 = one;
     const n3 = two;
     const newB = `${n1}${n2}${n3}` as BaseState;
+    return { base_state: newB, outs: o };
+  }
+  if (result === "bb" || result === "ibb" || result === "hbp") {
+    // Free pass: only forced runners advance.
+    // Example: 010 -> 110 (runner on 2nd is not forced).
+    let one = b[0] === "1";
+    let two = b[1] === "1";
+    let three = b[2] === "1";
+    if (one) {
+      if (two) three = true; // 2B forced to 3B (3B forced home if occupied)
+      two = true; // 1B forced to 2B
+    }
+    one = true; // batter to 1B
+    const newB = `${one ? 1 : 0}${two ? 1 : 0}${three ? 1 : 0}` as BaseState;
     return { base_state: newB, outs: o };
   }
   if (result === "sac_fly" || result === "sac") {

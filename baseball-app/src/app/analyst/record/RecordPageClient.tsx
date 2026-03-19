@@ -54,8 +54,19 @@ function getRunnerIdsAfterResult(
   if (result === "hr") return [null, null, null];
   if (result === "triple") return [null, null, batterId];
   if (result === "double") return [runner1b, batterId, runner2b];
-  if (result === "single" || result === "bb" || result === "ibb" || result === "hbp" || result === "other") {
+  if (result === "single" || result === "other") {
     return [batterId, runner1b, runner2b]; // batter to 1st; other runners advance (user can adjust manually for ROE)
+  }
+  if (result === "bb" || result === "ibb" || result === "hbp") {
+    // Free pass: only forced runners advance.
+    // Example: runner on 2nd only -> stays on 2nd; batter to 1st.
+    let next2 = runner2b;
+    let next3 = runner3b;
+    if (runner1b) {
+      if (runner2b) next3 = runner2b; // 2B forced to 3B (3B forced home if occupied)
+      next2 = runner1b; // 1B forced to 2B
+    }
+    return [batterId, next2, next3];
   }
   if (result === "sac_fly" || result === "sac") {
     return [runner1b, runner2b, null]; // runner from 3rd scores
