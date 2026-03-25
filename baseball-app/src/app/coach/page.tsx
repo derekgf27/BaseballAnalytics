@@ -1,6 +1,15 @@
-import { getGames, getGameLineup, getPlayersByIds, getBattingStatsWithSplitsForPlayers, getPlateAppearancesByBatters } from "@/lib/db/queries";
+import {
+  getGames,
+  getGameLineup,
+  getPlayersByIds,
+  getBattingStatsWithSplitsForPlayers,
+  getPlateAppearancesByBatters,
+  getPlateAppearancesByGame,
+} from "@/lib/db/queries";
+import { formatGameTime } from "@/lib/format";
+import type { PlateAppearance } from "@/lib/types";
 import { battingStatsFromPAs } from "@/lib/compute/battingStats";
-import { trendFromRecentPAs } from "@/lib/compute/trends";
+import { trendFromRecentPAs, TREND_RECENT_PA_COUNT } from "@/lib/compute/trends";
 import { platoonFromSplits } from "@/lib/compute/platoon";
 import { CoachTodayClient } from "./CoachTodayClient";
 
@@ -17,20 +26,60 @@ export default async function CoachPage() {
 
   let gameInfo: Parameters<typeof CoachTodayClient>[0]["game"] = null;
   let recommendedLineup: Parameters<typeof CoachTodayClient>[0]["recommendedLineup"] = [];
+  let starterCompare: Parameters<typeof CoachTodayClient>[0]["starterCompare"] = null;
+  let initialGamePas: PlateAppearance[] = [];
 
   if (game) {
+    initialGamePas = await getPlateAppearancesByGame(game.id);
     const opponent =
       game.our_side === "home" ? game.away_team : game.home_team;
     const venue = game.our_side === "home" ? "Home" : "Away";
+    const ourStarterId =
+      game.our_side === "home"
+        ? game.starting_pitcher_home_id
+        : game.starting_pitcher_away_id;
+    const opponentStarterId =
+      game.our_side === "home"
+        ? game.starting_pitcher_away_id
+        : game.starting_pitcher_home_id;
+    const starterIds = [ourStarterId, opponentStarterId].filter(
+      (id): id is string => Boolean(id)
+    );
+    const starterPlayers =
+      starterIds.length > 0 ? await getPlayersByIds(starterIds) : [];
+    const starterById = new Map(starterPlayers.map((p) => [p.id, p]));
+
+    function starterDisplay(id: string | null | undefined) {
+      if (!id) return null;
+      const p = starterById.get(id);
+      if (!p) return null;
+      const handLabel =
+        p.throws === "L" ? "LHP" : p.throws === "R" ? "RHP" : null;
+      return { name: p.name, handLabel, playerId: p.id };
+    }
+
+    starterCompare = {
+      club: {
+        display: starterDisplay(ourStarterId),
+      },
+      opponent: {
+        display: starterDisplay(opponentStarterId),
+      },
+    };
+
     gameInfo = {
       id: game.id,
       date: game.date,
       opponent,
       venue,
       venueType: game.our_side as "home" | "away",
+      awayTeam: game.away_team,
+      homeTeam: game.home_team,
+      ourSide: game.our_side as "home" | "away",
+      startTime: game.game_time ? formatGameTime(game.game_time) : undefined,
     };
 
-    const slots = await getGameLineup(game.id);
+    const slots = (await getGameLineup(game.id)).filter((s) => s.side === game.our_side);
     if (slots.length > 0) {
       const playerIds = slots.map((s) => s.player_id);
       const [players, splits, allPAs] = await Promise.all([
@@ -51,14 +100,14 @@ export default async function CoachPage() {
           const p = playerMap.get(s.player_id);
           const recentPAs = pasByBatter.get(s.player_id) ?? [];
           const playerSplits = splits[s.player_id];
-          const trend = trendFromRecentPAs(recentPAs, 20);
+          const trend = trendFromRecentPAs(recentPAs, TREND_RECENT_PA_COUNT);
           const platoon = playerSplits
             ? platoonFromSplits(playerSplits.vsL, playerSplits.vsR)
             : null;
           let recentStats: Parameters<typeof CoachTodayClient>[0]["recommendedLineup"][0]["recentStats"] = undefined;
           if ((trend === "hot" || trend === "cold") && recentPAs.length > 0) {
-            const last20 = recentPAs.slice(0, 20);
-            const stats = battingStatsFromPAs(last20);
+            const lastWindow = recentPAs.slice(0, TREND_RECENT_PA_COUNT);
+            const stats = battingStatsFromPAs(lastWindow);
             if (stats) {
               recentStats = {
                 pa: stats.pa ?? 0,
@@ -97,16 +146,16 @@ export default async function CoachPage() {
               ...slot,
               trend: "hot" as const,
               recentStats: {
-                pa: 20,
-                ab: 17,
-                h: 8,
+                pa: 15,
+                ab: 13,
+                h: 7,
                 double: 2,
                 triple: 0,
                 hr: 1,
                 rbi: 5,
-                bb: 3,
+                bb: 2,
                 so: 3,
-                avg: 0.471,
+                avg: 7 / 13,
                 ops: 1.08,
               },
             };
@@ -116,16 +165,16 @@ export default async function CoachPage() {
               ...slot,
               trend: "cold" as const,
               recentStats: {
-                pa: 20,
-                ab: 18,
-                h: 3,
+                pa: 15,
+                ab: 14,
+                h: 2,
                 double: 0,
                 triple: 0,
                 hr: 0,
                 rbi: 1,
-                bb: 2,
+                bb: 1,
                 so: 7,
-                avg: 0.167,
+                avg: 2 / 14,
                 ops: 0.49,
               },
             };
@@ -140,6 +189,8 @@ export default async function CoachPage() {
     <CoachTodayClient
       game={gameInfo}
       recommendedLineup={recommendedLineup}
+      starterCompare={starterCompare}
+      initialGamePas={initialGamePas}
     />
   );
 }

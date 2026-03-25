@@ -3,19 +3,16 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ANALYST_NAV_LINKS } from "@/lib/analystNavLinks";
 
 const STORAGE_KEY = "analyst-sidebar-collapsed";
 
-const LINKS = [
-  { href: "/analyst", label: "Dashboard", icon: "📊" },
-  { href: "/analyst/games", label: "Games", icon: "📅" },
-  { href: "/analyst/record", label: "Record PAs", icon: "✏️" },
-  { href: "/analyst/players", label: "Players", icon: "👤" },
-  { href: "/analyst/stats", label: "Stats", icon: "📋" },
-  { href: "/analyst/lineup", label: "Lineup construction", icon: "📝" },
-  { href: "/analyst/charts", label: "Charts", icon: "📈" },
-  { href: "/analyst/run-expectancy", label: "Run expectancy", icon: "🏃" },
-] as const;
+const ICONS = ["📊", "👤", "📋", "📅", "🆚", "📝", "📈", "🏃"] as const;
+
+const LINKS = ANALYST_NAV_LINKS.map((l, i) => ({
+  ...l,
+  icon: ICONS[i] ?? "•",
+}));
 
 export function AnalystNav() {
   const pathname = usePathname();
@@ -70,7 +67,7 @@ export function AnalystNav() {
           <span className="sidebar-label truncate text-[var(--accent)]">Analyst</span>
         </Link>
       </div>
-      <nav className="flex flex-1 flex-col gap-0.5 py-3">
+      <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto py-3">
         {LINKS.map(({ href, label, icon }) => {
           const active =
             href === "/analyst"
@@ -88,17 +85,17 @@ export function AnalystNav() {
             </Link>
           );
         })}
+        <div className="mt-2 shrink-0 border-t border-[var(--border)] pt-2">
+          <Link
+            href="/"
+            className="sidebar-link sidebar-link-analyst opacity-70"
+            title="Exit to home"
+          >
+            <span className="sidebar-icon" aria-hidden>←</span>
+            <span className="sidebar-label">Exit</span>
+          </Link>
+        </div>
       </nav>
-      <div className="border-t border-[var(--border)] p-2">
-        <Link
-          href="/"
-          className="sidebar-link sidebar-link-analyst opacity-70"
-          title="Exit to home"
-        >
-          <span className="sidebar-icon" aria-hidden>←</span>
-          <span className="sidebar-label">Exit</span>
-        </Link>
-      </div>
     </aside>
   );
 }

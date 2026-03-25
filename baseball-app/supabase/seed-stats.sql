@@ -16,11 +16,11 @@ values
   ('2025-03-28', 'Ponce', 'Opponent', 'home'),
   ('2025-04-01', 'Ponce', 'Opponent', 'away');
 
--- 2) Add lineup (first 9 players by name in slots 1–9) for each of the 10 games we just inserted
-insert into public.game_lineups (game_id, slot, player_id, position)
-select g.id, p.rn, p.id, (array['P','C','1B','2B','3B','SS','LF','CF','RF'])[p.rn]
+-- 2) Add lineup (first 9 players by name in slots 1–9) for our team only, per game
+insert into public.game_lineups (game_id, side, slot, player_id, position)
+select g.id, g.our_side, p.rn, p.id, (array['P','C','1B','2B','3B','SS','LF','CF','RF'])[p.rn]
 from (select id, row_number() over (order by name) as rn from public.players) p
-cross join (select id from public.games order by created_at desc limit 10) g(id)
+cross join (select id, our_side from public.games order by created_at desc limit 10) g(id, our_side)
 where p.rn between 1 and 9;
 
 -- 3) Add plate appearances: 8 PAs per player per game = 80 PAs per player (10 games)

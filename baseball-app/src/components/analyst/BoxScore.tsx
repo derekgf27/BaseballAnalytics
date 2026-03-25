@@ -1,9 +1,11 @@
 "use client";
 
+import { totalErrorsChargedToAway, totalErrorsChargedToHome } from "@/lib/compute/boxScore";
+import { REGULATION_INNINGS } from "@/lib/leagueConfig";
 import type { Game, PlateAppearance } from "@/lib/types";
 
 const HIT_RESULTS = ["single", "double", "triple", "hr"] as const;
-const INNINGS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
+const INNINGS = Array.from({ length: REGULATION_INNINGS }, (_, i) => i + 1);
 
 function computeBoxScoreFromPAs(pas: PlateAppearance[]) {
   const runsByInning: Record<number, number> = {};
@@ -18,13 +20,19 @@ function computeBoxScoreFromPAs(pas: PlateAppearance[]) {
 
 interface BoxScoreProps {
   game: Game;
+  /** All plate appearances for the game (caller passes full game list). */
   pas: PlateAppearance[];
 }
 
 export function BoxScore({ game, pas }: BoxScoreProps) {
-  const { runsByInning, hits: ourHits } = computeBoxScoreFromPAs(pas);
-  const ourRunsByInning = runsByInning;
-  const isHome = game.our_side === "home";
+  const pasAway = pas.filter((p) => p.inning_half === "top");
+  const pasHome = pas.filter((p) => p.inning_half === "bottom");
+  const awayStats = computeBoxScoreFromPAs(pasAway);
+  const homeStats = computeBoxScoreFromPAs(pasHome);
+  /** Away row E = home defense errors (top); home row E = away defense errors (bottom). Counts `reached_on_error` PAs. */
+  const awayE = totalErrorsChargedToHome(pas);
+  const homeE = totalErrorsChargedToAway(pas);
+
   const awayR = game.final_score_away ?? 0;
   const homeR = game.final_score_home ?? 0;
 
@@ -44,54 +52,49 @@ export function BoxScore({ game, pas }: BoxScoreProps) {
                 {i}
               </th>
             ))}
-            <th className="font-display w-9 px-1 py-2 text-center text-xs font-semibold uppercase tracking-wider text-white">
+            <th className="font-display w-9 border-l border-[var(--border)] px-1 py-2 text-center text-xs font-semibold uppercase tracking-wider text-white">
               R
             </th>
             <th className="font-display w-9 px-1 py-2 text-center text-xs font-semibold uppercase tracking-wider text-white">
               H
             </th>
+            <th className="font-display w-9 px-1 py-2 text-center text-xs font-semibold uppercase tracking-wider text-white">
+              E
+            </th>
           </tr>
         </thead>
         <tbody>
-          {/* Away row */}
+          {/* Away bats in top half */}
           <tr className="border-b border-[var(--border)]">
             <td className="px-3 py-2 font-medium text-[var(--text)]">
-              {isHome ? game.away_team : game.home_team}
-              {!isHome && (
-                <span className="ml-1 text-xs text-[var(--text-muted)]">(us)</span>
-              )}
+              {game.away_team}
             </td>
             {INNINGS.map((i) => (
               <td key={i} className="px-1 py-2 text-center tabular-nums text-[var(--text)]">
-                {!isHome ? (ourRunsByInning[i] ?? 0) || "0" : "—"}
+                {(awayStats.runsByInning[i] ?? 0) || "0"}
               </td>
             ))}
-            <td className="px-1 py-2 text-center tabular-nums font-medium text-[var(--text)]">
-              {isHome ? awayR : homeR}
+            <td className="border-l border-[var(--border)] px-1 py-2 text-center tabular-nums font-medium text-[var(--text)]">
+              {awayR}
             </td>
-            <td className="px-1 py-2 text-center tabular-nums text-[var(--text)]">
-              {!isHome ? ourHits : "—"}
-            </td>
+            <td className="px-1 py-2 text-center tabular-nums text-[var(--text)]">{awayStats.hits}</td>
+            <td className="px-1 py-2 text-center tabular-nums text-[var(--text)]">{awayE}</td>
           </tr>
-          {/* Home row */}
+          {/* Home bats in bottom half */}
           <tr className="border-b border-[var(--border)]">
             <td className="px-3 py-2 font-medium text-[var(--text)]">
-              {isHome ? game.home_team : game.away_team}
-              {isHome && (
-                <span className="ml-1 text-xs text-[var(--text-muted)]">(us)</span>
-              )}
+              {game.home_team}
             </td>
             {INNINGS.map((i) => (
               <td key={i} className="px-1 py-2 text-center tabular-nums text-[var(--text)]">
-                {isHome ? (ourRunsByInning[i] ?? 0) || "0" : "—"}
+                {(homeStats.runsByInning[i] ?? 0) || "0"}
               </td>
             ))}
-            <td className="px-1 py-2 text-center tabular-nums font-medium text-[var(--text)]">
-              {isHome ? homeR : awayR}
+            <td className="border-l border-[var(--border)] px-1 py-2 text-center tabular-nums font-medium text-[var(--text)]">
+              {homeR}
             </td>
-            <td className="px-1 py-2 text-center tabular-nums text-[var(--text)]">
-              {isHome ? ourHits : "—"}
-            </td>
+            <td className="px-1 py-2 text-center tabular-nums text-[var(--text)]">{homeStats.hits}</td>
+            <td className="px-1 py-2 text-center tabular-nums text-[var(--text)]">{homeE}</td>
           </tr>
         </tbody>
       </table>

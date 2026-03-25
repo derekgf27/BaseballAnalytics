@@ -21,18 +21,25 @@ interface CoachLineupTableProps {
 export function CoachLineupTable({ lineup }: CoachLineupTableProps) {
   if (!lineup.length) {
     return (
-      <div className="neo-card border border-dashed border-[var(--neo-border)] p-8 text-center">
-        <p className="font-medium text-[var(--neo-text)]">No lineup set</p>
-        <p className="mt-2 text-sm text-[var(--neo-text-muted)]">
-          Create a game and set a lineup in Analyst → Games, or save a template in Analyst → Lineup.
-        </p>
+      <div className="neo-card flex h-full min-h-0 flex-col border border-dashed border-[var(--neo-border)] p-4 lg:p-5">
+        <div className="section-label mb-3">Lineup</div>
+        <div className="py-4 text-center lg:py-6">
+          <p className="font-medium text-[var(--neo-text)]">No lineup set</p>
+          <p className="mt-2 text-sm text-[var(--neo-text-muted)]">
+            Create a game and set a lineup in Analyst → Games, or save a template in Analyst → Lineup.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="neo-card overflow-hidden p-0">
-      <table className="w-full border-collapse text-left">
+    <div className="neo-card flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+      <div className="px-4 pt-4 lg:px-5 lg:pt-5">
+        <div className="section-label mb-3">Lineup</div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-x-auto">
+        <table className="w-full border-collapse text-left">
         <thead>
           <tr className="bg-[#151b21]">
             <th className="font-display border-b border-r border-black/40 px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
@@ -80,6 +87,7 @@ export function CoachLineupTable({ lineup }: CoachLineupTableProps) {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/style.css";
 import { formatDateMMDDYYYY } from "@/lib/format";
@@ -38,10 +38,24 @@ export function StyledDatePicker({
   placeholder = "Select date",
 }: StyledDatePickerProps) {
   const [open, setOpen] = useState(false);
+  const [month, setMonth] = useState<Date>(() => fromYYYYMMDD(value) ?? new Date());
   const containerRef = useRef<HTMLDivElement>(null);
 
   const selected = fromYYYYMMDD(value);
   const displayValue = value ? formatDateMMDDYYYY(value) : "";
+
+  const { startMonth, endMonth } = useMemo(() => {
+    const y = new Date().getFullYear();
+    return {
+      startMonth: new Date(y - 100, 0),
+      endMonth: new Date(y + 10, 11, 31),
+    };
+  }, []);
+
+  useEffect(() => {
+    const d = fromYYYYMMDD(value);
+    if (d) setMonth(d);
+  }, [value]);
 
   useEffect(() => {
     if (!open) return;
@@ -83,10 +97,14 @@ export function StyledDatePicker({
         >
           <DayPicker
             mode="single"
+            month={month}
+            onMonthChange={setMonth}
             selected={selected}
             onSelect={handleSelect}
-            defaultMonth={selected ?? new Date()}
-            onMonthChange={() => {}}
+            captionLayout="dropdown"
+            startMonth={startMonth}
+            endMonth={endMonth}
+            navLayout="around"
           />
         </div>
       )}

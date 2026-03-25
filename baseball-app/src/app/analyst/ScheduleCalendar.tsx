@@ -16,6 +16,11 @@ function getOpponentLabel(game: Game): string {
   return game.our_side === "home" ? `vs ${opponent}` : `@ ${opponent}`;
 }
 
+/** Opponent club name for links to Analyst → Opponents. */
+function getOpponentTeamName(game: Game): string {
+  return (game.our_side === "home" ? game.away_team : game.home_team).trim();
+}
+
 function getCalendarGrid(year: number, month: number): (number | null)[][] {
   const first = new Date(year, month, 1);
   const last = new Date(year, month + 1, 0);
@@ -79,43 +84,64 @@ export function ScheduleCalendar({ games }: ScheduleCalendarProps) {
   const today = now.toISOString().slice(0, 10);
 
   return (
-    <div className="card-tech overflow-hidden rounded-xl border">
-      <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3">
-        <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-[var(--text)]">
+    <div className="card-tech overflow-hidden rounded-lg border">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-2 gap-y-2 border-b border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2">
+        <h2 className="justify-self-start font-display text-xs font-semibold uppercase tracking-wider text-[var(--text)]">
           Schedule
         </h2>
-        <div className="flex items-center gap-1">
+        <div
+          className="flex items-center justify-center gap-3 text-[10px] text-white"
+          role="list"
+          aria-label="Day cell colors: home and away"
+        >
+          <span className="flex items-center gap-1.5" role="listitem">
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-sm border border-[var(--accent)]/30 bg-[var(--accent)]/20"
+              aria-hidden
+            />
+            <span className="whitespace-nowrap">Home</span>
+          </span>
+          <span className="flex items-center gap-1.5" role="listitem">
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-sm border border-[var(--danger)]/30 bg-[var(--danger)]/20"
+              aria-hidden
+            />
+            <span className="whitespace-nowrap">Away</span>
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center justify-end justify-self-end gap-1 sm:gap-1">
           <button
             type="button"
             onClick={prevMonth}
-            className="rounded p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--border)] hover:text-[var(--text)]"
+            className="rounded px-1 py-0.5 font-mono text-[11px] text-[var(--accent)] transition hover:bg-[var(--border)] sm:text-xs"
             aria-label="Previous month"
+            title="Previous month"
           >
-            ←
+            «
           </button>
-          <span className="min-w-[7rem] text-center text-sm font-semibold text-[var(--text)]">
+          <span className="min-w-[7rem] text-center text-[11px] font-semibold uppercase tracking-wide tabular-nums text-[var(--text)] sm:min-w-[8.5rem] sm:text-xs">
             {monthLabel} {year}
           </span>
           <button
             type="button"
             onClick={nextMonth}
-            className="rounded p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--border)] hover:text-[var(--text)]"
+            className="rounded px-1 py-0.5 font-mono text-[11px] text-[var(--accent)] transition hover:bg-[var(--border)] sm:text-xs"
             aria-label="Next month"
+            title="Next month"
           >
-            →
+            »
           </button>
         </div>
       </div>
 
-      <div className="p-4">
-        <table className="w-full table-fixed border-collapse text-base" role="grid" aria-label={`Schedule for ${monthLabel} ${year}`}>
+      <div className="p-2 sm:p-3">
+        <table className="w-full table-fixed border-collapse text-xs" role="grid" aria-label={`Schedule for ${monthLabel} ${year}`}>
           <thead>
             <tr>
               {DAYS.map((d) => (
                 <th
                   key={d}
-                  className="font-display border-b border-[var(--border)] py-2 text-center text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]"
-                >
+                  className="font-display border-b border-[var(--border)] py-1 text-center text-[10px] font-semibold uppercase leading-none tracking-wider text-[var(--text-muted)]">
                   {d}
                 </th>
               ))}
@@ -132,24 +158,34 @@ export function ScheduleCalendar({ games }: ScheduleCalendarProps) {
                   const dayGames = dateStr ? gamesByDate.get(dateStr) ?? [] : [];
                   const isCurrentMonth = day !== null;
                   const isToday = dateStr === today;
+                  const homeCount = dayGames.filter((g) => g.our_side === "home").length;
+                  const awayCount = dayGames.filter((g) => g.our_side === "away").length;
+                  const dayCellTone =
+                    dayGames.length === 0
+                      ? ""
+                      : homeCount > 0 && awayCount === 0
+                        ? "bg-[var(--accent)]/20 border border-[var(--accent)]/30"
+                        : awayCount > 0 && homeCount === 0
+                          ? "bg-[var(--danger)]/20 border border-[var(--danger)]/30"
+                          : "bg-[var(--bg-elevated)] border border-[var(--border)]";
 
                   return (
                     <td
                       key={di}
-                      className="h-24 border-b border-[var(--border)] align-top p-0.5 sm:h-28"
+                      className="h-14 border-b border-[var(--border)] align-top p-px sm:h-16"
                     >
                       <div
-                        className={`flex h-full min-h-[5rem] flex-col rounded-lg p-1.5 sm:min-h-[6rem] ${
+                        className={`flex h-full min-h-[2.75rem] flex-col rounded-md p-1 sm:min-h-[3.25rem] ${
                           !isCurrentMonth
                             ? "bg-[var(--bg-base)] opacity-50"
                             : dayGames.length > 0
-                              ? "bg-[var(--accent)]/20 border border-[var(--accent)]/30"
+                              ? dayCellTone
                               : "bg-[var(--bg-elevated)]"
                         } ${isToday ? "ring-1 ring-[var(--accent)]" : ""}`}
                       >
                         {day !== null && (
                           <span
-                            className={`text-sm font-medium tabular-nums ${
+                            className={`text-[11px] font-medium leading-none tabular-nums ${
                               isCurrentMonth ? "text-[var(--text)]" : "text-[var(--text-muted)]"
                             }`}
                           >
@@ -157,19 +193,26 @@ export function ScheduleCalendar({ games }: ScheduleCalendarProps) {
                           </span>
                         )}
                         {dayGames.length > 0 && (
-                          <div className="mt-0.5 flex flex-1 flex-col gap-0.5">
-                            {dayGames.slice(0, 2).map((game) => (
-                              <Link
-                                key={game.id}
-                                href={`/analyst/games/${game.id}/log`}
-                                className="rounded px-1 py-0.5 text-left text-sm font-medium text-[var(--text)] transition hover:bg-[var(--accent)]/30 break-words line-clamp-2"
-                                title={getOpponentLabel(game)}
-                              >
-                                {getOpponentLabel(game)}
-                              </Link>
-                            ))}
+                          <div className="mt-0.5 flex flex-1 flex-col gap-px overflow-hidden">
+                            {dayGames.slice(0, 2).map((game) => {
+                              const isHome = game.our_side === "home";
+                              return (
+                                <Link
+                                  key={game.id}
+                                  href={`/analyst/opponents/${encodeURIComponent(getOpponentTeamName(game))}`}
+                                  className={`rounded px-0.5 py-px text-left text-[10px] font-medium leading-tight transition break-words line-clamp-2 sm:text-[11px] ${
+                                    isHome
+                                      ? "text-[var(--accent)] hover:bg-[var(--accent)]/25"
+                                      : "text-[var(--danger)] hover:bg-[var(--danger)]/25"
+                                  }`}
+                                  title={`${getOpponentLabel(game)} — opponent roster & stats`}
+                                >
+                                  {getOpponentLabel(game)}
+                                </Link>
+                              );
+                            })}
                             {dayGames.length > 2 && (
-                              <span className="px-1 text-sm text-[var(--text-muted)]">
+                              <span className="px-0.5 text-[10px] leading-none text-[var(--text-muted)]">
                                 +{dayGames.length - 2}
                               </span>
                             )}

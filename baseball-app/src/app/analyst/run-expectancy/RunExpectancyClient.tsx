@@ -23,7 +23,10 @@ const RESULT_LABELS: Record<PAResult, string> = {
   sac_fly: "SF",
   sac_bunt: "SH",
   sac: "SAC",
+  gidp: "GIDP",
+  fielders_choice: "FC",
   other: "Other",
+  reached_on_error: "Reached on error",
 };
 
 const BASE_STATE_LABELS: Record<string, string> = {
@@ -77,7 +80,7 @@ export function RunExpectancyClient({
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="font-display text-xl font-semibold tracking-tight text-[var(--text)]">
+        <h1 className="font-display text-3xl font-semibold tracking-tight text-[var(--text)]">
           Run expectancy
         </h1>
         <p className="mt-1 text-sm text-[var(--text-muted)]">

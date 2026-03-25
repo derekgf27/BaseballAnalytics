@@ -3,24 +3,303 @@
  * No mock data — uses only Supabase.
  */
 
-import { battingStatsFromPAs } from "@/lib/compute/battingStats";
-import { supabase } from "./client";
+import { battingStatsFromPAs, isRisp } from "@/lib/compute/battingStats";
+import {
+  mergeBaserunningIntoBattingStats,
+  distinctGameCount,
+  gamesStartedInSplit,
+} from "@/lib/compute/battingStatsWithSplitsFromPas";
+import { pitchingStatsFromPAs } from "@/lib/compute/pitchingStats";
+import { kPctToKRate, type PlayerStatsForWatch } from "@/lib/playersToWatch";
+import { isClubRosterPlayer, isPitcherPlayer } from "@/lib/opponentUtils";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isDemoId } from "./mockData";
-import type { BattingStats, BattingStatsWithSplits, PlateAppearance, Player, Game, PlayerRating, DefensiveEvent, GameLineupSlot, SavedLineup, SavedLineupWithSlots } from "@/lib/types";
+import type {
+  BattingStats,
+  BattingStatsWithSplits,
+  Bats,
+  PitchingRateLine,
+  PitchingStats,
+  PitchingStatsWithSplits,
+  BaserunningEvent,
+  BaserunningEventInsert,
+  PlateAppearance,
+  Player,
+  Game,
+  PlayerRating,
+  DefensiveEvent,
+  GameLineupSlot,
+  LineupSide,
+  SavedLineup,
+  SavedLineupWithSlots,
+  ClubBattingMatchupPayload,
+  ClubPitchingMatchupPayload,
+} from "@/lib/types";
+
+async function getSupabase() {
+  return createSupabaseServerClient();
+}
+
+/** SB/CS counts per player from baserunning_events (all games). */
+export async function getBaserunningTotalsForPlayerIds(
+  playerIds: string[]
+): Promise<Record<string, { sb: number; cs: number }>> {
+  const supabase = await getSupabase();
+  if (!supabase || playerIds.length === 0) return {};
+  const { data } = await supabase
+    .from("baserunning_events")
+    .select("runner_id, event_type")
+    .in("runner_id", playerIds);
+  const map: Record<string, { sb: number; cs: number }> = {};
+  for (const id of playerIds) {
+    if (!isDemoId(id)) map[id] = { sb: 0, cs: 0 };
+  }
+  for (const row of data ?? []) {
+    const r = row as { runner_id: string; event_type: string };
+    const m = map[r.runner_id];
+    if (!m) continue;
+    if (r.event_type === "sb") m.sb++;
+    else if (r.event_type === "cs") m.cs++;
+  }
+  return map;
+}
+
+/** SB/CS per runner for one game (for box score). */
+export async function getBaserunningTotalsForGame(
+  gameId: string
+): Promise<Record<string, { sb: number; cs: number }>> {
+  const supabase = await getSupabase();
+  if (!supabase || isDemoId(gameId)) return {};
+  const { data } = await supabase
+    .from("baserunning_events")
+    .select("runner_id, event_type")
+    .eq("game_id", gameId);
+  const map: Record<string, { sb: number; cs: number }> = {};
+  for (const row of data ?? []) {
+    const r = row as { runner_id: string; event_type: string };
+    if (!map[r.runner_id]) map[r.runner_id] = { sb: 0, cs: 0 };
+    if (r.event_type === "sb") map[r.runner_id].sb++;
+    else if (r.event_type === "cs") map[r.runner_id].cs++;
+  }
+  return map;
+}
+
+export async function getBaserunningEventsForGame(gameId: string): Promise<BaserunningEvent[]> {
+  const supabase = await getSupabase();
+  if (!supabase || isDemoId(gameId)) return [];
+  const { data } = await supabase
+    .from("baserunning_events")
+    .select("*")
+    .eq("game_id", gameId)
+    .order("created_at", { ascending: true });
+  return (data ?? []) as BaserunningEvent[];
+}
+
+export async function insertBaserunningEvent(
+  row: BaserunningEventInsert
+): Promise<BaserunningEvent | null> {
+  const supabase = await getSupabase();
+  if (!supabase) return null;
+  const payload = { ...row } as Record<string, unknown>;
+  for (const key of Object.keys(payload)) {
+    if (payload[key] === undefined) delete payload[key];
+  }
+  const { data, error } = await supabase.from("baserunning_events").insert(payload).select().single();
+  if (error) throw new Error(error.message);
+  return data as BaserunningEvent;
+}
+
+export async function deleteBaserunningEvent(id: string): Promise<boolean> {
+  const supabase = await getSupabase();
+  if (!supabase || !id) return false;
+  const { error } = await supabase.from("baserunning_events").delete().eq("id", id);
+  return !error;
+}
+
+/** Delete all baserunning events for a game (e.g. when clearing game stats). */
+export async function deleteBaserunningEventsByGame(gameId: string): Promise<number> {
+  const supabase = await getSupabase();
+  if (!supabase || !gameId) return 0;
+  const { data, error } = await supabase
+    .from("baserunning_events")
+    .delete()
+    .eq("game_id", gameId)
+    .select("id");
+  if (error) throw new Error(error.message);
+  return data?.length ?? 0;
+}
+
+/** Delete all baserunning events (clear all stats). */
+export async function deleteAllBaserunningEvents(): Promise<number> {
+  const supabase = await getSupabase();
+  if (!supabase) return 0;
+  const { data, error } = await supabase.from("baserunning_events").delete().gte("inning", 1).select("id");
+  if (error) throw new Error(error.message);
+  return data?.length ?? 0;
+}
 
 export async function getGames(): Promise<Game[]> {
+  const supabase = await getSupabase();
   if (!supabase) return [];
   const { data } = await supabase.from("games").select("*").order("date", { ascending: false });
   return (data ?? []) as Game[];
 }
 
+export async function getClubBattingMatchupPayload(playerIds: string[]): Promise<ClubBattingMatchupPayload> {
+  const supabase = await getSupabase();
+  const empty: ClubBattingMatchupPayload = { pas: [], games: [], baserunningByPlayerId: {}, startedGameIdsByPlayer: {} };
+  if (!supabase || playerIds.length === 0) return empty;
+
+  const cleanIds = playerIds.filter((id) => !isDemoId(id));
+  if (cleanIds.length === 0) return empty;
+
+  const [paResult, gamesRes, brTotals, lineupRes] = await Promise.all([
+    supabase.from("plate_appearances").select("*").in("batter_id", cleanIds),
+    supabase.from("games").select("*").order("date", { ascending: false }),
+    getBaserunningTotalsForPlayerIds(playerIds),
+    supabase.from("game_lineups").select("game_id, player_id").in("player_id", cleanIds),
+  ]);
+
+  const pas = ((paResult.data ?? []) as PlateAppearance[]).filter((p) => !isDemoId(p.batter_id));
+  const games = (gamesRes.data ?? []) as Game[];
+
+  const startedByPlayer = new Map<string, Set<string>>();
+  for (const row of lineupRes.data ?? []) {
+    const r = row as { game_id: string; player_id: string };
+    const set = startedByPlayer.get(r.player_id) ?? new Set<string>();
+    set.add(r.game_id);
+    startedByPlayer.set(r.player_id, set);
+  }
+  const startedGameIdsByPlayer: Record<string, string[]> = {};
+  for (const [pid, set] of startedByPlayer) {
+    startedGameIdsByPlayer[pid] = [...set];
+  }
+
+  return { pas, games, baserunningByPlayerId: brTotals, startedGameIdsByPlayer };
+}
+
+export async function getClubPitchingMatchupPayload(pitcherIds: string[]): Promise<ClubPitchingMatchupPayload> {
+  const supabase = await getSupabase();
+  const empty: ClubPitchingMatchupPayload = { pas: [], games: [], starterGameIdsByPlayer: {}, batterBatsById: {} };
+  if (!supabase || pitcherIds.length === 0) return empty;
+
+  const clean = pitcherIds.filter((id) => !isDemoId(id));
+  if (clean.length === 0) return empty;
+
+  const [paResult, gamesRes, homeStarters, awayStarters] = await Promise.all([
+    supabase.from("plate_appearances").select("*").in("pitcher_id", clean),
+    supabase.from("games").select("*").order("date", { ascending: false }),
+    supabase.from("games").select("id, starting_pitcher_home_id").in("starting_pitcher_home_id", clean),
+    supabase.from("games").select("id, starting_pitcher_away_id").in("starting_pitcher_away_id", clean),
+  ]);
+
+  const pas = ((paResult.data ?? []) as PlateAppearance[]).filter((p) => p.pitcher_id && !isDemoId(p.pitcher_id));
+  const games = (gamesRes.data ?? []) as Game[];
+
+  const starterGames = new Map<string, Set<string>>();
+  for (const id of clean) starterGames.set(id, new Set<string>());
+  for (const row of homeStarters.data ?? []) {
+    const r = row as { id: string; starting_pitcher_home_id: string | null };
+    if (r.starting_pitcher_home_id) starterGames.get(r.starting_pitcher_home_id)?.add(r.id);
+  }
+  for (const row of awayStarters.data ?? []) {
+    const r = row as { id: string; starting_pitcher_away_id: string | null };
+    if (r.starting_pitcher_away_id) starterGames.get(r.starting_pitcher_away_id)?.add(r.id);
+  }
+  const starterGameIdsByPlayer: Record<string, string[]> = {};
+  for (const [pid, set] of starterGames) {
+    starterGameIdsByPlayer[pid] = [...set];
+  }
+
+  const batterIds = new Set<string>();
+  for (const pa of pas) {
+    if (pa.batter_id && !isDemoId(pa.batter_id)) batterIds.add(pa.batter_id);
+  }
+  const batterBatsById: Record<string, string | null> = {};
+  if (batterIds.size > 0) {
+    const { data: batterRows } = await supabase.from("players").select("id, bats").in("id", [...batterIds]);
+    for (const row of batterRows ?? []) {
+      const r = row as { id: string; bats: string | null };
+      batterBatsById[r.id] = r.bats;
+    }
+  }
+
+  return { pas, games, starterGameIdsByPlayer, batterBatsById };
+}
+
+export interface TrackedOpponentRow {
+  id: string;
+  name: string;
+}
+
+/** Rows from Analyst → Opponents (manually added; editable / deletable). */
+export async function getTrackedOpponents(): Promise<TrackedOpponentRow[]> {
+  const supabase = await getSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("tracked_opponents")
+    .select("id, name")
+    .order("created_at", { ascending: false });
+  return (data ?? [])
+    .map((r: { id: string; name: string }) => ({
+      id: r.id,
+      name: r.name.trim().replace(/\s+/g, " "),
+    }))
+    .filter((r) => Boolean(r.name));
+}
+
+/** Names added from Analyst → Opponents (no game required). */
+export async function getTrackedOpponentNames(): Promise<string[]> {
+  const rows = await getTrackedOpponents();
+  return rows.map((r) => r.name);
+}
+
+export async function insertTrackedOpponent(name: string): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await getSupabase();
+  if (!supabase) return { ok: false, error: "Database not connected." };
+  const trimmed = name.trim().replace(/\s+/g, " ");
+  if (!trimmed) return { ok: false, error: "Enter a team name." };
+  const { error } = await supabase.from("tracked_opponents").insert({ name: trimmed });
+  if (error) {
+    if (error.code === "23505") return { ok: false, error: "That opponent is already saved." };
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}
+
+export async function updateTrackedOpponent(
+  id: string,
+  newName: string
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await getSupabase();
+  if (!supabase) return { ok: false, error: "Database not connected." };
+  const trimmed = newName.trim().replace(/\s+/g, " ");
+  if (!trimmed) return { ok: false, error: "Enter a team name." };
+  const { error } = await supabase.from("tracked_opponents").update({ name: trimmed }).eq("id", id);
+  if (error) {
+    if (error.code === "23505") return { ok: false, error: "That opponent name is already saved." };
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}
+
+export async function deleteTrackedOpponent(id: string): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await getSupabase();
+  if (!supabase) return { ok: false, error: "Database not connected." };
+  const { error } = await supabase.from("tracked_opponents").delete().eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
 export async function getPlayers(): Promise<Player[]> {
+  const supabase = await getSupabase();
   if (!supabase) return [];
   const { data } = await supabase.from("players").select("*").order("name");
   return (data ?? []) as Player[];
 }
 
 export async function getPlayersByIds(ids: string[]): Promise<Player[]> {
+  const supabase = await getSupabase();
   if (!supabase || ids.length === 0) return [];
   const { data } = await supabase
     .from("players")
@@ -30,23 +309,28 @@ export async function getPlayersByIds(ids: string[]): Promise<Player[]> {
 }
 
 export async function getGameLineup(gameId: string): Promise<GameLineupSlot[]> {
+  const supabase = await getSupabase();
   if (!supabase || isDemoId(gameId)) return [];
   const { data } = await supabase
     .from("game_lineups")
-    .select("game_id, slot, player_id, position")
+    .select("game_id, side, slot, player_id, position")
     .eq("game_id", gameId)
+    .order("side", { ascending: true })
     .order("slot", { ascending: true });
   return (data ?? []) as GameLineupSlot[];
 }
 
-/** Insert lineup for a game. slots: in order (slot 1, 2, …); each may have position for this game. */
+/** Insert one side's lineup for a game. slots: in order (slot 1, 2, …); each may have position for this game. */
 export async function insertGameLineup(
   gameId: string,
+  side: LineupSide,
   slots: { player_id: string; position?: string | null }[]
 ): Promise<void> {
+  const supabase = await getSupabase();
   if (!supabase || isDemoId(gameId) || slots.length === 0) return;
   const rows = slots.map((s, i) => ({
     game_id: gameId,
+    side,
     slot: i + 1,
     player_id: s.player_id,
     position: s.position ?? null,
@@ -55,6 +339,7 @@ export async function insertGameLineup(
 }
 
 export async function getSavedLineups(): Promise<SavedLineup[]> {
+  const supabase = await getSupabase();
   if (!supabase) return [];
   const { data } = await supabase
     .from("saved_lineups")
@@ -64,6 +349,7 @@ export async function getSavedLineups(): Promise<SavedLineup[]> {
 }
 
 export async function getSavedLineupWithSlots(id: string): Promise<SavedLineupWithSlots | null> {
+  const supabase = await getSupabase();
   if (!supabase) return null;
   const { data: lineup } = await supabase
     .from("saved_lineups")
@@ -84,6 +370,7 @@ export async function insertSavedLineup(
   name: string,
   slots: { slot: number; player_id: string; position: string | null }[]
 ): Promise<SavedLineup | null> {
+  const supabase = await getSupabase();
   if (!supabase) throw new Error("Database not connected.");
   if (slots.length === 0) throw new Error("Lineup must have at least one player.");
   const { data: lineup, error: lineupError } = await supabase
@@ -106,6 +393,7 @@ export async function updateSavedLineup(
   name: string,
   slots: { slot: number; player_id: string; position: string | null }[]
 ): Promise<SavedLineup | null> {
+  const supabase = await getSupabase();
   if (!supabase) return null;
   await supabase.from("saved_lineup_slots").delete().eq("lineup_id", id);
   await supabase.from("saved_lineups").update({ name: name.trim() }).eq("id", id);
@@ -118,12 +406,14 @@ export async function updateSavedLineup(
 }
 
 export async function deleteSavedLineup(id: string): Promise<void> {
+  const supabase = await getSupabase();
   if (!supabase) return;
   await supabase.from("saved_lineup_slots").delete().eq("lineup_id", id);
   await supabase.from("saved_lineups").delete().eq("id", id);
 }
 
 export async function getPlateAppearancesByGame(gameId: string): Promise<PlateAppearance[]> {
+  const supabase = await getSupabase();
   if (!supabase || isDemoId(gameId)) return [];
   const { data } = await supabase
     .from("plate_appearances")
@@ -134,10 +424,106 @@ export async function getPlateAppearancesByGame(gameId: string): Promise<PlateAp
   return (data ?? []) as PlateAppearance[];
 }
 
+/** All PAs for a set of games (e.g. vs one opponent). Excludes demo games. */
+export async function getPlateAppearancesForGames(gameIds: string[]): Promise<PlateAppearance[]> {
+  const supabase = await getSupabase();
+  if (!supabase || gameIds.length === 0) return [];
+  const clean = gameIds.filter((id) => !isDemoId(id));
+  if (clean.length === 0) return [];
+  const { data } = await supabase.from("plate_appearances").select("*").in("game_id", clean);
+  const rows = (data ?? []) as PlateAppearance[];
+  return rows.sort((a, b) => {
+    if (a.game_id !== b.game_id) return a.game_id.localeCompare(b.game_id);
+    if (a.inning !== b.inning) return a.inning - b.inning;
+    return String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
+  });
+}
+
+/** All lineup rows for many games at once. */
+export async function getGameLineupsForGames(gameIds: string[]): Promise<GameLineupSlot[]> {
+  const supabase = await getSupabase();
+  if (!supabase || gameIds.length === 0) return [];
+  const clean = gameIds.filter((id) => !isDemoId(id));
+  if (clean.length === 0) return [];
+  const { data } = await supabase
+    .from("game_lineups")
+    .select("game_id, side, slot, player_id, position")
+    .in("game_id", clean);
+  const rows = (data ?? []) as GameLineupSlot[];
+  return rows.sort((a, b) => {
+    if (a.game_id !== b.game_id) return a.game_id.localeCompare(b.game_id);
+    if (a.side !== b.side) return a.side.localeCompare(b.side);
+    return a.slot - b.slot;
+  });
+}
+
+/** Baserunning events for multiple games. */
+export async function getBaserunningEventsForGames(gameIds: string[]): Promise<BaserunningEvent[]> {
+  const supabase = await getSupabase();
+  if (!supabase || gameIds.length === 0) return [];
+  const clean = gameIds.filter((id) => !isDemoId(id));
+  if (clean.length === 0) return [];
+  const { data } = await supabase.from("baserunning_events").select("*").in("game_id", clean);
+  const rows = (data ?? []) as BaserunningEvent[];
+  return rows.sort((a, b) => {
+    if (a.game_id !== b.game_id) return a.game_id.localeCompare(b.game_id);
+    return String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
+  });
+}
+
+/** Spray-chart rows for games (includes inning_half for filtering to one team's PAs). */
+export async function getSprayChartRowsForGames(gameIds: string[]): Promise<
+  {
+    game_id: string;
+    batter_id: string;
+    hit_direction: string;
+    result: string;
+    pitcher_hand: "L" | "R" | null;
+    inning_half: string | null;
+  }[]
+> {
+  const supabase = await getSupabase();
+  if (!supabase || gameIds.length === 0) return [];
+  const clean = gameIds.filter((id) => !isDemoId(id));
+  if (clean.length === 0) return [];
+  const BASE_HIT_RESULTS = new Set(["single", "double", "triple", "hr"]);
+  const { data } = await supabase
+    .from("plate_appearances")
+    .select("game_id, batter_id, hit_direction, result, pitcher_hand, inning_half")
+    .in("game_id", clean);
+  const rows = (data ?? []) as {
+    game_id: string;
+    batter_id: string;
+    hit_direction: string | null;
+    result: string;
+    pitcher_hand: string | null;
+    inning_half: string | null;
+  }[];
+  return rows
+    .filter(
+      (r) =>
+        !isDemoId(r.game_id) &&
+        BASE_HIT_RESULTS.has(r.result) &&
+        r.hit_direction != null &&
+        r.hit_direction !== "" &&
+        r.batter_id &&
+        !isDemoId(r.batter_id)
+    )
+    .map((r) => ({
+      game_id: r.game_id,
+      batter_id: r.batter_id,
+      hit_direction: r.hit_direction!,
+      result: r.result,
+      pitcher_hand: r.pitcher_hand === "L" || r.pitcher_hand === "R" ? r.pitcher_hand : null,
+      inning_half: r.inning_half,
+    }));
+}
+
 /** All PAs for run expectancy: game, inning, half, base_state, outs, rbi, created_at. Excludes demo games. */
 export async function getAllPlateAppearancesForRunExpectancy(): Promise<
   Pick<PlateAppearance, "game_id" | "inning" | "inning_half" | "base_state" | "outs" | "rbi" | "created_at">[]
 > {
+  const supabase = await getSupabase();
   if (!supabase) return [];
   const { data } = await supabase
     .from("plate_appearances")
@@ -156,6 +542,7 @@ export async function getAllPlateAppearancesForRunExpectancy(): Promise<
 export async function getTeamPlateAppearancesForSpray(): Promise<
   { game_id: string; batter_id: string; hit_direction: string; result: string; pitcher_hand: "L" | "R" | null }[]
 > {
+  const supabase = await getSupabase();
   if (!supabase) return [];
   const BASE_HIT_RESULTS = new Set(["single", "double", "triple", "hr"]);
   const { data } = await supabase
@@ -174,6 +561,7 @@ export async function getTeamPlateAppearancesForSpray(): Promise<
 }
 
 export async function getPlateAppearancesByBatter(batterId: string): Promise<PlateAppearance[]> {
+  const supabase = await getSupabase();
   if (!supabase || isDemoId(batterId)) return [];
   const { data } = await supabase
     .from("plate_appearances")
@@ -185,6 +573,7 @@ export async function getPlateAppearancesByBatter(batterId: string): Promise<Pla
 
 /** Fetch all PAs for the given batters (for trend: group by batter_id, take last N per player). */
 export async function getPlateAppearancesByBatters(batterIds: string[]): Promise<PlateAppearance[]> {
+  const supabase = await getSupabase();
   if (!supabase || batterIds.length === 0) return [];
   const ids = batterIds.filter((id) => !isDemoId(id));
   if (ids.length === 0) return [];
@@ -197,6 +586,7 @@ export async function getPlateAppearancesByBatters(batterIds: string[]): Promise
 }
 
 export async function getDefensiveEventsByGame(gameId: string): Promise<DefensiveEvent[]> {
+  const supabase = await getSupabase();
   if (!supabase || isDemoId(gameId)) return [];
   const { data } = await supabase
     .from("defensive_events")
@@ -207,6 +597,7 @@ export async function getDefensiveEventsByGame(gameId: string): Promise<Defensiv
 }
 
 export async function getPlayerRating(playerId: string): Promise<PlayerRating | null> {
+  const supabase = await getSupabase();
   if (!supabase) return null;
   const { data } = await supabase
     .from("player_ratings")
@@ -220,6 +611,7 @@ export async function getPlayerRating(playerId: string): Promise<PlayerRating | 
 export async function getPlayerRatingsBatch(
   playerIds: string[]
 ): Promise<Record<string, Pick<PlayerRating, "contact_reliability" | "damage_potential" | "decision_quality" | "defense_trust">>> {
+  const supabase = await getSupabase();
   if (!supabase || playerIds.length === 0) return {};
   const { data } = await supabase
     .from("player_ratings")
@@ -242,6 +634,7 @@ export async function getPlayerRatingsBatch(
 export async function getBattingStatsForPlayers(
   playerIds: string[]
 ): Promise<Record<string, BattingStats>> {
+  const supabase = await getSupabase();
   if (!supabase || playerIds.length === 0) return {};
   const { data } = await supabase
     .from("plate_appearances")
@@ -273,14 +666,153 @@ export async function getBattingStatsForPlayers(
     }
   }
 
+  const brTotals = await getBaserunningTotalsForPlayerIds(playerIds);
+
+  const cleanIds = playerIds.filter((id) => !isDemoId(id));
+  const { data: lineupRows } = await supabase
+    .from("game_lineups")
+    .select("game_id, player_id")
+    .in("player_id", cleanIds);
+
+  const startedByPlayer = new Map<string, Set<string>>();
+  for (const row of lineupRows ?? []) {
+    const r = row as { game_id: string; player_id: string };
+    const set = startedByPlayer.get(r.player_id) ?? new Set<string>();
+    set.add(r.game_id);
+    startedByPlayer.set(r.player_id, set);
+  }
+
+  const emptyShell = (playerId: string, startedGames: Set<string>): BattingStats => ({
+    avg: 0,
+    obp: 0,
+    slg: 0,
+    ops: 0,
+    opsPlus: 100,
+    woba: 0,
+    pa: 0,
+    ab: 0,
+    r: runsByPlayer[playerId] ?? 0,
+    gp: 0,
+    gs: startedGames.size,
+  });
+
   const result: Record<string, BattingStats> = {};
   for (const playerId of playerIds) {
+    if (isDemoId(playerId)) continue;
     const pas = byBatter.get(playerId) ?? [];
-    const stats = battingStatsFromPAs(pas);
+    const startedGames = startedByPlayer.get(playerId) ?? new Set<string>();
+    let stats = battingStatsFromPAs(pas);
+    const br = brTotals[playerId] ?? { sb: 0, cs: 0 };
+    if (!stats && (br.sb > 0 || br.cs > 0)) stats = emptyShell(playerId, startedGames);
     if (stats) {
       stats.r = runsByPlayer[playerId] ?? 0;
+      if (br.sb > 0 || br.cs > 0) mergeBaserunningIntoBattingStats(stats, br);
+      stats.gp = distinctGameCount(pas);
+      stats.gs = startedGames.size;
       result[playerId] = stats;
     }
+  }
+  return result;
+}
+
+const EMPTY_RATE_LINE = (): PitchingRateLine => ({
+  pa: 0,
+  ip: 0,
+  k7: 0,
+  bb7: 0,
+  h7: 0,
+  hr7: 0,
+  kPct: 0,
+  bbPct: 0,
+  pPa: null,
+  strikePct: null,
+  fpsPct: null,
+});
+
+const EMPTY_PITCHING_STATS = (): PitchingStats => ({
+  g: 0,
+  gs: 0,
+  ip: 0,
+  ipDisplay: "0",
+  h: 0,
+  r: 0,
+  er: 0,
+  era: 0,
+  hr: 0,
+  so: 0,
+  bb: 0,
+  hbp: 0,
+  fip: 0,
+  whip: 0,
+  rates: EMPTY_RATE_LINE(),
+});
+
+const EMPTY_PITCHING_STATS_WITH_SPLITS = (): PitchingStatsWithSplits => ({
+  overall: EMPTY_PITCHING_STATS(),
+  vsLHB: null,
+  vsRHB: null,
+});
+
+/** Pitching stats: PAs where `pitcher_id` matches; GS = listed SP on `games` only when ≥1 PA exists for that game. */
+export async function getPitchingStatsForPlayers(
+  playerIds: string[],
+  options?: { excludeGameId?: string | null }
+): Promise<Record<string, PitchingStatsWithSplits>> {
+  const supabase = await getSupabase();
+  if (!supabase || playerIds.length === 0) return {};
+  const clean = playerIds.filter((id) => !isDemoId(id));
+  if (clean.length === 0) return {};
+
+  const excludeGid = options?.excludeGameId?.trim() || null;
+
+  const { data: pasRows } = await supabase.from("plate_appearances").select("*").in("pitcher_id", clean);
+  const byPitcher = new Map<string, PlateAppearance[]>();
+  const batterIds = new Set<string>();
+  for (const pa of pasRows ?? []) {
+    const p = pa as PlateAppearance;
+    if (!p.pitcher_id) continue;
+    if (excludeGid && p.game_id === excludeGid) continue;
+    const list = byPitcher.get(p.pitcher_id) ?? [];
+    list.push(p);
+    byPitcher.set(p.pitcher_id, list);
+    if (p.batter_id) batterIds.add(p.batter_id);
+  }
+
+  const batterBatsById = new Map<string, Bats | null>();
+  if (batterIds.size > 0) {
+    const { data: batterRows } = await supabase.from("players").select("id, bats").in("id", [...batterIds]);
+    for (const row of batterRows ?? []) {
+      const r = row as { id: string; bats: string | null };
+      batterBatsById.set(r.id, (r.bats as Bats | null) ?? null);
+    }
+  }
+
+  const [homeStarters, awayStarters] = await Promise.all([
+    supabase.from("games").select("id, starting_pitcher_home_id").in("starting_pitcher_home_id", clean),
+    supabase.from("games").select("id, starting_pitcher_away_id").in("starting_pitcher_away_id", clean),
+  ]);
+
+  const starterGames = new Map<string, Set<string>>();
+  for (const id of clean) starterGames.set(id, new Set<string>());
+  for (const row of homeStarters.data ?? []) {
+    const r = row as { id: string; starting_pitcher_home_id: string | null };
+    if (r.starting_pitcher_home_id) {
+      starterGames.get(r.starting_pitcher_home_id)?.add(r.id);
+    }
+  }
+  for (const row of awayStarters.data ?? []) {
+    const r = row as { id: string; starting_pitcher_away_id: string | null };
+    if (r.starting_pitcher_away_id) {
+      starterGames.get(r.starting_pitcher_away_id)?.add(r.id);
+    }
+  }
+
+  const result: Record<string, PitchingStatsWithSplits> = {};
+  for (const playerId of clean) {
+    const pas = byPitcher.get(playerId) ?? [];
+    const starters = starterGames.get(playerId) ?? new Set<string>();
+    const stats = pitchingStatsFromPAs(pas, starters, batterBatsById);
+    result[playerId] = stats ?? EMPTY_PITCHING_STATS_WITH_SPLITS();
   }
   return result;
 }
@@ -289,6 +821,7 @@ export async function getBattingStatsForPlayers(
 export async function getTeamBattingStats(
   playerIds: string[]
 ): Promise<BattingStats | null> {
+  const supabase = await getSupabase();
   if (!supabase || playerIds.length === 0) return null;
   const ids = playerIds.filter((id) => !isDemoId(id));
   if (ids.length === 0) return null;
@@ -297,7 +830,31 @@ export async function getTeamBattingStats(
     .select("*")
     .in("batter_id", ids);
   const allPAs = (data ?? []) as PlateAppearance[];
-  if (allPAs.length === 0) return null;
+  const brTotals = await getBaserunningTotalsForPlayerIds(ids);
+  let teamSb = 0;
+  let teamCs = 0;
+  for (const id of ids) {
+    teamSb += brTotals[id]?.sb ?? 0;
+    teamCs += brTotals[id]?.cs ?? 0;
+  }
+
+  if (allPAs.length === 0) {
+    if (teamSb === 0 && teamCs === 0) return null;
+    const shell: BattingStats = {
+      avg: 0,
+      obp: 0,
+      slg: 0,
+      ops: 0,
+      opsPlus: 100,
+      woba: 0,
+      pa: 0,
+      ab: 0,
+      r: 0,
+    };
+    mergeBaserunningIntoBattingStats(shell, { sb: teamSb, cs: teamCs });
+    return shell;
+  }
+
   const teamRuns = allPAs.reduce(
     (sum, pa) => sum + (pa.runs_scored_player_ids?.length ?? 0),
     0
@@ -305,13 +862,80 @@ export async function getTeamBattingStats(
   const stats = battingStatsFromPAs(allPAs);
   if (!stats) return null;
   stats.r = teamRuns;
+  if (teamSb > 0 || teamCs > 0) mergeBaserunningIntoBattingStats(stats, { sb: teamSb, cs: teamCs });
   return stats;
+}
+
+/** Team batting in RISP situations only (runners on 2nd and/or 3rd). P/PA uses pitch counts on those PAs. */
+export async function getTeamBattingStatsRisp(
+  playerIds: string[]
+): Promise<BattingStats | null> {
+  const supabase = await getSupabase();
+  if (!supabase || playerIds.length === 0) return null;
+  const ids = playerIds.filter((id) => !isDemoId(id));
+  if (ids.length === 0) return null;
+  const { data } = await supabase
+    .from("plate_appearances")
+    .select("*")
+    .in("batter_id", ids);
+  const allPAs = (data ?? []) as PlateAppearance[];
+  const rispPAs = allPAs.filter((pa) => isRisp(pa.base_state));
+  if (rispPAs.length === 0) return null;
+  const teamRuns = rispPAs.reduce(
+    (sum, pa) => sum + (pa.runs_scored_player_ids?.length ?? 0),
+    0
+  );
+  const stats = battingStatsFromPAs(rispPAs);
+  if (!stats) return null;
+  stats.r = teamRuns;
+  return stats;
+}
+
+/** Team-level pitching: all PAs where `pitcher_id` is on the roster; one aggregate line + total pitch count. */
+export async function getTeamPitchingStats(
+  playerIds: string[]
+): Promise<(PitchingStats & { pitchesTotal: number }) | null> {
+  const supabase = await getSupabase();
+  if (!supabase || playerIds.length === 0) return null;
+  const ids = playerIds.filter((id) => !isDemoId(id));
+  if (ids.length === 0) return null;
+
+  const { data } = await supabase
+    .from("plate_appearances")
+    .select("*")
+    .in("pitcher_id", ids);
+  const pas = (data ?? []) as PlateAppearance[];
+  if (pas.length === 0) return null;
+
+  const batterIds = new Set<string>();
+  for (const pa of pas) {
+    if (pa.batter_id) batterIds.add(pa.batter_id);
+  }
+  const batterBatsById = new Map<string, Bats | null>();
+  if (batterIds.size > 0) {
+    const { data: batterRows } = await supabase.from("players").select("id, bats").in("id", [...batterIds]);
+    for (const row of batterRows ?? []) {
+      const r = row as { id: string; bats: string | null };
+      batterBatsById.set(r.id, (r.bats as Bats | null) ?? null);
+    }
+  }
+
+  const merged = pitchingStatsFromPAs(pas, new Set(), batterBatsById);
+  if (!merged?.overall) return null;
+
+  const pitchesTotal = pas.reduce((sum, p) => {
+    const v = p.pitches_seen;
+    return sum + (v != null && !Number.isNaN(v) ? v : 0);
+  }, 0);
+
+  return { ...merged.overall, pitchesTotal };
 }
 
 /** Same as getBattingStatsForPlayers but also returns vs LHP / vs RHP splits (by pitcher_hand on PAs). */
 export async function getBattingStatsWithSplitsForPlayers(
   playerIds: string[]
 ): Promise<Record<string, BattingStatsWithSplits>> {
+  const supabase = await getSupabase();
   if (!supabase || playerIds.length === 0) return {};
   const { data } = await supabase
     .from("plate_appearances")
@@ -355,23 +979,82 @@ export async function getBattingStatsWithSplitsForPlayers(
     }
   }
 
+  const brTotals = await getBaserunningTotalsForPlayerIds(playerIds);
+
+  const cleanIds = playerIds.filter((id) => !isDemoId(id));
+  const { data: lineupRows } = await supabase
+    .from("game_lineups")
+    .select("game_id, player_id")
+    .in("player_id", cleanIds);
+
+  const startedByPlayer = new Map<string, Set<string>>();
+  for (const row of lineupRows ?? []) {
+    const r = row as { game_id: string; player_id: string };
+    const set = startedByPlayer.get(r.player_id) ?? new Set<string>();
+    set.add(r.game_id);
+    startedByPlayer.set(r.player_id, set);
+  }
+
   const result: Record<string, BattingStatsWithSplits> = {};
   for (const playerId of playerIds) {
+    if (isDemoId(playerId)) continue;
     const pas = byBatter.get(playerId) ?? [];
     const pasVsL = pas.filter((pa) => pa.pitcher_hand === "L");
     const pasVsR = pas.filter((pa) => pa.pitcher_hand === "R");
+    const pasRisp = pas.filter((pa) => isRisp(pa.base_state));
 
-    const overall = battingStatsFromPAs(pas);
+    const startedGames = startedByPlayer.get(playerId) ?? new Set<string>();
+
+    const br = brTotals[playerId] ?? { sb: 0, cs: 0 };
+    let overall = battingStatsFromPAs(pas);
+    if (!overall && (br.sb > 0 || br.cs > 0)) {
+      overall = {
+        avg: 0,
+        obp: 0,
+        slg: 0,
+        ops: 0,
+        opsPlus: 100,
+        woba: 0,
+        pa: 0,
+        ab: 0,
+        r: runsByPlayer[playerId] ?? 0,
+        gp: 0,
+        gs: startedGames.size,
+      };
+    }
     if (!overall) continue;
     overall.r = runsByPlayer[playerId] ?? 0;
+    if (br.sb > 0 || br.cs > 0) mergeBaserunningIntoBattingStats(overall, br);
+
+    overall.gp = distinctGameCount(pas);
+    overall.gs = startedGames.size;
 
     const vsLStats = pasVsL.length > 0 ? battingStatsFromPAs(pasVsL) : null;
-    if (vsLStats) vsLStats.r = runsVsL[playerId] ?? 0;
+    if (vsLStats) {
+      vsLStats.r = runsVsL[playerId] ?? 0;
+      vsLStats.gp = distinctGameCount(pasVsL);
+      vsLStats.gs = gamesStartedInSplit(startedGames, pasVsL);
+    }
 
     const vsRStats = pasVsR.length > 0 ? battingStatsFromPAs(pasVsR) : null;
-    if (vsRStats) vsRStats.r = runsVsR[playerId] ?? 0;
+    if (vsRStats) {
+      vsRStats.r = runsVsR[playerId] ?? 0;
+      vsRStats.gp = distinctGameCount(pasVsR);
+      vsRStats.gs = gamesStartedInSplit(startedGames, pasVsR);
+    }
 
-    result[playerId] = { overall, vsL: vsLStats, vsR: vsRStats };
+    const rispStats = pasRisp.length > 0 ? battingStatsFromPAs(pasRisp) : null;
+    if (rispStats) {
+      let runsRisp = 0;
+      for (const pa of pasRisp) {
+        runsRisp += (pa.runs_scored_player_ids ?? []).filter((id) => id === playerId).length;
+      }
+      rispStats.r = runsRisp;
+      rispStats.gp = distinctGameCount(pasRisp);
+      rispStats.gs = gamesStartedInSplit(startedGames, pasRisp);
+    }
+
+    result[playerId] = { overall, vsL: vsLStats, vsR: vsRStats, risp: rispStats };
   }
   return result;
 }
@@ -381,6 +1064,7 @@ export async function upsertPlayerRating(
   ratings: { contact_reliability: number; damage_potential: number; decision_quality: number; defense_trust: number },
   overriddenBy: string
 ): Promise<void> {
+  const supabase = await getSupabase();
   if (!supabase) return;
   await supabase.from("player_ratings").upsert({
     player_id: playerId,
@@ -394,6 +1078,7 @@ export async function upsertPlayerRating(
 export async function insertPlateAppearance(
   pa: Omit<PlateAppearance, "id" | "created_at">
 ): Promise<PlateAppearance | null> {
+  const supabase = await getSupabase();
   if (!supabase) return null;
   const payload = { ...pa };
   for (const key of Object.keys(payload) as (keyof typeof payload)[]) {
@@ -405,6 +1090,7 @@ export async function insertPlateAppearance(
 }
 
 export async function deletePlateAppearance(paId: string): Promise<boolean> {
+  const supabase = await getSupabase();
   if (!supabase || !paId) return false;
   const { error } = await supabase.from("plate_appearances").delete().eq("id", paId);
   return !error;
@@ -412,7 +1098,9 @@ export async function deletePlateAppearance(paId: string): Promise<boolean> {
 
 /** Delete all plate appearances for a single game. Returns number deleted. */
 export async function deletePlateAppearancesByGame(gameId: string): Promise<number> {
+  const supabase = await getSupabase();
   if (!supabase || !gameId) return 0;
+  await deleteBaserunningEventsByGame(gameId);
   const { data, error } = await supabase
     .from("plate_appearances")
     .delete()
@@ -424,7 +1112,9 @@ export async function deletePlateAppearancesByGame(gameId: string): Promise<numb
 
 /** Delete all plate appearances (clears all stats). Returns number deleted. */
 export async function deleteAllPlateAppearances(): Promise<number> {
+  const supabase = await getSupabase();
   if (!supabase) return 0;
+  await deleteAllBaserunningEvents();
   const { data, error } = await supabase
     .from("plate_appearances")
     .delete()
@@ -435,6 +1125,7 @@ export async function deleteAllPlateAppearances(): Promise<number> {
 }
 
 export async function getGame(id: string): Promise<Game | null> {
+  const supabase = await getSupabase();
   if (!supabase) return null;
   const { data } = await supabase.from("games").select("*").eq("id", id).single();
   return data as Game | null;
@@ -443,20 +1134,27 @@ export async function getGame(id: string): Promise<Game | null> {
 export async function insertGame(
   game: Omit<Game, "id" | "created_at">
 ): Promise<Game | null> {
+  const supabase = await getSupabase();
   if (!supabase) return null;
   const { data } = await supabase.from("games").insert(game).select().single();
   return data as Game | null;
 }
 
-/** Create a game and assign a lineup. If savedLineupId is provided, use that template; else use first 9 players. */
+/** Create a game and assign our lineup; optionally assign opponent lineup (same transaction of inserts). */
 export async function createGameWithLineup(
   game: Omit<Game, "id" | "created_at">,
-  savedLineupId?: string | null
+  savedLineupId?: string | null,
+  opponentSlots?: { player_id: string; position?: string | null }[] | null,
+  /** When set (e.g. from the lineup modal), overrides saved template / default. */
+  ourSlotsOverride?: { player_id: string; position?: string | null }[] | null
 ): Promise<Game | null> {
   const created = await insertGame(game);
   if (!created) return null;
   let slots: { player_id: string; position?: string | null }[] = [];
-  if (savedLineupId && !isDemoId(savedLineupId)) {
+  const ourOverride = ourSlotsOverride?.filter((s) => s.player_id && !isDemoId(s.player_id)) ?? [];
+  if (ourOverride.length > 0) {
+    slots = ourOverride.map((s) => ({ player_id: s.player_id, position: s.position ?? null }));
+  } else if (savedLineupId && !isDemoId(savedLineupId)) {
     const saved = await getSavedLineupWithSlots(savedLineupId);
     if (saved?.slots?.length) {
       const ordered = [...saved.slots].sort((a, b) => a.slot - b.slot);
@@ -467,12 +1165,16 @@ export async function createGameWithLineup(
   }
   if (slots.length === 0) {
     const players = await getPlayers();
-    slots = players
-      .slice(0, 9)
-      .filter((p) => !isDemoId(p.id))
-      .map((p) => ({ player_id: p.id, position: null }));
+    const club = players.filter((p) => !isDemoId(p.id) && isClubRosterPlayer(p));
+    slots = club.slice(0, 9).map((p) => ({ player_id: p.id, position: null }));
   }
-  if (slots.length > 0) await insertGameLineup(created.id, slots);
+  if (slots.length > 0) await insertGameLineup(created.id, created.our_side as LineupSide, slots);
+
+  const opp = opponentSlots?.filter((s) => s.player_id && !isDemoId(s.player_id)) ?? [];
+  if (opp.length > 0) {
+    const opponentSide: LineupSide = created.our_side === "home" ? "away" : "home";
+    await insertGameLineup(created.id, opponentSide, opp);
+  }
   return created;
 }
 
@@ -480,22 +1182,26 @@ export async function updateGame(
   id: string,
   updates: Partial<Omit<Game, "id" | "created_at">>
 ): Promise<Game | null> {
+  const supabase = await getSupabase();
   if (!supabase || isDemoId(id)) return null;
   const { data } = await supabase.from("games").update(updates).eq("id", id).select().single();
   return data as Game | null;
 }
 
-/** Replace the game's lineup. slots: in order (slot 1, 2, …); each may have position for this game. */
+/** Replace one side's lineup for a game. Does not touch the other side. */
 export async function replaceGameLineup(
   gameId: string,
+  side: LineupSide,
   slots: { player_id: string; position?: string | null }[]
 ): Promise<void> {
+  const supabase = await getSupabase();
   if (!supabase || isDemoId(gameId)) return;
-  await supabase.from("game_lineups").delete().eq("game_id", gameId);
-  if (slots.length > 0) await insertGameLineup(gameId, slots);
+  await supabase.from("game_lineups").delete().eq("game_id", gameId).eq("side", side);
+  if (slots.length > 0) await insertGameLineup(gameId, side, slots);
 }
 
 export async function deleteGame(id: string): Promise<boolean> {
+  const supabase = await getSupabase();
   if (!supabase || isDemoId(id)) return false;
   const { error } = await supabase.from("games").delete().eq("id", id);
   return !error;
@@ -504,6 +1210,7 @@ export async function deleteGame(id: string): Promise<boolean> {
 export async function insertPlayer(
   player: Omit<Player, "id" | "created_at">
 ): Promise<Player | null> {
+  const supabase = await getSupabase();
   if (!supabase) return null;
   const { data, error } = await supabase.from("players").insert(player).select().single();
   if (error) throw new Error(error.message);
@@ -514,8 +1221,99 @@ export async function updatePlayer(
   id: string,
   updates: Partial<Omit<Player, "id" | "created_at">>
 ): Promise<Player | null> {
+  const supabase = await getSupabase();
   if (!supabase || isDemoId(id)) return null;
   const { data, error } = await supabase.from("players").update(updates).eq("id", id).select().single();
   if (error) throw new Error(error.message);
   return data as Player | null;
+}
+
+/** Roster batting + last 10 PAs (by `created_at`) for the Players to Watch dashboard card. */
+export async function getPlayersToWatchInput(): Promise<PlayerStatsForWatch[]> {
+  const supabase = await getSupabase();
+  const players = await getPlayers();
+  const list = players
+    .filter((p) => !isDemoId(p.id))
+    .filter((p) => isClubRosterPlayer(p))
+    .filter((p) => !isPitcherPlayer(p));
+  if (list.length === 0 || !supabase) return [];
+
+  const ids = list.map((p) => p.id);
+  const { data } = await supabase
+    .from("plate_appearances")
+    .select("*")
+    .in("batter_id", ids);
+
+  const allPAs = (data ?? []) as PlateAppearance[];
+  const byBatter = new Map<string, PlateAppearance[]>();
+  for (const pa of allPAs) {
+    if (isDemoId(pa.batter_id)) continue;
+    const arr = byBatter.get(pa.batter_id) ?? [];
+    arr.push(pa);
+    byBatter.set(pa.batter_id, arr);
+  }
+  for (const [bid, arr] of byBatter) {
+    arr.sort((a, b) => {
+      const ta = a.created_at ?? "";
+      const tb = b.created_at ?? "";
+      return tb.localeCompare(ta);
+    });
+    byBatter.set(bid, arr);
+  }
+
+  const batting = await getBattingStatsForPlayers(ids);
+  const out: PlayerStatsForWatch[] = [];
+
+  for (const p of list) {
+    const pas = byBatter.get(p.id) ?? [];
+    const season = batting[p.id];
+    const recent = pas.slice(0, 10);
+    const last10Stats = recent.length > 0 ? battingStatsFromPAs(recent) : null;
+
+    const last10Runs =
+      recent.length > 0
+        ? recent.reduce((sum, pa) => {
+            const ids = pa.runs_scored_player_ids ?? [];
+            return sum + ids.filter((id) => id === p.id).length;
+          }, 0)
+        : 0;
+
+    const last10PA =
+      last10Stats && recent.length > 0
+        ? {
+            avg: last10Stats.avg,
+            obp: last10Stats.obp,
+            slg: last10Stats.slg,
+            ops: last10Stats.ops,
+            hits: last10Stats.h ?? 0,
+            ab: last10Stats.ab ?? 0,
+            hr: last10Stats.hr ?? 0,
+            double: last10Stats.double ?? 0,
+            triple: last10Stats.triple ?? 0,
+            rbi: last10Stats.rbi ?? 0,
+            r: last10Runs,
+            sb: last10Stats.sb ?? 0,
+            strikeouts: last10Stats.so ?? 0,
+            paCount: recent.length,
+            kRate: kPctToKRate(last10Stats.kPct),
+            bbRate: (last10Stats.bbPct ?? 0) * 100,
+          }
+        : undefined;
+
+    out.push({
+      id: p.id,
+      name: p.name,
+      position: p.positions?.[0] ?? "—",
+      pa: season?.pa ?? 0,
+      avg: season?.avg ?? 0,
+      obp: season?.obp ?? 0,
+      slg: season?.slg ?? 0,
+      ops: season?.ops ?? 0,
+      kRate: kPctToKRate(season?.kPct),
+      bbRate: (season?.bbPct ?? 0) * 100,
+      last10PA,
+    });
+  }
+
+  return out;
 }

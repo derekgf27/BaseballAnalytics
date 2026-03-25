@@ -1,14 +1,30 @@
 "use client";
 
-import Link from "next/link";
+import { formatPPa } from "@/lib/format";
 import { formatHeight } from "@/lib/height";
-import type { BattingStats, BattingStatsWithSplits, Player, Ratings } from "@/lib/types";
+import { BATTING_STAT_HEADER_TOOLTIPS } from "@/lib/statHeaderTooltips";
+import { TeamSprayChart } from "@/components/analyst/TeamSprayChart";
+import type { BattingStats, BattingStatsWithSplits, HitDirection, Player, Ratings } from "@/lib/types";
 
 interface PlayerProfileClientProps {
   player: Player;
   ratings: Ratings;
   isOverridden: boolean;
   battingSplits: BattingStatsWithSplits | null;
+  spraySplits:
+    | {
+        vsL: {
+          hand: "L" | "R";
+          data: { hit_direction: HitDirection }[];
+          line: { pa: number; h: number; ab: number };
+        } | null;
+        vsR: {
+          hand: "L" | "R";
+          data: { hit_direction: HitDirection }[];
+          line: { pa: number; h: number; ab: number };
+        } | null;
+      }
+    | null;
 }
 
 /** Parse YYYY-MM-DD as local date to avoid UTC-off-by-one when displaying. */
@@ -25,7 +41,9 @@ function formatAvg(n: number): string {
 export function PlayerProfileClient({
   player,
   battingSplits,
+  spraySplits,
 }: PlayerProfileClientProps) {
+  const isSwitch = player.bats?.toUpperCase().startsWith("S") ?? false;
   const today = new Date();
   const age =
     player.birth_date != null && player.birth_date !== ""
@@ -82,18 +100,9 @@ export function PlayerProfileClient({
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-end">
-        <Link
-          href="/analyst/players"
-          className="text-base font-medium text-[var(--accent)] hover:underline"
-        >
-          ← Players
-        </Link>
-      </div>
-
-      <div className="card-tech flex flex-col gap-6 p-6 sm:flex-row">
-        <div className="flex shrink-0 flex-col items-center gap-3 sm:w-40">
-          <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[var(--accent-dim)] text-2xl font-bold text-[var(--accent)]">
+      <div className="card-tech flex flex-col gap-5 p-4 sm:flex-row sm:items-start">
+        <div className="flex shrink-0 flex-row items-center gap-4 sm:flex-col sm:items-center sm:gap-2 sm:w-36">
+          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-[var(--accent-dim)] text-xl font-bold text-[var(--accent)] sm:h-24 sm:w-24 sm:text-2xl">
             {player.name
               .split(/\s+/)
               .map((w) => w[0])
@@ -101,19 +110,23 @@ export function PlayerProfileClient({
               .slice(0, 2)
               .toUpperCase()}
           </div>
-          <p className="text-center text-lg font-semibold text-[var(--text)] sm:text-xl">
+          <p className="min-w-0 flex-1 text-left text-base font-semibold text-[var(--text)] sm:flex-none sm:text-center sm:text-lg">
             {player.name}
           </p>
         </div>
-        <div className="min-w-0 flex-1 space-y-3">
-          {rows.map(({ label, value }) => (
-            <div key={label}>
-              <p className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-                {label}
-              </p>
-              <p className="mt-0.5 text-base font-semibold text-[var(--text)]">{value}</p>
-            </div>
-          ))}
+        <div className="min-w-0 flex-1">
+          <div className="grid grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
+            {rows.map(({ label, value }) => (
+              <div key={label} className="min-w-0">
+                <p className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+                  {label}
+                </p>
+                <p className="mt-0.5 break-words text-sm font-semibold text-[var(--text)] sm:text-base">
+                  {value}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -122,34 +135,38 @@ export function PlayerProfileClient({
           <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-white">
             Season line
           </h2>
-          <p className="mt-1 text-xs text-[var(--text-faint)]">
-            Same format as the batting stats table, for this player only.
-          </p>
           <div className="mt-3 overflow-x-auto">
             <table className="w-full border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)] text-[var(--text)]">
-                  <th className="py-2 pr-3 text-left text-xs font-semibold uppercase tracking-wider">PA</th>
-                  <th className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">AB</th>
-                  <th className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">H</th>
-                  <th className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">2B</th>
-                  <th className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">3B</th>
-                  <th className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">HR</th>
-                  <th className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">RBI</th>
-                  <th className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">R</th>
-                  <th className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">SB</th>
-                  <th className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">BB</th>
-                  <th className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">IBB</th>
-                  <th className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">HBP</th>
-                  <th className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">SO</th>
-                  <th className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">K%</th>
-                  <th className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">BB%</th>
-                  <th className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">AVG</th>
-                  <th className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">OBP</th>
-                  <th className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">SLG</th>
-                  <th className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">OPS</th>
-                  <th className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">OPS+</th>
-                  <th className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">wOBA</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.gp} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">G</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.gs} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">GS</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.pa} className="py-2 pr-3 text-left text-xs font-semibold uppercase tracking-wider">PA</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.ab} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">AB</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.h} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">H</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.double} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">2B</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.triple} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">3B</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.hr} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">HR</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.rbi} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">RBI</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.r} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">R</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.sb} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">SB</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.cs} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">CS</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.sbPct} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">SB%</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.bb} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">BB</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.ibb} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">IBB</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.hbp} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">HBP</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.so} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">SO</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.gidp} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">GIDP</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.fieldersChoice} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">FC</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.pPa} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">P/PA</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.kPct} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">K%</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.bbPct} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">BB%</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.avg} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">AVG</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.obp} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">OBP</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.slg} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">SLG</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.ops} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">OPS</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.opsPlus} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">OPS+</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.woba} className="py-2 px-3 text-right text-xs font-semibold uppercase tracking-wider">wOBA</th>
                 </tr>
               </thead>
               <tbody>
@@ -182,6 +199,14 @@ export function PlayerProfileClient({
                     {battingSplits.overall.sb ?? "—"}
                   </td>
                   <td className="py-2 px-3 text-right tabular-nums text-[var(--text)]">
+                    {battingSplits.overall.cs ?? "—"}
+                  </td>
+                  <td className="py-2 px-3 text-right tabular-nums text-[var(--text)]">
+                    {battingSplits.overall.sbPct != null
+                      ? `${(battingSplits.overall.sbPct * 100).toFixed(1)}%`
+                      : "—"}
+                  </td>
+                  <td className="py-2 px-3 text-right tabular-nums text-[var(--text)]">
                     {battingSplits.overall.bb ?? "—"}
                   </td>
                   <td className="py-2 px-3 text-right tabular-nums text-[var(--text)]">
@@ -192,6 +217,15 @@ export function PlayerProfileClient({
                   </td>
                   <td className="py-2 px-3 text-right tabular-nums text-[var(--text)]">
                     {battingSplits.overall.so ?? "—"}
+                  </td>
+                  <td className="py-2 px-3 text-right tabular-nums text-[var(--text)]">
+                    {battingSplits.overall.gidp ?? "—"}
+                  </td>
+                  <td className="py-2 px-3 text-right tabular-nums text-[var(--text)]">
+                    {battingSplits.overall.fieldersChoice ?? "—"}
+                  </td>
+                  <td className="py-2 px-3 text-right tabular-nums text-[var(--text)]">
+                    {battingSplits.overall.pPa != null ? formatPPa(battingSplits.overall.pPa) : "—"}
                   </td>
                   <td className="py-2 px-3 text-right tabular-nums text-[var(--text)]">
                     {battingSplits.overall.kPct != null ? `${(battingSplits.overall.kPct * 100).toFixed(1)}%` : "—"}
@@ -229,20 +263,20 @@ export function PlayerProfileClient({
           <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-white">
             Batting splits
           </h2>
-          <p className="mt-1 text-xs text-[var(--text-faint)]">
-            Record pitcher hand when recording PAs to see vs LHP / vs RHP.
-          </p>
           <div className="mt-3 overflow-x-auto">
             <table className="w-full border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)] text-[var(--text)]">
-                  <th className="py-2 pr-4 font-semibold">Split</th>
-                  <th className="py-2 px-2 text-right">PA</th>
-                  <th className="py-2 px-2 text-right">AVG</th>
-                  <th className="py-2 px-2 text-right">OBP</th>
-                  <th className="py-2 px-2 text-right">SLG</th>
-                  <th className="py-2 px-2 text-right">OPS</th>
-                  <th className="py-2 px-2 text-right">wOBA</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.split} className="py-2 pr-4 font-semibold">Split</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.gp} className="py-2 px-2 text-right">G</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.gs} className="py-2 px-2 text-right">GS</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.pa} className="py-2 px-2 text-right">PA</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.pPa} className="py-2 px-2 text-right">P/PA</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.avg} className="py-2 px-2 text-right">AVG</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.obp} className="py-2 px-2 text-right">OBP</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.slg} className="py-2 px-2 text-right">SLG</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.ops} className="py-2 px-2 text-right">OPS</th>
+                  <th title={BATTING_STAT_HEADER_TOOLTIPS.woba} className="py-2 px-2 text-right">wOBA</th>
                 </tr>
               </thead>
               <tbody>
@@ -250,12 +284,18 @@ export function PlayerProfileClient({
                   { label: "Overall", s: battingSplits.overall },
                   { label: "vs LHP", s: battingSplits.vsL },
                   { label: "vs RHP", s: battingSplits.vsR },
+                  { label: "RISP", s: battingSplits.risp },
                 ].map(({ label, s }) => (
                   <tr key={label} className="border-b border-[var(--border)] last:border-0">
                     <td className="py-2 pr-4 font-medium text-[var(--text)]">{label}</td>
                     {s ? (
                       <>
+                        <td className="py-2 px-2 text-right tabular-nums text-[var(--text)]">{s.gp ?? "—"}</td>
+                        <td className="py-2 px-2 text-right tabular-nums text-[var(--text)]">{s.gs ?? "—"}</td>
                         <td className="py-2 px-2 text-right tabular-nums text-[var(--text)]">{s.pa ?? "—"}</td>
+                        <td className="py-2 px-2 text-right tabular-nums text-[var(--text)]">
+                          {s.pPa != null ? formatPPa(s.pPa) : "—"}
+                        </td>
                         <td className="py-2 px-2 text-right tabular-nums text-[var(--text)]">{formatAvg(s.avg)}</td>
                         <td className="py-2 px-2 text-right tabular-nums text-[var(--text)]">{formatAvg(s.obp)}</td>
                         <td className="py-2 px-2 text-right tabular-nums text-[var(--text)]">{formatAvg(s.slg)}</td>
@@ -264,7 +304,7 @@ export function PlayerProfileClient({
                       </>
                     ) : (
                       <>
-                        <td colSpan={6} className="py-2 px-2 text-right text-[var(--text-faint)]">
+                        <td colSpan={9} className="py-2 px-2 text-right text-[var(--text-faint)]">
                           No PAs
                         </td>
                       </>
@@ -275,6 +315,56 @@ export function PlayerProfileClient({
             </table>
           </div>
         </div>
+      )}
+
+      {spraySplits && (
+        <section className="space-y-4">
+          <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-white">Spray charts</h2>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="card-tech min-w-0 rounded-lg border border-[var(--border)] p-4">
+              {spraySplits.vsL ? (
+                <>
+                  <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-white">
+                    {isSwitch ? `${spraySplits.vsL.hand === "R" ? "RHB" : "LHB"} vs LHP` : "vs LHP"}
+                  </h3>
+                  <p className="mt-1 text-xs tabular-nums">
+                    <span className="text-[var(--accent)]">{spraySplits.vsL.line.pa}</span>
+                    <span className="text-white"> PA: </span>
+                    <span className="text-[var(--accent)]">{spraySplits.vsL.line.h}</span>
+                    <span className="text-white"> for </span>
+                    <span className="text-[var(--accent)]">{spraySplits.vsL.line.ab}</span>
+                  </p>
+                  <div className="mt-3">
+                    <TeamSprayChart data={spraySplits.vsL.data} hand={spraySplits.vsL.hand} compact />
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-[var(--text-muted)]">No vs LHP spray chart available.</p>
+              )}
+            </div>
+            <div className="card-tech min-w-0 rounded-lg border border-[var(--border)] p-4">
+              {spraySplits.vsR ? (
+                <>
+                  <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-white">
+                    {isSwitch ? `${spraySplits.vsR.hand === "R" ? "RHB" : "LHB"} vs RHP` : "vs RHP"}
+                  </h3>
+                  <p className="mt-1 text-xs tabular-nums">
+                    <span className="text-[var(--accent)]">{spraySplits.vsR.line.pa}</span>
+                    <span className="text-white"> PA: </span>
+                    <span className="text-[var(--accent)]">{spraySplits.vsR.line.h}</span>
+                    <span className="text-white"> for </span>
+                    <span className="text-[var(--accent)]">{spraySplits.vsR.line.ab}</span>
+                  </p>
+                  <div className="mt-3">
+                    <TeamSprayChart data={spraySplits.vsR.data} hand={spraySplits.vsR.hand} compact />
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-[var(--text-muted)]">No vs RHP spray chart available.</p>
+              )}
+            </div>
+          </div>
+        </section>
       )}
     </div>
   );

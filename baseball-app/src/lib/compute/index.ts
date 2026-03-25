@@ -1,6 +1,6 @@
 /**
  * Computation layer — pure functions. No DB, no UI.
- * Used by both Analyst (charts, displayed ratings) and Coach (lineup, green light, situation, alerts).
+ * Used by both Analyst (charts, displayed ratings) and Coach (lineup, green light, situation).
  */
 
 export { ratingsFromEvents } from "./ratings";
@@ -23,7 +23,7 @@ export {
   substitutionAlerts,
   type CoachAlert,
 } from "./alerts";
-export { trendFromRecentPAs, type Trend } from "./trends";
+export { trendFromRecentPAs, TREND_RECENT_PA_COUNT, type Trend } from "./trends";
 export { platoonFromSplits, type PlatoonPreference } from "./platoon";
 export {
   buildRETable,
@@ -35,4 +35,9 @@ export {
   BASE_STATES,
   OUTS,
 } from "./runExpectancy";
-export type { RETable, REState, PAForRE } from "./runExpectancy";
+export type {
+  RETable,
+  REState,
+  PAForRE,
+  BaseStateAfterResultOpts,
+} from "./runExpectancy";

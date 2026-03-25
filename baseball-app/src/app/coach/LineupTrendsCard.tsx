@@ -34,7 +34,7 @@ export function LineupTrendsCard({ recommendedLineup }: LineupTrendsCardProps) {
             <p className="truncate text-sm font-medium text-[var(--neo-text)]">{p.playerName}</p>
             <p className="mt-0.5 text-xs text-[var(--neo-text-muted)]">
               {rs
-                ? `Last ${rs.pa} PA · AVG ${formatAvgLike(rs.avg)} · OPS ${formatAvgLike(rs.ops)}`
+                ? `Last ${rs.pa} PA · (${rs.h} for ${rs.ab}) · AVG ${formatAvgLike(rs.avg)} · OPS ${formatAvgLike(rs.ops)}`
                 : "Trend detected from recent results"}
             </p>
           </div>
@@ -48,33 +48,35 @@ export function LineupTrendsCard({ recommendedLineup }: LineupTrendsCardProps) {
     });
 
   return (
-    <div className="neo-card p-4">
+    <div className="neo-card p-4 lg:p-5">
       <h2 className="section-label mb-3">Trends</h2>
 
       {hotPlayers.length === 0 && coldPlayers.length === 0 ? (
         <p className="text-sm text-[var(--neo-text-muted)]">No strong hot or cold trends in lineup.</p>
       ) : (
-        <div className="space-y-4">
-          <div className="rounded-lg border border-[var(--neo-border)] bg-[var(--neo-bg-card)]/80">
-            <div className="border-b border-red-300/40 bg-red-600/30 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-red-100">
-              🔥 Hot now
+        <div className="overflow-hidden rounded-lg border border-[var(--neo-border)] bg-[var(--neo-bg-card)]/80">
+          <div className="grid grid-cols-1 sm:grid-cols-2 sm:divide-x sm:divide-[var(--neo-border)]">
+            <div className="min-w-0 border-b border-[var(--neo-border)] sm:border-b-0">
+              <div className="border-b border-red-300/40 bg-red-600/30 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-red-100">
+                🔥 Hot now
+              </div>
+              {hotPlayers.length > 0 ? (
+                <ul className="space-y-2 p-3">{renderList(hotPlayers, "hot")}</ul>
+              ) : (
+                <p className="px-3 py-3 text-sm text-[var(--neo-text-muted)]">No hot players right now.</p>
+              )}
             </div>
-            {hotPlayers.length > 0 ? (
-              <ul className="space-y-2 p-3">{renderList(hotPlayers, "hot")}</ul>
-            ) : (
-              <p className="px-3 py-3 text-sm text-[var(--neo-text-muted)]">No hot players right now.</p>
-            )}
-          </div>
 
-          <div className="rounded-lg border border-[var(--neo-border)] bg-[var(--neo-bg-card)]/80">
-            <div className="border-b border-sky-200/40 bg-sky-500/30 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-cyan-50">
-              ❄️ Cold now
+            <div className="min-w-0">
+              <div className="border-b border-sky-200/40 bg-sky-500/30 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-cyan-50">
+                ❄️ Cold now
+              </div>
+              {coldPlayers.length > 0 ? (
+                <ul className="space-y-2 p-3">{renderList(coldPlayers, "cold")}</ul>
+              ) : (
+                <p className="px-3 py-3 text-sm text-[var(--neo-text-muted)]">No cold players right now.</p>
+              )}
             </div>
-            {coldPlayers.length > 0 ? (
-              <ul className="space-y-2 p-3">{renderList(coldPlayers, "cold")}</ul>
-            ) : (
-              <p className="px-3 py-3 text-sm text-[var(--neo-text-muted)]">No cold players right now.</p>
-            )}
           </div>
         </div>
       )}

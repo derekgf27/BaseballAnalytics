@@ -150,8 +150,8 @@ function transitionState(
     const newB = `${n1}${n2}${n3}` as BaseState;
     return { base_state: newB, outs: newOuts };
   }
-  if (result === "other") {
-    // Reached on error: batter to 1st, runners advance one (no out)
+  if (result === "other" || result === "reached_on_error") {
+    // Reached on error (or legacy "other"): batter to 1st, runners advance one (no out)
     const one = b[0] === "1" ? 1 : 0;
     const two = b[1] === "1" ? 1 : 0;
     const n1 = 1;
@@ -160,13 +160,52 @@ function transitionState(
     const newB = `${n1}${n2}${n3}` as BaseState;
     return { base_state: newB, outs: o };
   }
+  if (result === "fielders_choice") {
+    // Simplified: batter safe at 1st like ROE, runners advance one; one out on the play (adjust diamond manually if needed).
+    const one = b[0] === "1" ? 1 : 0;
+    const two = b[1] === "1" ? 1 : 0;
+    const n1 = 1;
+    const n2 = one;
+    const n3 = two;
+    const newB = `${n1}${n2}${n3}` as BaseState;
+    const newOuts = Math.min(2, o + 1);
+    return { base_state: newB, outs: newOuts };
+  }
+  if (result === "gidp") {
+    // Two outs; batter and runner from 1st out — clear 1st base only (2nd/3rd may need manual adjustment in Record UI).
+    const newB = (`0${b[1]}${b[2]}`) as BaseState;
+    const newOuts = Math.min(2, o + 2);
+    return { base_state: newB, outs: newOuts };
+  }
   // out, so: one more out, bases unchanged (simplified; no double-play advancement)
   const newOuts = Math.min(2, o + 1);
   return { base_state: b, outs: newOuts };
 }
 
+/** Optional hints when projecting the next base state (Record PAs). */
+export type BaseStateAfterResultOpts = {
+  /**
+   * For a double with runner on 1st only ("100"): if 0, assume the lead runner
+   * did not score (no RBI on the play) and stopped at 3rd → "011" instead of "010".
+   */
+  rbi?: number;
+};
+
 /** New base state after this result (for advancing game state in Record PAs). */
-export function getBaseStateAfterResult(baseState: BaseState, result: PAResult): BaseState {
+export function getBaseStateAfterResult(
+  baseState: BaseState,
+  result: PAResult,
+  opts?: BaseStateAfterResultOpts
+): BaseState {
+  const b = norm(baseState);
+  if (
+    result === "double" &&
+    b === "100" &&
+    opts != null &&
+    opts.rbi === 0
+  ) {
+    return "011";
+  }
   return transitionState(baseState, 0, result).base_state;
 }
 

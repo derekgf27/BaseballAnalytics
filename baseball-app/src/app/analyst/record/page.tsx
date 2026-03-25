@@ -1,5 +1,13 @@
 import { getGames, getPlayers } from "@/lib/db/queries";
-import { fetchPAsForGame, fetchGameLineupOrder, savePlateAppearance, deletePlateAppearanceAction } from "./actions";
+import {
+  fetchPAsForGame,
+  fetchGameLineupOrder,
+  savePlateAppearance,
+  deletePlateAppearanceAction,
+  fetchBaserunningEventsForGame,
+  saveBaserunningEventAction,
+  deleteBaserunningEventAction,
+} from "./actions";
 import RecordPageClient from "./RecordPageClient";
 
 export default async function RecordPAsPage({
@@ -25,6 +33,9 @@ export default async function RecordPAsPage({
       fetchGameLineupOrder={fetchGameLineupOrder}
       savePlateAppearance={savePlateAppearance}
       deletePlateAppearance={deletePlateAppearanceAction}
+      fetchBaserunningEventsForGame={fetchBaserunningEventsForGame}
+      saveBaserunningEventAction={saveBaserunningEventAction}
+      deleteBaserunningEventAction={deleteBaserunningEventAction}
     />
   );
 }

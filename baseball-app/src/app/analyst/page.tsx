@@ -1,21 +1,35 @@
 import Link from "next/link";
-import { getGames, getPlayers, getTeamBattingStats } from "@/lib/db/queries";
-import { formatDateMMDDYYYY, formatGameTime } from "@/lib/format";
+import { PlayersToWatchCard } from "@/components/analyst/PlayersToWatchCard";
+import {
+  getGames,
+  getPlayers,
+  getPlayersToWatchInput,
+  getTeamBattingStats,
+  getTeamBattingStatsRisp,
+  getTeamPitchingStats,
+} from "@/lib/db/queries";
+import { isDemoId } from "@/lib/db/mockData";
+import { buildRosterPreviewWatchRows, selectPlayersToWatch } from "@/lib/playersToWatch";
+import { computeTeamRecordFromGames, formatTeamRecordString } from "@/lib/gameRecord";
+import { formatDateMMDDYYYY, formatGameTime, formatPPa } from "@/lib/format";
 import { ScheduleCalendar } from "./ScheduleCalendar";
+import { isClubRosterPlayer, isPitcherPlayer } from "@/lib/opponentUtils";
 import type { Game } from "@/lib/types";
-
-const QUICK_LINKS = [
-  { href: "/analyst/games", icon: "📅", label: "Games", countKey: "games" as const },
-  { href: "/analyst/record", icon: "✏️", label: "Record PAs", countKey: null },
-  { href: "/analyst/players", icon: "👤", label: "Players", countKey: "players" as const },
-  { href: "/analyst/stats", icon: "📋", label: "Stats", countKey: null },
-  { href: "/analyst/lineup", icon: "📝", label: "Lineup", countKey: null },
-  { href: "/analyst/charts", icon: "📈", label: "Charts", countKey: null },
-  { href: "/analyst/run-expectancy", icon: "🏃", label: "Run expectancy", countKey: null },
-] as const;
 
 function formatAvgLike(val: number): string {
   return val.toFixed(3);
+}
+
+/** K% / BB% stored as 0–1 in BattingStats */
+function formatPctRate(val: number | undefined): string {
+  if (val === undefined || Number.isNaN(val)) return "—";
+  return `${(val * 100).toFixed(1)}%`;
+}
+
+/** ERA / WHIP / FIP — hide when no innings pitched. */
+function formatEraLike(val: number, hasIp: boolean): string {
+  if (!hasIp || Number.isNaN(val)) return "—";
+  return val.toFixed(2);
 }
 
 /** Opponent label: "vs Team" at home, "@ Team" away. */
@@ -33,17 +47,32 @@ function getNextGame(games: Game[]): Game | null {
 
 export default async function AnalystDashboard() {
   const [games, players] = await Promise.all([getGames(), getPlayers()]);
-  const gameCount = games.length;
-  const playerCount = players.length;
+  const teamRecord = computeTeamRecordFromGames(games);
+  const recordLabel = formatTeamRecordString(teamRecord);
+  const clubPlayers = players.filter(isClubRosterPlayer);
+  const playerCount = clubPlayers.length;
   const nextGame = getNextGame(games);
   const latestGame = games[0] ?? null;
-  const playerIds = players.map((p) => p.id);
-  const teamStats = playerIds.length > 0 ? await getTeamBattingStats(playerIds) : null;
+  const battingStatsPlayerIds = clubPlayers
+    .filter((p) => !isPitcherPlayer(p))
+    .map((p) => p.id);
+  const pitchingStatsPlayerIds = clubPlayers.filter(isPitcherPlayer).map((p) => p.id);
+  const [teamStats, teamStatsRisp, teamPitchingStats, watchInput] = await Promise.all([
+    battingStatsPlayerIds.length > 0 ? getTeamBattingStats(battingStatsPlayerIds) : Promise.resolve(null),
+    battingStatsPlayerIds.length > 0 ? getTeamBattingStatsRisp(battingStatsPlayerIds) : Promise.resolve(null),
+    pitchingStatsPlayerIds.length > 0 ? getTeamPitchingStats(pitchingStatsPlayerIds) : Promise.resolve(null),
+    getPlayersToWatchInput(),
+  ]);
+  const watchRows = selectPlayersToWatch(watchInput);
+  const rosterNonDemo = clubPlayers.filter((p) => !isDemoId(p.id));
+  const watchDisplayRows =
+    watchRows.length > 0 ? watchRows : buildRosterPreviewWatchRows(clubPlayers);
+  const watchIsPreview = watchRows.length === 0 && rosterNonDemo.length > 0;
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-xl font-semibold tracking-tight text-[var(--text)]">
+        <h1 className="font-display text-3xl font-semibold tracking-tight text-[var(--text)]">
           Dashboard
         </h1>
         <p className="mt-1 text-sm text-[var(--text-muted)]">
@@ -54,11 +83,11 @@ export default async function AnalystDashboard() {
       {/* Primary CTA + stats row */}
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="card-tech flex flex-col justify-center rounded-lg border p-4">
-          <span className="text-2xl font-bold tabular-nums text-[var(--text)]">
-            {gameCount}
+          <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+            Win - Loss
           </span>
-          <span className="mt-0.5 text-sm text-[var(--text-muted)]">
-            {gameCount === 1 ? "game" : "games"}
+          <span className="mt-2 text-2xl font-bold tabular-nums text-[var(--text)]">
+            {recordLabel ?? "—"}
           </span>
         </div>
         <div className="card-tech flex flex-col justify-center rounded-lg border p-4">
@@ -120,113 +149,190 @@ export default async function AnalystDashboard() {
         )}
       </div>
 
-      {/* Team batting stats */}
-      {teamStats && (
-        <div className="card-tech rounded-xl border p-6">
-          <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-            Team stats
-          </h2>
-          <div className="mt-4 flex flex-wrap items-baseline gap-x-6 gap-y-3 sm:gap-x-8">
+      {/* Team batting (left) + pitching (right); stacked rows per side */}
+      <div className="card-tech rounded-xl border p-6">
+        <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-white">
+          Team stats
+        </h2>
+        <div className="mt-4 grid grid-cols-1 gap-8 text-sm leading-relaxed [font-family:var(--font-mono)] lg:grid-cols-3 lg:items-start lg:gap-8 xl:gap-10">
+          <div className="min-w-0 space-y-5 lg:border-r lg:border-[var(--border)] lg:pr-6 xl:pr-8">
             <div>
-              <span className="text-xs text-[var(--text-muted)]">AVG</span>
-              <span className="ml-2 font-semibold tabular-nums text-[var(--text)]">
-                {formatAvgLike(teamStats.avg)}
-              </span>
+              <p className="font-display text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                Offensive production
+              </p>
+              <p className="mt-1.5 break-words tabular-nums">
+                <span className="font-semibold text-white">AVG</span>{" "}
+                <span className="font-semibold text-[var(--accent)]">
+                  {teamStats ? formatAvgLike(teamStats.avg) : "—"}
+                </span>{" "}
+                <span className="text-[var(--text-muted)]">|</span>{" "}
+                <span className="font-semibold text-white">OBP</span>{" "}
+                <span className="font-semibold text-[var(--accent)]">
+                  {teamStats ? formatAvgLike(teamStats.obp) : "—"}
+                </span>{" "}
+                <span className="text-[var(--text-muted)]">|</span>{" "}
+                <span className="font-semibold text-white">SLG</span>{" "}
+                <span className="font-semibold text-[var(--accent)]">
+                  {teamStats ? formatAvgLike(teamStats.slg) : "—"}
+                </span>{" "}
+                <span className="text-[var(--text-muted)]">|</span>{" "}
+                <span className="font-semibold text-white">OPS</span>{" "}
+                <span className="font-semibold text-[var(--accent)]">
+                  {teamStats ? formatAvgLike(teamStats.ops) : "—"}
+                </span>
+              </p>
             </div>
             <div>
-              <span className="text-xs text-[var(--text-muted)]">OBP</span>
-              <span className="ml-2 font-semibold tabular-nums text-[var(--text)]">
-                {formatAvgLike(teamStats.obp)}
-              </span>
+              <p className="font-display text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                Plate discipline
+              </p>
+              <p className="mt-1.5 break-words tabular-nums">
+                <span className="font-semibold text-white">K%</span>{" "}
+                <span className="font-semibold text-[var(--accent)]">
+                  {teamStats ? formatPctRate(teamStats.kPct) : "—"}
+                </span>{" "}
+                <span className="text-[var(--text-muted)]">|</span>{" "}
+                <span className="font-semibold text-white">BB%</span>{" "}
+                <span className="font-semibold text-[var(--accent)]">
+                  {teamStats ? formatPctRate(teamStats.bbPct) : "—"}
+                </span>{" "}
+                <span className="text-[var(--text-muted)]">|</span>{" "}
+                <span className="font-semibold text-white">P/PA</span>{" "}
+                <span className="font-semibold text-[var(--accent)]">
+                  {teamStats?.pPa != null ? formatPPa(teamStats.pPa) : "—"}
+                </span>
+              </p>
             </div>
             <div>
-              <span className="text-xs text-[var(--text-muted)]">SLG</span>
-              <span className="ml-2 font-semibold tabular-nums text-[var(--text)]">
-                {formatAvgLike(teamStats.slg)}
-              </span>
-            </div>
-            <div>
-              <span className="text-xs text-[var(--text-muted)]">OPS</span>
-              <span className="ml-2 font-semibold tabular-nums text-[var(--text)]">
-                {formatAvgLike(teamStats.ops)}
-              </span>
-            </div>
-            <div>
-              <span className="text-xs text-[var(--text-muted)]">HR</span>
-              <span className="ml-2 font-semibold tabular-nums text-[var(--text)]">
-                {teamStats.hr ?? 0}
-              </span>
-            </div>
-            <div>
-              <span className="text-xs text-[var(--text-muted)]">RBI</span>
-              <span className="ml-2 font-semibold tabular-nums text-[var(--text)]">
-                {teamStats.rbi ?? 0}
-              </span>
-            </div>
-            <div>
-              <span className="text-xs text-[var(--text-muted)]">R</span>
-              <span className="ml-2 font-semibold tabular-nums text-[var(--text)]">
-                {teamStats.r ?? 0}
-              </span>
-            </div>
-            <div>
-              <span className="text-xs text-[var(--text-muted)]">PA</span>
-              <span className="ml-2 font-semibold tabular-nums text-[var(--text)]">
-                {teamStats.pa ?? 0}
-              </span>
+              <p className="font-display text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                Results
+              </p>
+              <p className="mt-1.5 break-words tabular-nums">
+                <span className="font-semibold text-white">RISP</span>{" "}
+                <span className="font-semibold text-[var(--accent)]">
+                  {teamStatsRisp != null ? formatAvgLike(teamStatsRisp.avg) : "—"}
+                </span>
+                {teamStatsRisp != null && teamStatsRisp.pa != null && teamStatsRisp.pa > 0 && (
+                  <span className="text-[11px] text-[var(--text-muted)]">
+                    {" "}
+                    ({teamStatsRisp.h ?? 0} for {teamStatsRisp.ab ?? 0})
+                  </span>
+                )}{" "}
+                <span className="text-[var(--text-muted)]">|</span>{" "}
+                <span className="font-semibold text-white">RBI</span>{" "}
+                <span className="font-semibold text-[var(--accent)]">
+                  {teamStats != null ? String(teamStats.rbi ?? 0) : "—"}
+                </span>{" "}
+                <span className="text-[var(--text-muted)]">|</span>{" "}
+                <span className="font-semibold text-white">2B</span>{" "}
+                <span className="font-semibold text-[var(--accent)]">
+                  {teamStats != null ? String(teamStats.double ?? 0) : "—"}
+                </span>{" "}
+                <span className="text-[var(--text-muted)]">|</span>{" "}
+                <span className="font-semibold text-white">HR</span>{" "}
+                <span className="font-semibold text-[var(--accent)]">
+                  {teamStats != null ? String(teamStats.hr ?? 0) : "—"}
+                </span>
+              </p>
             </div>
           </div>
-          <p className="mt-3 text-xs text-[var(--text-muted)]">
-            Derived from all recorded plate appearances.{" "}
-            <Link href="/analyst/stats" className="text-[var(--accent)] hover:underline">
-              View player stats →
-            </Link>
-          </p>
+
+          <div className="min-w-0 space-y-5 lg:border-r lg:border-[var(--border)] lg:pr-6 xl:pr-8">
+            <div>
+              <p className="font-display text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                Run prevention
+              </p>
+              <p className="mt-1.5 break-words tabular-nums">
+                <span className="font-semibold text-white">ERA</span>{" "}
+                <span className="font-semibold text-[var(--accent)]">
+                  {teamPitchingStats ? formatEraLike(teamPitchingStats.era, teamPitchingStats.ip > 0) : "—"}
+                </span>{" "}
+                <span className="text-[var(--text-muted)]">|</span>{" "}
+                <span className="font-semibold text-white">WHIP</span>{" "}
+                <span className="font-semibold text-[var(--accent)]">
+                  {teamPitchingStats ? formatEraLike(teamPitchingStats.whip, teamPitchingStats.ip > 0) : "—"}
+                </span>{" "}
+                <span className="text-[var(--text-muted)]">|</span>{" "}
+                <span className="font-semibold text-white">FIP</span>{" "}
+                <span className="font-semibold text-[var(--accent)]">
+                  {teamPitchingStats ? formatEraLike(teamPitchingStats.fip, teamPitchingStats.ip > 0) : "—"}
+                </span>
+              </p>
+            </div>
+            <div>
+              <p className="font-display text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                Command
+              </p>
+              <p className="mt-1.5 break-words tabular-nums">
+                <span className="font-semibold text-white">K%</span>{" "}
+                <span className="font-semibold text-[var(--accent)]">
+                  {teamPitchingStats ? formatPctRate(teamPitchingStats.rates.kPct) : "—"}
+                </span>{" "}
+                <span className="text-[var(--text-muted)]">|</span>{" "}
+                <span className="font-semibold text-white">BB%</span>{" "}
+                <span className="font-semibold text-[var(--accent)]">
+                  {teamPitchingStats ? formatPctRate(teamPitchingStats.rates.bbPct) : "—"}
+                </span>{" "}
+                <span className="text-[var(--text-muted)]">|</span>{" "}
+                <span className="font-semibold text-white">Strike%</span>{" "}
+                <span className="font-semibold text-[var(--accent)]">
+                  {teamPitchingStats?.rates.strikePct != null
+                    ? formatPctRate(teamPitchingStats.rates.strikePct)
+                    : "—"}
+                </span>
+              </p>
+            </div>
+            <div>
+              <p className="font-display text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                Efficiency
+              </p>
+              <p className="mt-1.5 break-words tabular-nums">
+                <span className="font-semibold text-white">P/PA</span>{" "}
+                <span className="font-semibold text-[var(--accent)]">
+                  {teamPitchingStats?.rates.pPa != null ? formatPPa(teamPitchingStats.rates.pPa) : "—"}
+                </span>{" "}
+                <span className="text-[var(--text-muted)]">|</span>{" "}
+                <span className="font-semibold text-white">FPS%</span>{" "}
+                <span className="font-semibold text-[var(--accent)]">
+                  {teamPitchingStats?.rates.fpsPct != null
+                    ? formatPctRate(teamPitchingStats.rates.fpsPct)
+                    : "—"}
+                </span>
+              </p>
+            </div>
+          </div>
+
+          <div className="min-w-0 space-y-5">
+            <div>
+              <p className="font-display text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                Stolen bases
+              </p>
+              <p className="mt-1.5 break-words tabular-nums">
+                <span className="font-semibold text-white">SB</span>{" "}
+                <span className="font-semibold text-[var(--accent)]">
+                  {teamStats != null ? String(teamStats.sb ?? 0) : "—"}
+                </span>{" "}
+                <span className="text-[var(--text-muted)]">|</span>{" "}
+                <span className="font-semibold text-white">CS</span>{" "}
+                <span className="font-semibold text-[var(--accent)]">
+                  {teamStats != null ? String(teamStats.cs ?? 0) : "—"}
+                </span>{" "}
+                <span className="text-[var(--text-muted)]">|</span>{" "}
+                <span className="font-semibold text-white">SB%</span>{" "}
+                <span className="font-semibold text-[var(--accent)]">
+                  {teamStats?.sbPct != null ? formatPctRate(teamStats.sbPct) : "—"}
+                </span>
+              </p>
+            </div>
+          </div>
         </div>
-      )}
+      </div>
 
-      {/* Schedule — monthly calendar of games */}
-      <ScheduleCalendar games={games} />
-
-      {/* Quick actions — same card pattern as Charts / Games */}
-      <div className="card-tech rounded-xl border p-6">
-        <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-          Quick actions
-        </h2>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {QUICK_LINKS.map(({ href, icon, label, countKey }) => {
-            const count =
-              countKey === "games"
-                ? gameCount
-                : countKey === "players"
-                  ? playerCount
-                  : null;
-            return (
-              <Link
-                key={href}
-                href={href}
-                className="card-hover group flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-4 transition"
-              >
-                <span
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-dim)] text-lg text-[var(--accent)]"
-                  aria-hidden
-                >
-                  {icon}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <span className="font-medium text-[var(--text)]">{label}</span>
-                  {count !== null && (
-                    <span className="ml-1.5 text-xs text-[var(--text-muted)]">
-                      ({count})
-                    </span>
-                  )}
-                </div>
-                <span className="shrink-0 text-xs font-medium uppercase tracking-wider text-[var(--accent)] opacity-80 transition group-hover:opacity-100">
-                  Open →
-                </span>
-              </Link>
-            );
-          })}
+      {/* Players to watch + schedule */}
+      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+        <PlayersToWatchCard rows={watchDisplayRows} isPreview={watchIsPreview} />
+        <div className="min-w-0 w-full lg:max-w-none">
+          <ScheduleCalendar games={games} />
         </div>
       </div>
     </div>

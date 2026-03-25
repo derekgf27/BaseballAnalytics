@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
-import { supabase, hasSupabase } from "@/lib/db/client";
+import { hasSupabase } from "@/lib/db/client";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 /**
  * GET /api/supabase-status — Verify Supabase connection and tables.
  * Use this to confirm env vars and that the players table is reachable.
  */
 export async function GET() {
-  if (!hasSupabase() || !supabase) {
+  if (!hasSupabase()) {
     return NextResponse.json(
       {
         connected: false,
@@ -14,6 +15,11 @@ export async function GET() {
       },
       { status: 503 }
     );
+  }
+
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) {
+    return NextResponse.json({ connected: false, error: "Could not create Supabase client." }, { status: 503 });
   }
 
   try {

@@ -16,8 +16,10 @@ import {
 import Link from "next/link";
 import type { BattingStats, BattingStatsWithSplits, Player, SavedLineup } from "@/lib/types";
 import { lineupAggregateFromBattingStats } from "@/lib/compute/battingStats";
+import { formatPPa } from "@/lib/format";
+import { comparePlayersByLastNameThenFull } from "@/lib/playerSort";
 
-export type LineupSplitView = "overall" | "vsL" | "vsR";
+export type LineupSplitView = "overall" | "vsL" | "vsR" | "risp";
 import { fetchSavedLineupWithSlots, saveLineupTemplate, deleteSavedLineup } from "./actions";
 
 const LINEUP_POSITIONS = [
@@ -35,14 +37,27 @@ const LINEUP_POSITIONS = [
 
 type LineupSlotState = { player: Player | null; position: string };
 
-const BATTING_STAT_LABELS: { key: keyof BattingStats; label: string; format: "avg" | "int" }[] = [
+const BATTING_STAT_LABELS: { key: keyof BattingStats; label: string; format: "avg" | "int" | "pct" }[] = [
   { key: "avg", label: "AVG", format: "avg" },
   { key: "obp", label: "OBP", format: "avg" },
   { key: "slg", label: "SLG", format: "avg" },
   { key: "ops", label: "OPS", format: "avg" },
-  { key: "opsPlus", label: "OPS+", format: "int" },
-  { key: "woba", label: "wOBA", format: "avg" },
+  { key: "kPct", label: "K%", format: "pct" },
+  { key: "pPa", label: "P/PA", format: "avg" },
 ];
+
+function formatLineupBattingCell(s: BattingStats | undefined, key: keyof BattingStats, format: "avg" | "int" | "pct"): string {
+  if (!s) return "—";
+  if (key === "pPa") {
+    return s.pPa != null && !Number.isNaN(s.pPa) ? formatPPa(s.pPa) : "—";
+  }
+  if (format === "pct") {
+    const v = s[key];
+    if (typeof v !== "number" || Number.isNaN(v)) return "—";
+    return `${(v * 100).toFixed(1)}%`;
+  }
+  return formatStat(Number(s[key]) || 0, format);
+}
 
 function formatStat(value: number, format: "avg" | "int"): string {
   if (format === "int") return String(value);
@@ -50,7 +65,7 @@ function formatStat(value: number, format: "avg" | "int"): string {
   return s.startsWith("0.") ? s.slice(1) : s;
 }
 
-type PoolSortKey = "name" | "obp" | "woba" | "ops" | "avg";
+type PoolSortKey = "name" | "obp" | "ops" | "avg";
 
 function getStatValue(statsMap: Record<string, BattingStats>, playerId: string, key: PoolSortKey): number {
   if (key === "name") return 0;
@@ -58,6 +73,17 @@ function getStatValue(statsMap: Record<string, BattingStats>, playerId: string, 
   if (!s) return -1;
   const v = (s as unknown as Record<string, unknown>)[key];
   return typeof v === "number" ? v : -1;
+}
+
+/** Label + formatted value for pool cards when sorting by a stat (not name). */
+function poolCardStatLine(
+  poolSortBy: PoolSortKey,
+  stats: BattingStats | undefined
+): { label: string; value: string } | null {
+  if (poolSortBy === "name") return null;
+  const label = poolSortBy === "avg" ? "AVG" : poolSortBy === "ops" ? "OPS" : "OBP";
+  const key = poolSortBy as keyof BattingStats;
+  return { label, value: formatLineupBattingCell(stats, key, "avg") };
 }
 
 /** Suggest batting order: fill 9 slots with best 9 by stat (or reorder current 9). */
@@ -92,7 +118,8 @@ function getStatsForLineupSplit(splits: Record<string, BattingStatsWithSplits>, 
   if (!s) return undefined;
   if (split === "overall") return s.overall;
   if (split === "vsL") return s.vsL ?? undefined;
-  return s.vsR ?? undefined;
+  if (split === "vsR") return s.vsR ?? undefined;
+  return s.risp ?? undefined;
 }
 
 // Normalize handedness codes coming from data (e.g. "BL", "BR", "BS", "TL", "TR")
@@ -121,11 +148,14 @@ function PlayerCard({
   player,
   isDragging,
   compact,
+  poolStatLine,
 }: {
   player: Player;
   isDragging?: boolean;
   /** Inline one-line display for lineup slots so all 9 fit on screen */
   compact?: boolean;
+  /** When sorting the pool by AVG/OPS/OBP, show that stat on the card */
+  poolStatLine?: { label: string; value: string } | null;
 }) {
   const position = player.positions?.[0] ?? "—";
   const handedness = formatHandedness(player.bats, player.throws);
@@ -150,10 +180,20 @@ function PlayerCard({
       }`}
     >
       <div className="min-w-0 flex-1">
-        <p className="font-medium text-[var(--text)]">{player.name}</p>
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <p className="min-w-0 flex-1 truncate font-medium text-[var(--text)]">{player.name}</p>
+          {poolStatLine != null && (
+            <div className="shrink-0 text-right text-sm tabular-nums">
+              <span className="text-xs font-medium uppercase tracking-wide text-white">
+                {poolStatLine.label}
+              </span>{" "}
+              <span className="font-semibold text-[var(--accent)]">{poolStatLine.value}</span>
+            </div>
+          )}
+        </div>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--text-muted)]">
           {player.jersey && <span>#{player.jersey}</span>}
-          <span>{position}</span>
+          <span className="font-medium text-[var(--accent)]">{position}</span>
           <span className="font-semibold text-[var(--text)]">{handedness}</span>
         </div>
       </div>
@@ -161,14 +201,22 @@ function PlayerCard({
   );
 }
 
-function DraggablePlayer({ player, compact }: { player: Player; compact?: boolean }) {
+function DraggablePlayer({
+  player,
+  compact,
+  poolStatLine,
+}: {
+  player: Player;
+  compact?: boolean;
+  poolStatLine?: { label: string; value: string } | null;
+}) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: player.id,
     data: { player },
   });
   return (
     <div ref={setNodeRef} {...listeners} {...attributes} className={compact ? "min-w-0 flex-1" : undefined}>
-      <PlayerCard player={player} isDragging={isDragging} compact={compact} />
+      <PlayerCard player={player} isDragging={isDragging} compact={compact} poolStatLine={poolStatLine} />
     </div>
   );
 }
@@ -307,7 +355,7 @@ function PlayerStatsTable({
                 </td>
                 {BATTING_STAT_LABELS.map(({ key, format }) => (
                   <td key={key} className="py-1.5 px-2 text-center text-[var(--text)] tabular-nums">
-                    {s ? formatStat(Number(s[key]) || 0, format) : "—"}
+                    {formatLineupBattingCell(s, key, format)}
                   </td>
                 ))}
               </tr>
@@ -325,7 +373,8 @@ export default function LineupConstructionClient({
   initialSavedLineups = [],
 }: LineupConstructionClientProps) {
   const router = useRouter();
-  const [lineupSplitView, setLineupSplitView] = useState<LineupSplitView>("overall");
+  /** When split UI returns, wire toggles to this instead of hardcoding `"overall"`. */
+  const lineupSplitForStats: LineupSplitView = "overall";
   const [lineup, setLineup] = useState<LineupSlotState[]>(() =>
     Array.from({ length: 9 }, () => ({ player: null, position: "" }))
   );
@@ -335,11 +384,18 @@ export default function LineupConstructionClient({
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
   const [loadStatus, setLoadStatus] = useState<"idle" | "loading">("idle");
   const [poolSortBy, setPoolSortBy] = useState<PoolSortKey>("name");
+  const [poolSplitView, setPoolSplitView] = useState<LineupSplitView>("overall");
 
   const initialBattingStats: Record<string, BattingStats> = {};
   for (const p of initialPlayers) {
-    const s = getStatsForLineupSplit(initialBattingStatsWithSplits, p.id, lineupSplitView);
+    const s = getStatsForLineupSplit(initialBattingStatsWithSplits, p.id, lineupSplitForStats);
     if (s) initialBattingStats[p.id] = s;
+  }
+
+  const poolBattingStats: Record<string, BattingStats> = {};
+  for (const p of initialPlayers) {
+    const s = getStatsForLineupSplit(initialBattingStatsWithSplits, p.id, poolSplitView);
+    if (s) poolBattingStats[p.id] = s;
   }
 
   useEffect(() => {
@@ -357,10 +413,12 @@ export default function LineupConstructionClient({
   );
   const availablePlayers = initialPlayers.filter((p) => !inLineupIds.has(p.id));
   const sortedAvailablePlayers = [...availablePlayers].sort((a, b) => {
-    if (poolSortBy === "name") return (a.name ?? "").localeCompare(b.name ?? "");
-    const va = getStatValue(initialBattingStats, a.id, poolSortBy);
-    const vb = getStatValue(initialBattingStats, b.id, poolSortBy);
-    return vb - va;
+    if (poolSortBy === "name") return comparePlayersByLastNameThenFull(a, b);
+    const va = getStatValue(poolBattingStats, a.id, poolSortBy);
+    const vb = getStatValue(poolBattingStats, b.id, poolSortBy);
+    const d = vb - va;
+    if (d !== 0) return d;
+    return comparePlayersByLastNameThenFull(a, b);
   });
 
   const lineupPlayers = lineup.map((s) => s.player).filter((p): p is Player => p != null);
@@ -498,119 +556,123 @@ export default function LineupConstructionClient({
   return (
     <div className="app-shell space-y-6 pb-8">
       <header>
-        <div className="section-label">Lineup construction</div>
+        <h1 className="font-display text-3xl font-semibold tracking-tight text-white">
+          Lineup construction
+        </h1>
         <p className="mt-1 text-sm text-[var(--neo-text-muted)]">
           Drag players from the roster into the lineup slots (1–9).
         </p>
       </header>
 
-      {/* Lineup templates: load / delete — at top so users can pick a template first */}
+      {/* Lineup optimization + templates — single card; optimization left, templates right on large screens */}
       <section className="neo-card p-4">
-        <div className="section-label">Lineup templates</div>
-        <p className="mt-1 text-xs text-[var(--neo-text-muted)]">
-          Load a saved template into the batting order below, or delete one.
-        </p>
-        {initialSavedLineups.length > 0 && (
-          <div className="mt-4">
-            <h3 className="font-display mb-2 text-xs font-semibold uppercase tracking-wider text-white">
-              Saved templates
-            </h3>
-            <ul className="flex flex-wrap gap-3" role="list">
-              {initialSavedLineups.map((l) => (
-                <li
-                  key={l.id}
-                  className="flex items-center gap-4 rounded-lg border border-[var(--neo-border)] bg-[#10151a] px-4 py-3"
+        <div className="grid gap-6 lg:grid-cols-2 lg:items-start lg:gap-8">
+          <div className="min-w-0">
+            <div className="section-label">Lineup optimization</div>
+            <div className="mt-3 flex flex-col gap-3">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleSuggestBy("obp")}
+                  disabled={initialPlayers.length === 0}
+                  className="rounded-lg border border-[var(--neo-accent)]/50 bg-[var(--neo-accent-dim)] px-3 py-1.5 text-sm font-medium text-[var(--neo-accent)] transition hover:bg-[var(--neo-accent)]/20 disabled:opacity-50 disabled:pointer-events-none"
                 >
-                  <span className="font-medium text-[var(--neo-text)]">{l.name}</span>
-                  <button
-                    type="button"
-                    onClick={() => handleLoadTemplate(l.id)}
-                    disabled={loadStatus === "loading"}
-                    className="text-sm text-[var(--neo-accent)] hover:underline disabled:opacity-50"
-                  >
-                    Load
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteTemplate(l.id)}
-                    className="text-sm text-[var(--neo-text-muted)] hover:text-[var(--danger)]"
-                    aria-label={`Delete ${l.name}`}
-                  >
-                    Delete
-                  </button>
-                </li>
-              ))}
-            </ul>
+                  Suggest by OBP
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSuggestBy("avg")}
+                  disabled={initialPlayers.length === 0}
+                  className="rounded-lg border border-[var(--neo-accent)]/50 bg-[var(--neo-accent-dim)] px-3 py-1.5 text-sm font-medium text-[var(--neo-accent)] transition hover:bg-[var(--neo-accent)]/20 disabled:opacity-50 disabled:pointer-events-none"
+                >
+                  Suggest by AVG
+                </button>
+              </div>
+              {lineupQuality != null && (
+                <p className="text-sm leading-relaxed text-[var(--neo-text)]">
+                  <span className="mr-1 font-display text-xs font-semibold uppercase tracking-wider text-white">
+                    Combined lineup
+                  </span>
+                  <span className="inline-flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span>
+                      AVG{" "}
+                      <strong className="tabular-nums text-[var(--neo-text)]">{formatStat(lineupQuality.avg, "avg")}</strong>
+                    </span>
+                    <span className="text-[var(--neo-border)]">·</span>
+                    <span>
+                      OBP{" "}
+                      <strong className="tabular-nums text-[var(--neo-text)]">{formatStat(lineupQuality.obp, "avg")}</strong>
+                    </span>
+                    <span className="text-[var(--neo-border)]">·</span>
+                    <span>
+                      SLG{" "}
+                      <strong className="tabular-nums text-[var(--neo-text)]">{formatStat(lineupQuality.slg, "avg")}</strong>
+                    </span>
+                    <span className="text-[var(--neo-border)]">·</span>
+                    <span>
+                      OPS{" "}
+                      <strong className="tabular-nums text-[var(--neo-text)]">{formatStat(lineupQuality.ops, "avg")}</strong>
+                    </span>
+                    <span className="text-[var(--neo-border)]">·</span>
+                    <span>
+                      K%{" "}
+                      <strong className="tabular-nums text-[var(--neo-text)]">
+                        {lineupQuality.kPct != null && !Number.isNaN(lineupQuality.kPct)
+                          ? `${(lineupQuality.kPct * 100).toFixed(1)}%`
+                          : "—"}
+                      </strong>
+                    </span>
+                    {lineupQuality.pPa != null && (
+                      <>
+                        <span className="text-[var(--neo-border)]">·</span>
+                        <span>
+                          P/PA{" "}
+                          <strong className="tabular-nums text-[var(--neo-text)]">{formatPPa(lineupQuality.pPa)}</strong>
+                        </span>
+                      </>
+                    )}
+                  </span>
+                </p>
+              )}
+            </div>
           </div>
-        )}
-      </section>
 
-      {/* Lineup optimization: suggest order, lineup quality, split */}
-      <section className="neo-card p-4">
-        <div className="section-label">Lineup optimization</div>
-        <p className="mt-1 text-xs text-[var(--neo-text-muted)]">
-          Use stats to suggest a batting order, or sort the pool by a stat when building manually. Choose a split to optimize vs LHP or vs RHP.
-        </p>
-        <div className="mt-3 flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-2 text-xs text-[var(--neo-text-muted)]">
-              <span>Stats</span>
-              <select
-                value={lineupSplitView}
-                onChange={(e) => setLineupSplitView(e.target.value as LineupSplitView)}
-                className="rounded border border-[var(--neo-border)] bg-[var(--neo-bg-base)] px-2 py-1 text-sm text-[var(--neo-text)] focus:border-[var(--neo-accent)] focus:outline-none"
-                aria-label="Batting split for lineup stats"
-              >
-                <option value="overall">Overall</option>
-                <option value="vsL">vs LHP</option>
-                <option value="vsR">vs RHP</option>
-              </select>
-            </label>
-            <button
-              type="button"
-              onClick={() => handleSuggestBy("obp")}
-              disabled={initialPlayers.length === 0}
-              className="rounded-lg border border-[var(--neo-accent)]/50 bg-[var(--neo-accent-dim)] px-3 py-1.5 text-sm font-medium text-[var(--neo-accent)] transition hover:bg-[var(--neo-accent)]/20 disabled:opacity-50 disabled:pointer-events-none"
-            >
-              Suggest by OBP
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSuggestBy("avg")}
-              disabled={initialPlayers.length === 0}
-              className="rounded-lg border border-[var(--neo-accent)]/50 bg-[var(--neo-accent-dim)] px-3 py-1.5 text-sm font-medium text-[var(--neo-accent)] transition hover:bg-[var(--neo-accent)]/20 disabled:opacity-50 disabled:pointer-events-none"
-            >
-              Suggest by AVG
-            </button>
+          <div className="min-w-0 lg:border-l lg:border-[var(--neo-border)] lg:pl-8">
+            <div className="section-label">Lineup templates</div>
+            {initialSavedLineups.length > 0 && (
+              <div className="mt-3">
+                <h3 className="font-display mb-2 text-xs font-semibold uppercase tracking-wider text-white">
+                  Saved templates
+                </h3>
+                <ul className="flex flex-wrap gap-3" role="list">
+                  {initialSavedLineups.map((l) => (
+                    <li
+                      key={l.id}
+                      className="flex items-center gap-4 rounded-lg border border-[var(--neo-border)] bg-[#10151a] px-4 py-3"
+                    >
+                      <span className="font-medium text-[var(--neo-text)]">{l.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleLoadTemplate(l.id)}
+                        disabled={loadStatus === "loading"}
+                        className="text-sm text-[var(--neo-accent)] hover:underline disabled:opacity-50"
+                      >
+                        Load
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteTemplate(l.id)}
+                        className="text-sm text-[var(--danger)] hover:underline"
+                        aria-label={`Delete ${l.name}`}
+                      >
+                        Delete
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
-          {lineupQuality != null && (
-            <p className="text-sm leading-relaxed text-[var(--neo-text-muted)]">
-              <span className="mr-1 font-display text-xs font-semibold uppercase tracking-wider text-white">
-                Combined lineup
-              </span>
-              <span className="inline-flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <span>
-                  AVG <strong className="tabular-nums text-[var(--neo-text)]">{formatStat(lineupQuality.avg, "avg")}</strong>
-                </span>
-                <span className="text-[var(--neo-border)]">·</span>
-                <span>
-                  OBP <strong className="tabular-nums text-[var(--neo-text)]">{formatStat(lineupQuality.obp, "avg")}</strong>
-                </span>
-                <span className="text-[var(--neo-border)]">·</span>
-                <span>
-                  SLG <strong className="tabular-nums text-[var(--neo-text)]">{formatStat(lineupQuality.slg, "avg")}</strong>
-                </span>
-                <span className="text-[var(--neo-border)]">·</span>
-                <span>
-                  OPS <strong className="tabular-nums text-[var(--neo-text)]">{formatStat(lineupQuality.ops, "avg")}</strong>
-                </span>
-                <span className="text-[var(--neo-border)]">·</span>
-                <span>
-                  OPS+ <strong className="tabular-nums text-[var(--neo-text)]">{formatStat(lineupQuality.opsPlus, "int")}</strong>
-                </span>
-              </span>
-            </p>
-          )}
         </div>
       </section>
 
@@ -625,21 +687,36 @@ export default function LineupConstructionClient({
             <div className="neo-card flex min-h-[20rem] flex-col p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="section-label">Available players</h2>
-                <label className="flex items-center gap-2 text-xs text-[var(--neo-text-muted)]">
-                  <span>Sort by</span>
-                  <select
-                    value={poolSortBy}
-                    onChange={(e) => setPoolSortBy(e.target.value as PoolSortKey)}
-                    className="input-tech rounded border border-[var(--neo-border)] bg-[var(--neo-bg-base)] px-2 py-1 text-[var(--neo-text)]"
-                    aria-label="Sort pool by stat"
-                  >
-                    <option value="name">Name</option>
-                    <option value="obp">OBP</option>
-                    <option value="woba">wOBA</option>
-                    <option value="ops">OPS</option>
-                    <option value="avg">AVG</option>
-                  </select>
-                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="flex items-center gap-2 text-xs text-[var(--neo-text-muted)]">
+                    <span>Sort by</span>
+                    <select
+                      value={poolSortBy}
+                      onChange={(e) => setPoolSortBy(e.target.value as PoolSortKey)}
+                      className="input-tech rounded border border-[var(--neo-border)] bg-[var(--neo-bg-base)] px-2 py-1 text-[var(--neo-text)]"
+                      aria-label="Sort pool by stat"
+                    >
+                      <option value="name">Name</option>
+                      <option value="obp">OBP</option>
+                      <option value="ops">OPS</option>
+                      <option value="avg">AVG</option>
+                    </select>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-xs text-[var(--neo-text-muted)]">
+                    <span>Split</span>
+                    <select
+                      value={poolSplitView}
+                      onChange={(e) => setPoolSplitView(e.target.value as LineupSplitView)}
+                      className="input-tech rounded border border-[var(--neo-border)] bg-[var(--neo-bg-base)] px-2 py-1 text-[var(--neo-text)]"
+                      aria-label="Split pool by handedness"
+                    >
+                      <option value="overall">Overall</option>
+                      <option value="vsL">vs LHP</option>
+                      <option value="vsR">vs RHP</option>
+                    </select>
+                  </label>
+                </div>
               </div>
               <p className="mt-1 text-xs text-[var(--neo-text-muted)]">
                 Drag players here to return them to the pool.
@@ -655,7 +732,10 @@ export default function LineupConstructionClient({
                 ) : (
                   sortedAvailablePlayers.map((player) => (
                     <li key={player.id}>
-                      <DraggablePlayer player={player} />
+                      <DraggablePlayer
+                        player={player}
+                        poolStatLine={poolCardStatLine(poolSortBy, poolBattingStats[player.id])}
+                      />
                     </li>
                   ))
                 )}
@@ -767,6 +847,16 @@ export default function LineupConstructionClient({
           <div className="mt-3 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <div className="min-w-0">
               <h3 className="font-display mb-2 text-xs font-semibold uppercase tracking-wider text-white">
+                Pool
+              </h3>
+              <PlayerStatsTable
+                players={availablePlayers}
+                statsMap={initialBattingStats}
+                emptyMessage="No players in pool."
+              />
+            </div>
+            <div className="min-w-0">
+              <h3 className="font-display mb-2 text-xs font-semibold uppercase tracking-wider text-white">
                 Lineup
               </h3>
               <PlayerStatsTable
@@ -774,16 +864,6 @@ export default function LineupConstructionClient({
                 statsMap={initialBattingStats}
                 emptyMessage="No players in lineup."
                 showSpot
-              />
-            </div>
-            <div className="min-w-0">
-              <h3 className="font-display mb-2 text-xs font-semibold uppercase tracking-wider text-white">
-                Pool
-              </h3>
-              <PlayerStatsTable
-                players={availablePlayers}
-                statsMap={initialBattingStats}
-                emptyMessage="No players in pool."
               />
             </div>
           </div>

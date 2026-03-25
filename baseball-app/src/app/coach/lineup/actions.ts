@@ -2,13 +2,15 @@
 
 import { getGameLineup, getSavedLineupWithSlots, replaceGameLineup, deleteSavedLineup } from "@/lib/db/queries";
 import { isDemoId } from "@/lib/db/mockData";
+import type { LineupSide } from "@/lib/types";
 
-/** Fetch lineup for a game (for coach edit view). */
+/** Fetch one side's lineup for a game (coach edit view). */
 export async function fetchGameLineupForCoach(
-  gameId: string
+  gameId: string,
+  side: LineupSide
 ): Promise<{ slot: number; player_id: string; position: string | null }[]> {
   if (isDemoId(gameId)) return [];
-  const slots = await getGameLineup(gameId);
+  const slots = (await getGameLineup(gameId)).filter((s) => s.side === side);
   return [...slots].sort((a, b) => a.slot - b.slot).map((s) => ({
     slot: s.slot,
     player_id: s.player_id,
@@ -16,14 +18,15 @@ export async function fetchGameLineupForCoach(
   }));
 }
 
-/** Save lineup for a game from coach page. */
+/** Save one side's lineup for a game from coach page. */
 export async function saveGameLineupForCoachAction(
   gameId: string,
+  side: LineupSide,
   slots: { player_id: string; position?: string | null }[]
 ): Promise<{ ok: boolean; error?: string }> {
   if (isDemoId(gameId)) return { ok: false, error: "Cannot edit demo game." };
   try {
-    await replaceGameLineup(gameId, slots);
+    await replaceGameLineup(gameId, side, slots);
     return { ok: true };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed to save lineup";

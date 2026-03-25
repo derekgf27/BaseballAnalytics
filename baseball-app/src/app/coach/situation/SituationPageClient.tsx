@@ -4,6 +4,7 @@ import { useState } from "react";
 import { BaseStateSelector } from "@/components/shared/BaseStateSelector";
 import { SituationResult } from "@/components/coach/SituationResult";
 import { situationPrompt } from "@/lib/compute";
+import { INNING_SELECT_VALUES } from "@/lib/leagueConfig";
 import type { Player, Ratings } from "@/lib/types";
 
 // Default ratings when no PA data (coach still gets a recommendation)
@@ -41,7 +42,7 @@ export function SituationPageClient({ players }: SituationPageClientProps) {
         {/* Header */}
         <header>
           <div className="section-label">Coach tools</div>
-          <h1 className="mt-1 font-display text-xl font-semibold tracking-tight text-[var(--text)]">
+          <h1 className="mt-1 font-display text-3xl font-semibold tracking-tight text-[var(--text)]">
             Situation recommendation
           </h1>
           <p className="mt-1 text-sm text-[var(--text-muted)]">
@@ -63,7 +64,7 @@ export function SituationPageClient({ players }: SituationPageClientProps) {
                   onChange={(e) => setInning(Number(e.target.value))}
                   className="input-tech mt-1 block w-full px-3 py-2"
                 >
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                  {INNING_SELECT_VALUES.map((n) => (
                     <option key={n} value={n}>
                       {n}
                     </option>

@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { isDemoId } from "@/lib/db/mockData";
-import { insertPlayer, updatePlayer } from "@/lib/db/queries";
+import { insertPlayerAction, updatePlayerAction } from "./actions";
 import { heightInToFeetInches, feetInchesToHeightIn } from "@/lib/height";
 import { StyledDatePicker } from "@/components/shared/StyledDatePicker";
+import { isClubRosterPlayer, opponentNameKey } from "@/lib/opponentUtils";
+import { comparePlayersByLastNameThenFull } from "@/lib/playerSort";
 import type { Player } from "@/lib/types";
 
 const POSITION_OPTIONS = ["P", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"] as const;
@@ -14,11 +16,17 @@ const POSITION_OPTIONS = ["P", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "D
 interface PlayersPageClientProps {
   initialPlayers: Player[];
   canEdit: boolean;
+  /** When set (e.g. View roster from Opponents), prefill opponent team when you click Add player. */
+  defaultOpponentTeam?: string | null;
 }
 
 type SupabaseStatus = "loading" | "connected" | { error: string };
 
-export function PlayersPageClient({ initialPlayers, canEdit }: PlayersPageClientProps) {
+export function PlayersPageClient({
+  initialPlayers,
+  canEdit,
+  defaultOpponentTeam,
+}: PlayersPageClientProps) {
   const router = useRouter();
   const [players, setPlayers] = useState(initialPlayers);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
@@ -45,6 +53,27 @@ export function PlayersPageClient({ initialPlayers, canEdit }: PlayersPageClient
     checkSupabaseStatus();
   }, []);
 
+  useEffect(() => {
+    setPlayers(initialPlayers);
+  }, [initialPlayers]);
+
+  /** When viewing an opponent roster (?opponentTeam=), only list players tagged with that opponent — not your full club. */
+  const opponentFilterKey = defaultOpponentTeam?.trim() ? opponentNameKey(defaultOpponentTeam.trim()) : null;
+
+  const playersToShow = useMemo(() => {
+    if (opponentFilterKey) {
+      return players.filter(
+        (p) => p.opponent_team && opponentNameKey(p.opponent_team) === opponentFilterKey
+      );
+    }
+    return players.filter(isClubRosterPlayer);
+  }, [players, opponentFilterKey]);
+
+  const playersSortedByLastName = useMemo(
+    () => [...playersToShow].sort(comparePlayersByLastNameThenFull),
+    [playersToShow]
+  );
+
   const refresh = () => router.refresh();
 
   const handleSavePlayer = async (player: Omit<Player, "id" | "created_at">) => {
@@ -54,7 +83,7 @@ export function PlayersPageClient({ initialPlayers, canEdit }: PlayersPageClient
     }
     try {
       if (editingPlayer) {
-        const updated = await updatePlayer(editingPlayer.id, player);
+        const updated = await updatePlayerAction(editingPlayer.id, player);
         if (updated) {
           setPlayers((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
           setEditingPlayer(null);
@@ -65,9 +94,17 @@ export function PlayersPageClient({ initialPlayers, canEdit }: PlayersPageClient
           setMessage({ type: "err", text: "Could not update player." });
         }
       } else {
-        const created = await insertPlayer(player);
+        const created = await insertPlayerAction(player);
         if (created) {
-          setPlayers((prev) => [created, ...prev]);
+          setPlayers((prev) => {
+            if (!opponentFilterKey) {
+              return isClubRosterPlayer(created) ? [created, ...prev] : prev;
+            }
+            const matches =
+              !!created.opponent_team &&
+              opponentNameKey(created.opponent_team) === opponentFilterKey;
+            return matches ? [created, ...prev] : prev;
+          });
           setEditingPlayer(null);
           setShowAddForm(false);
           setMessage({ type: "ok", text: "Player added." });
@@ -88,18 +125,34 @@ export function PlayersPageClient({ initialPlayers, canEdit }: PlayersPageClient
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="font-display text-xl font-semibold tracking-tight text-[var(--text)]">Players</h1>
-          <p className="mt-1 text-sm text-[var(--text-muted)]">
-            Roster and internal ratings.
-          </p>
+          <h1 className="font-display text-3xl font-semibold tracking-tight text-white">Roster</h1>
+          {defaultOpponentTeam?.trim() ? (
+            <div
+              className="mt-1 min-h-[1.25rem] text-sm leading-normal"
+              aria-hidden
+            />
+          ) : (
+            <p className="mt-1 text-sm text-[var(--text-muted)]">
+              Your club roster only. Players tagged with an opponent team (scouting) are managed from Opponents.
+            </p>
+          )}
+          {defaultOpponentTeam?.trim() && (
+            <div className="mt-3 rounded-lg border border-[var(--accent)]/35 bg-[var(--accent-dim)]/50 px-10 py-2">
+              <p className="text-xs font-medium uppercase tracking-wider text-white">Opponent roster:</p>
+              <p className="font-display mt-2 text-2xl font-bold leading-tight tracking-tight text-[var(--accent)] sm:text-3xl">
+                {defaultOpponentTeam.trim()}
+              </p>
+              
+            </div>
+          )}
         </div>
         {canEdit && (
           <button
             type="button"
             onClick={() => { setShowAddForm(true); setEditingPlayer(null); }}
-            className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--bg-base)] transition hover:opacity-90 font-display"
+            className="shrink-0 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--bg-base)] transition hover:opacity-90 font-display"
           >
             Add player
           </button>
@@ -143,8 +196,9 @@ export function PlayersPageClient({ initialPlayers, canEdit }: PlayersPageClient
 
       {canEdit && (showAddForm || editingPlayer) && (
         <PlayerForm
-          key={editingPlayer?.id ?? "new-player"}
+          key={editingPlayer?.id ?? `add-${defaultOpponentTeam ?? ""}`}
           player={editingPlayer}
+          defaultOpponentTeam={editingPlayer ? null : defaultOpponentTeam ?? null}
           onSave={handleSavePlayer}
           onCancel={() => { setShowAddForm(false); setEditingPlayer(null); }}
           onAddNew={() => setEditingPlayer(null)}
@@ -152,17 +206,25 @@ export function PlayersPageClient({ initialPlayers, canEdit }: PlayersPageClient
         />
       )}
 
-      {players.length === 0 ? (
+      {playersToShow.length === 0 ? (
         <div className="card-tech rounded-lg border-dashed p-8 text-center">
           <span className="text-4xl opacity-60">👤</span>
-          <h2 className="mt-4 font-semibold text-[var(--text)]">No players yet</h2>
+          <h2 className="mt-4 font-semibold text-white">
+            {opponentFilterKey ? "No players on this opponent roster yet" : "No players yet"}
+          </h2>
           <p className="mt-2 text-sm text-[var(--text-muted)]">
-            {canEdit ? "Use the form above to add a player." : "Connect Supabase to add players."}
+            {opponentFilterKey
+              ? canEdit
+                ? ``
+                : "Connect Supabase to add players."
+              : canEdit
+                ? "Use Add player to add someone."
+                : "Connect Supabase to add players."}
           </p>
         </div>
       ) : (
         <ul className="space-y-2">
-          {players.map((p) => (
+          {playersSortedByLastName.map((p) => (
             <li
               key={p.id}
               className="card-tech flex flex-wrap items-center justify-between gap-2 px-4 py-3"
@@ -212,12 +274,14 @@ export function PlayersPageClient({ initialPlayers, canEdit }: PlayersPageClient
 
 function PlayerForm({
   player,
+  defaultOpponentTeam,
   onSave,
   onCancel,
   onAddNew,
   canEdit,
 }: {
   player: Player | null;
+  defaultOpponentTeam?: string | null;
   onSave: (p: Omit<Player, "id" | "created_at">) => Promise<void>;
   onCancel: () => void;
   onAddNew: () => void;
@@ -235,10 +299,12 @@ function PlayerForm({
   const [weight_lb, setWeightLb] = useState<string>(player?.weight_lb != null ? String(player.weight_lb) : "");
   const [hometown, setHometown] = useState<string>(player?.hometown ?? "");
   const [birth_date, setBirthDate] = useState<string>(player?.birth_date ?? "");
+  const [opponent_team, setOpponentTeam] = useState<string>(
+    player?.opponent_team ?? defaultOpponentTeam ?? ""
+  );
   const [saving, setSaving] = useState(false);
 
   const isEditing = !!player;
-
 
   const togglePosition = (pos: string) => {
     setPositions((prev) =>
@@ -250,7 +316,7 @@ function PlayerForm({
     e.preventDefault();
     setSaving(true);
     await onSave({
-      name: name.trim(),
+      name: name.trim() || "Unnamed player",
       jersey: jersey.trim() || null,
       positions,
       bats: bats === "" ? null : bats,
@@ -267,6 +333,7 @@ function PlayerForm({
       weight_lb: weight_lb === "" ? null : parseInt(weight_lb, 10) || null,
       hometown: hometown.trim() || null,
       birth_date: birth_date.trim() || null,
+      opponent_team: opponent_team.trim() || null,
     });
     setSaving(false);
   };
@@ -275,61 +342,114 @@ function PlayerForm({
 
   return (
     <form onSubmit={handleSubmit} className="card-tech p-5">
-      <h3 className="font-display text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">{isEditing ? "Edit player" : "Add player"}</h3>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <label>
-          <span className="text-xs text-[var(--text-muted)]">Name</span>
-          <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="input-tech mt-1 block w-full px-3 py-2" placeholder="Full name" required />
-        </label>
-        <label>
-          <span className="text-xs text-[var(--text-muted)]">Jersey</span>
-          <input type="text" value={jersey} onChange={(e) => setJersey(e.target.value)} className="input-tech mt-1 block w-full px-3 py-2" placeholder="e.g. 7" />
-        </label>
-        <label>
-          <span className="text-xs text-[var(--text-muted)]">Bats</span>
-          <select value={bats} onChange={(e) => setBats(e.target.value as "L" | "R" | "S" | "")} className="input-tech mt-1 block w-full px-3 py-2">
-            <option value="">—</option>
-            <option value="L">L</option>
-            <option value="R">R</option>
-            <option value="S">S (Switch)</option>
-          </select>
-        </label>
-        <label>
-          <span className="text-xs text-[var(--text-muted)]">Throws</span>
-          <select value={throws} onChange={(e) => setThrows(e.target.value as "L" | "R" | "")} className="input-tech mt-1 block w-full px-3 py-2">
-            <option value="">—</option>
-            <option value="L">L</option>
-            <option value="R">R</option>
-          </select>
-        </label>
-        <label>
-          <span className="text-xs text-[var(--text-muted)]">Height (ft)</span>
-          <div className="mt-1 flex gap-2">
-            <input type="number" min={4} max={8} value={height_ft} onChange={(e) => setHeightFt(e.target.value)} className="input-tech w-20 px-3 py-2" placeholder="5" />
-            <span className="flex items-center text-[var(--text-muted)]">ft</span>
-            <input type="number" min={0} max={11} value={height_in_part} onChange={(e) => setHeightInPart(e.target.value)} className="input-tech w-20 px-3 py-2" placeholder="10" />
-            <span className="flex items-center text-[var(--text-muted)]">in</span>
+      <h3 className="font-display text-sm font-semibold uppercase tracking-wider text-white">{isEditing ? "Edit player" : "Add player"}</h3>
+      <div className="mt-4 space-y-4">
+        {/* Name + opponent */}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="min-w-0">
+            <span className="text-xs text-white">Name</span>
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="input-tech mt-1 block w-full px-3 py-2" placeholder="Full name" />
+          </label>
+          <label className="min-w-0">
+            <span className="text-xs text-white">Opponent team</span>
+            <input
+              type="text"
+              value={opponent_team}
+              onChange={(e) => setOpponentTeam(e.target.value)}
+              className="input-tech mt-1 block w-full px-3 py-2"
+              placeholder="e.g. Mayaguez — leave empty for your club"
+            />
+            <span className="mt-1 block text-[10px] text-white/60">
+              Set when this player is on an opposing roster (scouting / opponent stats).
+            </span>
+          </label>
+        </div>
+
+        {/* Jersey, height, bats, throws, weight — one compact band */}
+        <div className="rounded-lg border border-[var(--border)]/80 bg-[var(--bg-elevated)]/25 p-3 sm:p-4">
+          <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
+            <label className="min-w-0 shrink-0">
+              <span className="text-xs text-white">Jersey</span>
+              <input
+                type="text"
+                value={jersey}
+                onChange={(e) => setJersey(e.target.value)}
+                className="input-tech mt-1 block w-20 px-3 py-2 text-sm tabular-nums"
+                placeholder="e.g. 7"
+                maxLength={4}
+              />
+            </label>
+            <label className="min-w-0 shrink-0">
+              <span className="text-xs text-white">Height</span>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <input type="number" min={4} max={8} value={height_ft} onChange={(e) => setHeightFt(e.target.value)} className="input-tech w-[3.25rem] px-2 py-2 text-sm" placeholder="5" />
+                <span className="text-white/80">ft</span>
+                <input type="number" min={0} max={11} value={height_in_part} onChange={(e) => setHeightInPart(e.target.value)} className="input-tech w-[3.25rem] px-2 py-2 text-sm" placeholder="10" />
+                <span className="text-white/80">in</span>
+              </div>
+            </label>
+            <label className="shrink-0">
+              <span className="text-xs text-white">Bats</span>
+              <select
+                value={bats}
+                onChange={(e) => setBats(e.target.value as "L" | "R" | "S" | "")}
+                className="input-tech mt-1 block w-[5.75rem] px-2 py-2 text-sm"
+                aria-label="Bats"
+              >
+                <option value="">—</option>
+                <option value="L">L</option>
+                <option value="R">R</option>
+                <option value="S">S (Switch)</option>
+              </select>
+            </label>
+            <label className="shrink-0">
+              <span className="text-xs text-white">Throws</span>
+              <select
+                value={throws}
+                onChange={(e) => setThrows(e.target.value as "L" | "R" | "")}
+                className="input-tech mt-1 block w-[5.75rem] px-2 py-2 text-sm"
+                aria-label="Throws"
+              >
+                <option value="">—</option>
+                <option value="L">L</option>
+                <option value="R">R</option>
+              </select>
+            </label>
+            <label className="shrink-0">
+              <span className="text-xs text-white">Weight (lb)</span>
+              <input
+                type="number"
+                min={80}
+                max={350}
+                value={weight_lb}
+                onChange={(e) => setWeightLb(e.target.value)}
+                className="input-tech mt-1 block w-[5.5rem] px-2 py-2 text-sm tabular-nums"
+                placeholder="185"
+              />
+            </label>
           </div>
-        </label>
-        <label>
-          <span className="text-xs text-[var(--text-muted)]">Weight (lb)</span>
-          <input type="number" min={80} max={350} value={weight_lb} onChange={(e) => setWeightLb(e.target.value)} className="input-tech mt-1 block w-full px-3 py-2" placeholder="185" />
-        </label>
-        <label>
-          <span className="text-xs text-[var(--text-muted)]">Hometown</span>
-          <input type="text" value={hometown} onChange={(e) => setHometown(e.target.value)} className="input-tech mt-1 block w-full px-3 py-2" placeholder="e.g. San Juan, PR" />
-        </label>
-        <label>
-          <span className="text-xs text-[var(--text-muted)]">Birthday</span>
-          <StyledDatePicker
-            value={birth_date}
-            onChange={setBirthDate}
-            className="input-tech mt-1 block w-full px-3 py-2"
-            placeholder="Select date"
-          />
-        </label>
-        <div className="sm:col-span-2">
-          <span className="text-xs text-[var(--text-muted)]">Positions</span>
+        </div>
+
+        {/* Hometown + birthday */}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="min-w-0">
+            <span className="text-xs text-white">Hometown</span>
+            <input type="text" value={hometown} onChange={(e) => setHometown(e.target.value)} className="input-tech mt-1 block w-full px-3 py-2" placeholder="e.g. San Juan, PR" />
+          </label>
+          <label className="min-w-0">
+            <span className="text-xs text-white">Birthday</span>
+            <StyledDatePicker
+              value={birth_date}
+              onChange={setBirthDate}
+              className="input-tech mt-1 block w-full max-w-full px-3 py-2 text-sm sm:max-w-[12rem]"
+              placeholder="Select date"
+            />
+          </label>
+        </div>
+
+        {/* Positions */}
+        <div>
+          <span className="text-xs text-white">Positions</span>
           <div className="mt-2 flex flex-wrap gap-2">
             {POSITION_OPTIONS.map((pos) => (
               <button

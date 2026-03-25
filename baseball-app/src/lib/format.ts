@@ -12,6 +12,11 @@ export function formatDateMMDDYYYY(dateStr: string): string {
 /**
  * Format a time string (HH:mm:ss or HH:mm) as 12-hour "7:05 PM".
  */
+/** Pitches per PA: always two decimal places (e.g. 4.17). */
+export function formatPPa(n: number): string {
+  return n.toFixed(2);
+}
+
 export function formatGameTime(timeStr: string | null | undefined): string {
   if (!timeStr || !timeStr.trim()) return "—";
   const [h, m] = timeStr.trim().split(":").map(Number);

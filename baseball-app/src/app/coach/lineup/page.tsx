@@ -5,6 +5,7 @@ import {
   getSavedLineups,
   getBattingStatsWithSplitsForPlayers,
 } from "@/lib/db/queries";
+import { isClubRosterPlayer, isPitcherPlayer } from "@/lib/opponentUtils";
 import { CoachLineupClientGate } from "./CoachLineupClientGate";
 import type { CoachLineupSlot } from "./CoachLineupClient";
 
@@ -31,11 +32,12 @@ function buildLineupFromSlots(
  * Coach lineup: view/edit gameday or future game lineups. Passes games, players, stats, templates, and initial lineup.
  */
 export default async function CoachLineupPage() {
-  const [players, games, savedLineups] = await Promise.all([
+  const [allPlayers, games, savedLineups] = await Promise.all([
     getPlayers(),
     getGames(),
     getSavedLineups(),
   ]);
+  const players = allPlayers.filter((p) => isClubRosterPlayer(p) && !isPitcherPlayer(p));
   const playerIds = players.map((p) => p.id);
   const battingStatsWithSplits = await getBattingStatsWithSplitsForPlayers(playerIds);
 
@@ -44,9 +46,10 @@ export default async function CoachLineupPage() {
 
   if (initialGame) {
     const slots = await getGameLineup(initialGame.id);
-    if (slots.length > 0) {
+    const ourSlots = slots.filter((s) => s.side === initialGame.our_side);
+    if (ourSlots.length > 0) {
       initialLineup = buildLineupFromSlots(
-        slots.map((s) => ({ slot: s.slot, player_id: s.player_id, position: s.position ?? null })),
+        ourSlots.map((s) => ({ slot: s.slot, player_id: s.player_id, position: s.position ?? null })),
         players
       );
     }
@@ -59,6 +62,7 @@ export default async function CoachLineupPage() {
       initialBattingStatsWithSplits={battingStatsWithSplits}
       savedLineups={savedLineups}
       initialGameId={initialGame?.id ?? null}
+      initialGameOurSide={initialGame?.our_side ?? null}
       initialLineup={initialLineup}
     />
   );

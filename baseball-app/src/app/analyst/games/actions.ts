@@ -5,6 +5,7 @@ import {
   updateGame,
   replaceGameLineup,
   getGameLineup,
+  getGame,
   getSavedLineups,
   getSavedLineupWithSlots,
   getPlayers,
@@ -13,13 +14,34 @@ import {
   deleteAllPlateAppearances,
 } from "@/lib/db/queries";
 import { isDemoId } from "@/lib/db/mockData";
-import type { Game } from "@/lib/types";
+import type { Game, LineupSide } from "@/lib/types";
 
 export async function createGameWithLineupAction(
   game: Omit<Game, "id" | "created_at">,
-  savedLineupId?: string | null
+  savedLineupId?: string | null,
+  opponentSlots?: { player_id: string; position?: string | null }[] | null,
+  ourSlotsOverride?: { player_id: string; position?: string | null }[] | null
 ): Promise<Game | null> {
-  return createGameWithLineup(game, savedLineupId);
+  return createGameWithLineup(game, savedLineupId, opponentSlots, ourSlotsOverride);
+}
+
+/** Replace our club’s lineup for an existing game (e.g. after editing in the lineup modal). */
+export async function replaceOurGameLineupAction(
+  gameId: string,
+  slots: { player_id: string; position?: string | null }[]
+): Promise<boolean> {
+  const game = await getGame(gameId);
+  if (!game || !slots.length) return false;
+  await replaceGameLineup(gameId, game.our_side as LineupSide, slots);
+  return true;
+}
+
+/** Update game metadata only (no lineup change). Used from games table UI. */
+export async function updateGameOnlyAction(
+  id: string,
+  updates: Partial<Omit<Game, "id" | "created_at">>
+): Promise<Game | null> {
+  return updateGame(id, updates);
 }
 
 /** Update game and optionally replace its lineup. lineupId: "__keep__" = no change, "__default__" = first 9, or saved template id. */
@@ -47,7 +69,7 @@ export async function updateGameWithLineupAction(
         .map((s) => ({ player_id: s.player_id, position: s.position ?? null }));
     }
   }
-  if (slots.length > 0) await replaceGameLineup(gameId, slots);
+  if (slots.length > 0) await replaceGameLineup(gameId, game.our_side as "home" | "away", slots);
   return updated;
 }
 
@@ -75,7 +97,8 @@ export async function fetchCurrentGameLineupName(gameId: string): Promise<string
 export async function fetchGameLineupSlots(
   gameId: string
 ): Promise<{ slot: number; player_id: string; position?: string | null }[]> {
-  const slots = await getGameLineup(gameId);
+  const game = await getGame(gameId);
+  const slots = (await getGameLineup(gameId)).filter((s) => s.side === game?.our_side);
   return [...slots].sort((a, b) => a.slot - b.slot).map((s) => ({
     slot: s.slot,
     player_id: s.player_id,

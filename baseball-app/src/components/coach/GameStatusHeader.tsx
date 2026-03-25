@@ -28,19 +28,19 @@ export function GameStatusHeader({
       initial={{ opacity: 0, y: -4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+      className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
     >
-      <div>
+      <div className="min-w-0">
         <div className="section-label">Current game</div>
         <p className="mt-1 text-sm text-[var(--neo-text-muted)]">
           {venue} · {date}
           {startTime ? ` · ${startTime}` : ""}
         </p>
-        <p className="text-base font-semibold text-[var(--neo-text)]">
+        <p className="mt-0.5 text-base font-semibold text-[var(--neo-text)]">
           {venueType === "home" ? "vs" : "@"} {opponent}
         </p>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex shrink-0 items-center gap-3 sm:pt-6">
         {inning != null && (
           <div className="rounded-lg bg-black/30 px-3 py-1.5 text-xs font-semibold tracking-wider text-[var(--neo-text)]">
             INNING <span className="text-[var(--neo-accent)]">{inning}</span>

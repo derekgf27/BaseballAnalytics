@@ -119,6 +119,18 @@ body {
   letter-spacing: 0.01em;
 }
 
+/* Batting stats: `border-collapse: collapse` breaks sticky + z-index; separate + row borders keep layout. */
+.stats-sheet-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.stats-sheet-table tbody td {
+  border-bottom: 1px solid var(--border);
+}
+.stats-sheet-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
 /* App shell: grid + scanline texture (use on coach/analyst main wrapper) */
 .app-shell {
   position: relative;
@@ -411,6 +423,29 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   color: var(--accent);
 }
 
+/* Month/year dropdowns — match dark UI */
+.rdp-dark .rdp-dropdown,
+.rdp-dark .rdp-dropdown_root {
+  color: #000;
+}
+.rdp-dark .rdp-dropdown select {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: #000;
+  padding: 0.2rem 0.35rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.rdp-dark .rdp-dropdown select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.rdp-dark .rdp-dropdown select option {
+  color: #000;
+  background: #fff;
+}
+
 /* Nav */
 .nav-link {
   border-radius: 6px;
@@ -431,6 +466,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .sidebar {
   width: 14rem;
   flex-shrink: 0;
+  align-self: stretch;
+  min-height: 0;
   border-right: 1px solid var(--border);
   background: var(--bg-elevated);
   display: flex;

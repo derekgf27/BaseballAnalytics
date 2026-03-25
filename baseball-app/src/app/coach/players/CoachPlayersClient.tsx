@@ -14,11 +14,11 @@ export function CoachPlayersClient({ players }: CoachPlayersClientProps) {
   return (
     <div className="space-y-6 pb-8">
       <header>
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-[var(--text)]">
+        <h1 className="font-display text-3xl font-semibold tracking-tight text-[var(--text)]">
           Players
         </h1>
         <p className="mt-1 text-sm text-[var(--text-muted)]">
-          Tap a player for strengths, situational value, and notes.
+          Tap a player for strengths, stats, and notes.
         </p>
       </header>
 

@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { BaseStateSelector } from "@/components/shared/BaseStateSelector";
-import type { PAResult, BaseState } from "@/lib/types";
+import { INNING_SELECT_VALUES } from "@/lib/leagueConfig";
+import type { PAResult, BaseState, HitDirection } from "@/lib/types";
 
 const RESULT_OPTIONS: { value: PAResult; label: string }[] = [
   { value: "single", label: "1B" },
@@ -11,13 +12,15 @@ const RESULT_OPTIONS: { value: PAResult; label: string }[] = [
   { value: "hr", label: "HR" },
   { value: "out", label: "Out" },
   { value: "so", label: "SO" },
+  { value: "gidp", label: "GIDP" },
   { value: "so_looking", label: "ꓘ" },
   { value: "bb", label: "BB" },
   { value: "ibb", label: "IBB" },
   { value: "hbp", label: "HBP" },
   { value: "sac_fly", label: "SF" },
   { value: "sac_bunt", label: "SH" },
-  { value: "other", label: "Other" },
+  { value: "reached_on_error", label: "Reached on error" },
+  { value: "fielders_choice", label: "FC" },
 ];
 
 interface LogPAFormProps {
@@ -43,6 +46,7 @@ export function LogPAForm({
   const [strikes, setStrikes] = useState(0);
   const [result, setResult] = useState<PAResult | null>(null);
   const [pitchesSeen, setPitchesSeen] = useState<number | "">("");
+  const [hitDirection, setHitDirection] = useState<HitDirection | null>(null);
   const [rbi, setRbi] = useState(0);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
@@ -50,6 +54,8 @@ export function LogPAForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (result === null) return;
+    if (pitchesSeen === "") return;
+    if (hitDirection === null) return;
     setSaving(true);
     try {
       await onSubmit({
@@ -64,8 +70,10 @@ export function LogPAForm({
         result,
         contact_quality: null,
         chase: null,
-        hit_direction: null,
-        pitches_seen: pitchesSeen === "" ? null : pitchesSeen,
+        hit_direction: hitDirection,
+        pitches_seen: pitchesSeen as number,
+        strikes_thrown: null,
+        first_pitch_strike: null,
         rbi,
         notes: notes || null,
       });
@@ -87,7 +95,7 @@ export function LogPAForm({
             onChange={(e) => setInning(Number(e.target.value))}
             className="input-tech mt-1 block w-full px-3 py-2"
           >
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+            {INNING_SELECT_VALUES.map((n) => (
               <option key={n} value={n}>{n}</option>
             ))}
           </select>
@@ -172,9 +180,35 @@ export function LogPAForm({
         </div>
       </div>
 
+      <div>
+        <span className="block text-xs text-[var(--text-muted)]">Hit direction (required)</span>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {(
+            [
+              { value: "pulled" as const, label: "Pulled" },
+              { value: "up_the_middle" as const, label: "Up the middle" },
+              { value: "opposite_field" as const, label: "Opposite field" },
+            ] as const
+          ).map(({ value, label }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setHitDirection(value)}
+              className={`min-w-[3.5rem] rounded-xl border-2 px-4 py-3 text-sm font-medium ${
+                hitDirection === value
+                  ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-base)]"
+                  : "border-[var(--border)] bg-[var(--bg-input)]"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="flex gap-4">
         <label>
-          <span className="text-xs text-[var(--text-muted)]">Pitches</span>
+          <span className="text-xs text-[var(--text-muted)]">Pitches (required)</span>
           <input
             type="number"
             min={0}
@@ -183,6 +217,7 @@ export function LogPAForm({
               setPitchesSeen(e.target.value === "" ? "" : Number(e.target.value))
             }
             className="ml-2 w-16 rounded border px-2 py-1"
+            required
           />
         </label>
         <label>
@@ -211,7 +246,7 @@ export function LogPAForm({
 
       <button
         type="submit"
-        disabled={result === null || saving}
+        disabled={result === null || pitchesSeen === "" || hitDirection === null || saving}
         className="w-full rounded-lg bg-[var(--accent)] py-3 font-medium text-[var(--bg-base)] disabled:opacity-50"
       >
         {saving ? "Saving…" : "Save PA"}

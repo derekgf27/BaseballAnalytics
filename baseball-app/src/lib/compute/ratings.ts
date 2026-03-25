@@ -7,7 +7,7 @@ import type { PlateAppearance, Ratings, PAResult } from "@/lib/types";
 
 const DAMAGE_RESULTS: PAResult[] = ["double", "triple", "hr"];
 const CONTACT_RESULTS: PAResult[] = ["single", "double", "triple", "hr"];
-const OUT_RESULTS: PAResult[] = ["out", "so", "so_looking"];
+const OUT_RESULTS: PAResult[] = ["out", "so", "so_looking", "gidp"];
 
 function clampRating(v: number): number {
   return Math.max(1, Math.min(5, Math.round(v)));

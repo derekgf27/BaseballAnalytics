@@ -1,6 +1,26 @@
-import { getGame, getGameLineup, getPlateAppearancesByGame, getPlayersByIds } from "@/lib/db/queries";
+import {
+  getGame,
+  getGameLineup,
+  getPlateAppearancesByGame,
+  getPlayersByIds,
+  getBaserunningTotalsForGame,
+} from "@/lib/db/queries";
 import { GameReviewClient } from "./GameReviewClient";
 import { notFound } from "next/navigation";
+import type { GameLineupSlot } from "@/lib/types";
+
+function buildLineupMaps(slots: GameLineupSlot[]) {
+  if (slots.length === 0) {
+    return { order: undefined as string[] | undefined, positionByPlayerId: {} as Record<string, string> };
+  }
+  const sorted = [...slots].sort((a, b) => a.slot - b.slot);
+  const order = sorted.map((s) => s.player_id);
+  const positionByPlayerId: Record<string, string> = {};
+  for (const s of sorted) {
+    if (s.position?.trim()) positionByPlayerId[s.player_id] = s.position.trim();
+  }
+  return { order, positionByPlayerId };
+}
 
 export default async function GameReviewPage({
   params,
@@ -8,27 +28,40 @@ export default async function GameReviewPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [game, pas, lineupSlots] = await Promise.all([
+  const [game, pas, lineupSlots, baserunningByPlayerId] = await Promise.all([
     getGame(id),
     getPlateAppearancesByGame(id),
     getGameLineup(id),
+    getBaserunningTotalsForGame(id),
   ]);
   if (!game) notFound();
+
+  const awaySlots = lineupSlots.filter((s) => s.side === "away");
+  const homeSlots = lineupSlots.filter((s) => s.side === "home");
+  /** Lineups must be included: box score shows lineup order before any PAs exist; PA-only fetch left names as "Unknown". */
+  const lineupPlayerIds = [...awaySlots, ...homeSlots].map((s) => s.player_id).filter(Boolean);
   const batterIds = [...new Set(pas.map((pa) => pa.batter_id).filter(Boolean))];
-  const players = await getPlayersByIds(batterIds);
-  const lineupOrder = lineupSlots.length > 0 ? lineupSlots.map((s) => s.player_id) : undefined;
-  const lineupPositionByPlayerId: Record<string, string> = {};
-  for (const s of lineupSlots) {
-    if (s.position?.trim()) lineupPositionByPlayerId[s.player_id] = s.position.trim();
-  }
+  const pitcherIds = [...new Set(pas.map((pa) => pa.pitcher_id).filter(Boolean))] as string[];
+  const allPlayerIds = [...new Set([...batterIds, ...lineupPlayerIds, ...pitcherIds])];
+  const players = await getPlayersByIds(allPlayerIds);
+  const awayLineup = buildLineupMaps(awaySlots);
+  const homeLineup = buildLineupMaps(homeSlots);
+
+  const pasAway = pas.filter((p) => p.inning_half === "top");
+  const pasHome = pas.filter((p) => p.inning_half === "bottom");
+
   return (
     <GameReviewClient
-      gameId={id}
       game={game}
-      pas={pas}
+      pasAll={pas}
+      pasAway={pasAway}
+      pasHome={pasHome}
       players={players}
-      lineupOrder={lineupOrder}
-      lineupPositionByPlayerId={lineupPositionByPlayerId}
+      awayLineupOrder={awayLineup.order}
+      homeLineupOrder={homeLineup.order}
+      awayLineupPositionByPlayerId={awayLineup.positionByPlayerId}
+      homeLineupPositionByPlayerId={homeLineup.positionByPlayerId}
+      baserunningByPlayerId={baserunningByPlayerId}
     />
   );
 }

@@ -1,10 +1,10 @@
-import { getPlayers } from "@/lib/db/queries";
-import { getPlateAppearancesByBatter } from "@/lib/db/queries";
+import { getPlayers, getPlateAppearancesByBatter } from "@/lib/db/queries";
 import { greenLightForRecentPAs } from "@/lib/compute";
 import { GreenLightCell } from "@/components/coach/GreenLightCell";
+import { isClubRosterPlayer } from "@/lib/opponentUtils";
 
 export default async function CoachGreenLightPage() {
-  const players = await getPlayers();
+  const players = (await getPlayers()).filter(isClubRosterPlayer);
   const withGreenLight = await Promise.all(
     players.map(async (p) => {
       const pas = await getPlateAppearancesByBatter(p.id);
@@ -34,7 +34,7 @@ export default async function CoachGreenLightPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="font-display text-xl font-semibold tracking-tight text-[var(--text)]">Green-light matrix</h1>
+      <h1 className="font-display text-3xl font-semibold tracking-tight text-[var(--text)]">Green-light matrix</h1>
       <p className="text-sm text-[var(--text-muted)]">Yes / No / Situational — no decimals.</p>
       <div className="card-tech overflow-x-auto rounded-lg">
         <table className="w-full text-left text-sm">

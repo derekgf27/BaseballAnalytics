@@ -1,14 +1,7 @@
 /**
- * Supabase client. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local.
+ * Env check for Supabase. Server data access uses @/lib/supabase/server (cookie session).
  */
 
-import { createClient } from "@supabase/supabase-js";
-
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
-
-export const supabase = url && key ? createClient(url, key) : null;
-
 export function hasSupabase(): boolean {
-  return !!supabase;
+  return !!(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 }

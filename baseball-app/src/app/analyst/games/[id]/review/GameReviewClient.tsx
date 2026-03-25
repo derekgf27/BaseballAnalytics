@@ -2,26 +2,38 @@
 
 import Link from "next/link";
 import { BoxScore } from "@/components/analyst/BoxScore";
+import { BattingPitchMixCard } from "@/components/analyst/BattingPitchMixCard";
+import { plateAppearancesForPitchingSide } from "@/lib/compute/gamePitchingBox";
 import { GameBattingTable } from "@/components/analyst/GameBattingTable";
+import { GamePitchingBoxTable } from "@/components/analyst/GamePitchingBoxTable";
 import { formatDateMMDDYYYY } from "@/lib/format";
 import type { Game, PlateAppearance, Player } from "@/lib/types";
 
 interface GameReviewClientProps {
-  gameId: string;
   game: Game;
-  pas: PlateAppearance[];
+  /** Full game PAs (for linescore). */
+  pasAll: PlateAppearance[];
+  pasAway: PlateAppearance[];
+  pasHome: PlateAppearance[];
   players: Player[];
-  lineupOrder?: string[] | null;
-  lineupPositionByPlayerId?: Record<string, string>;
+  awayLineupOrder?: string[];
+  homeLineupOrder?: string[];
+  awayLineupPositionByPlayerId?: Record<string, string>;
+  homeLineupPositionByPlayerId?: Record<string, string>;
+  baserunningByPlayerId?: Record<string, { sb: number; cs: number }>;
 }
 
 export function GameReviewClient({
-  gameId,
   game,
-  pas,
+  pasAll,
+  pasAway,
+  pasHome,
   players,
-  lineupOrder,
-  lineupPositionByPlayerId,
+  awayLineupOrder,
+  homeLineupOrder,
+  awayLineupPositionByPlayerId,
+  homeLineupPositionByPlayerId,
+  baserunningByPlayerId,
 }: GameReviewClientProps) {
   const gameLabel = `${formatDateMMDDYYYY(game.date)} ${game.away_team} @ ${game.home_team}`;
 
@@ -29,38 +41,54 @@ export function GameReviewClient({
     <div className="space-y-6 pb-8">
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-[var(--text)]">
+          <h1 className="font-display text-3xl font-semibold tracking-tight text-[var(--text)]">
             Box score
           </h1>
           <p className="mt-1 text-sm text-[var(--text-muted)]">{gameLabel}</p>
         </div>
-        <Link href="/analyst/record" className="text-sm text-[var(--accent)] hover:underline">
+        <Link href={`/analyst/record?gameId=${game.id}`} className="text-sm text-[var(--accent)] hover:underline">
           Record PAs
         </Link>
       </header>
 
-      {/* Box score */}
       <section>
         <h2 className="font-display mb-2 text-sm font-semibold uppercase tracking-wider text-white">
           Box score
         </h2>
-        <BoxScore game={game} pas={pas} />
+        <BoxScore game={game} pas={pasAll} />
       </section>
 
-      {/* Individual batting stats for our team */}
       <GameBattingTable
         game={game}
-        pas={pas}
+        teamName={game.away_team}
+        pas={pasAway}
         players={players}
-        lineupOrder={lineupOrder}
-        lineupPositionByPlayerId={lineupPositionByPlayerId}
+        lineupOrder={awayLineupOrder}
+        lineupPositionByPlayerId={awayLineupPositionByPlayerId}
+        baserunningByPlayerId={baserunningByPlayerId}
+        showPitchData={false}
       />
 
-      <p className="text-center">
-        <Link href="/analyst/games" className="text-sm text-[var(--accent)] hover:underline">
-          ← Back to games
-        </Link>
-      </p>
+      <div className="flex flex-col gap-4">
+        <GamePitchingBoxTable game={game} side="away" pas={pasAll} players={players} />
+        <BattingPitchMixCard pas={plateAppearancesForPitchingSide(pasAll, "away")} players={players} />
+      </div>
+
+      <GameBattingTable
+        game={game}
+        teamName={game.home_team}
+        pas={pasHome}
+        players={players}
+        lineupOrder={homeLineupOrder}
+        lineupPositionByPlayerId={homeLineupPositionByPlayerId}
+        baserunningByPlayerId={baserunningByPlayerId}
+        showPitchData={false}
+      />
+
+      <div className="flex flex-col gap-4">
+        <GamePitchingBoxTable game={game} side="home" pas={pasAll} players={players} />
+        <BattingPitchMixCard pas={plateAppearancesForPitchingSide(pasAll, "home")} players={players} />
+      </div>
     </div>
   );
 }

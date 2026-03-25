@@ -10,6 +10,15 @@ function countByResult(pas: PlateAppearance[], result: PAResult): number {
 
 const DEFAULT_LEAGUE_OPS = 0.73;
 
+/**
+ * Runners in scoring position: runner on 2nd and/or 3rd before the PA.
+ * `base_state` is 3 chars: 1st, 2nd, 3rd ("100" = first only, "011" = 2nd+3rd).
+ */
+export function isRisp(baseState: string | null | undefined): boolean {
+  const b = String(baseState ?? "").padStart(3, "0").slice(0, 3);
+  return b[1] === "1" || b[2] === "1";
+}
+
 /** wOBA linear weights (typical run environment; adjust per league if needed) */
 const WOBA_WEIGHTS = {
   bb: 0.69,
@@ -42,6 +51,8 @@ export function battingStatsFromPAs(
   const triple = countByResult(pas, "triple");
   const hr = countByResult(pas, "hr");
   const so = countByResult(pas, "so") + countByResult(pas, "so_looking");
+  const gidp = countByResult(pas, "gidp");
+  const fieldersChoice = countByResult(pas, "fielders_choice");
   const rbi = pas.reduce((sum, p) => sum + (p.rbi ?? 0), 0);
   const sb = pas.reduce((sum, p) => sum + (p.stolen_bases ?? 0), 0);
 
@@ -74,6 +85,13 @@ export function battingStatsFromPAs(
   const kPct = pa > 0 ? so / pa : 0;
   const bbPct = pa > 0 ? walks / pa : 0;
 
+  const hasPitchData = pas.some((p) => p.pitches_seen != null && p.pitches_seen >= 0);
+  const pitchesSeenTotal = pas.reduce(
+    (sum, p) => sum + (typeof p.pitches_seen === "number" && p.pitches_seen >= 0 ? p.pitches_seen : 0),
+    0
+  );
+  const pPa = hasPitchData && pa > 0 ? pitchesSeenTotal / pa : undefined;
+
   return {
     avg,
     obp,
@@ -93,14 +111,18 @@ export function battingStatsFromPAs(
     ibb,
     hbp,
     so,
+    gidp,
+    fieldersChoice,
     sf,
     sh,
     kPct,
     bbPct,
+    pitchesSeenTotal: hasPitchData ? pitchesSeenTotal : undefined,
+    pPa,
   };
 }
 
-export type LineupAggregateRates = Pick<BattingStats, "avg" | "obp" | "slg" | "ops" | "opsPlus" | "woba">;
+export type LineupAggregateRates = Pick<BattingStats, "avg" | "obp" | "slg" | "ops" | "opsPlus" | "woba" | "pPa" | "kPct">;
 
 /**
  * True combined rates for a lineup: sum counting stats across batters, then apply the same
@@ -149,7 +171,13 @@ export function lineupAggregateFromBattingStats(
           wobaDenom
         : 0;
 
-    return { avg, obp, slg, ops, opsPlus, woba };
+    const pitchSum = batters.reduce((s, b) => s + (b.pitchesSeenTotal ?? 0), 0);
+    const pPa = pa >= 1 && pitchSum > 0 ? pitchSum / pa : undefined;
+
+    const so = batters.reduce((s, b) => s + (b.so ?? 0), 0);
+    const kPct = pa > 0 ? so / pa : 0;
+
+    return { avg, obp, slg, ops, opsPlus, woba, pPa, kPct };
   }
 
   const n = batters.length;
@@ -161,5 +189,70 @@ export function lineupAggregateFromBattingStats(
   const ops = mean("ops");
   const opsPlus = Math.round(mean("opsPlus"));
   const woba = mean("woba");
-  return { avg, obp, slg, ops, opsPlus, woba };
+  const pPaList = batters.map((b) => b.pPa).filter((x): x is number => typeof x === "number" && !Number.isNaN(x));
+  const pPa = pPaList.length > 0 ? pPaList.reduce((a, b) => a + b, 0) / pPaList.length : undefined;
+  const totalPa = batters.reduce((s, b) => s + (b.pa ?? 0), 0);
+  const totalSo = batters.reduce((s, b) => s + (b.so ?? 0), 0);
+  const kPct = totalPa > 0 ? totalSo / totalPa : 0;
+  return { avg, obp, slg, ops, opsPlus, woba, pPa, kPct };
+}
+
+/**
+ * First-pitch strikes and strike rate (strikes ÷ pitches) for a set of PAs — e.g. one team’s trips to the plate.
+ * Eligibility matches pitching rate logic (`strikes_thrown` / `pitches_seen`, first-pitch when ≥1 pitch recorded).
+ */
+export function pitchMixFromPlateAppearances(pas: PlateAppearance[]): {
+  firstPitchStrikes: number;
+  firstPitchOpportunities: number;
+  strikePct: number | null;
+  /** FPS / opportunities when opportunities > 0. */
+  firstPitchStrikePct: number | null;
+  /** Sum of `pitches_seen` on PAs with a numeric pitch count. */
+  pitchesTotal: number;
+  /** PAs with a recorded `pitches_seen` (incl. 0). */
+  plateAppearancesWithPitchCount: number;
+  /** Mean pitches per PA among PAs with pitch count (same basis as pitching `rates.pPa`). */
+  pitchesPerPA: number | null;
+} {
+  let strikeSum = 0;
+  let pitchSumStrike = 0;
+  let fpsNumer = 0;
+  let fpsDenom = 0;
+  let pitchSumAll = 0;
+  let pitchPaCount = 0;
+
+  for (const pa of pas) {
+    const pv = pa.pitches_seen;
+    const st = pa.strikes_thrown;
+    if (pv != null && !Number.isNaN(pv)) {
+      pitchSumAll += pv;
+      pitchPaCount += 1;
+    }
+    if (
+      pv != null &&
+      st != null &&
+      !Number.isNaN(pv) &&
+      !Number.isNaN(st) &&
+      pv > 0 &&
+      st >= 0 &&
+      st <= pv
+    ) {
+      pitchSumStrike += pv;
+      strikeSum += st;
+    }
+    if (pa.first_pitch_strike != null && pa.pitches_seen != null && pa.pitches_seen >= 1) {
+      fpsDenom += 1;
+      if (pa.first_pitch_strike) fpsNumer += 1;
+    }
+  }
+
+  return {
+    firstPitchStrikes: fpsNumer,
+    firstPitchOpportunities: fpsDenom,
+    strikePct: pitchSumStrike > 0 ? strikeSum / pitchSumStrike : null,
+    firstPitchStrikePct: fpsDenom > 0 ? fpsNumer / fpsDenom : null,
+    pitchesTotal: pitchSumAll,
+    plateAppearancesWithPitchCount: pitchPaCount,
+    pitchesPerPA: pitchPaCount > 0 ? pitchSumAll / pitchPaCount : null,
+  };
 }

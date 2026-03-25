@@ -1,6 +1,8 @@
 "use client";
 
-import { battingStatsFromPAs } from "@/lib/compute/battingStats";
+import { useMemo } from "react";
+import { battingStatsFromPAs, pitchMixFromPlateAppearances } from "@/lib/compute/battingStats";
+import { isPitcherPlayer } from "@/lib/opponentUtils";
 import type { Game, PlateAppearance, Player } from "@/lib/types";
 
 export interface GameBattingRow {
@@ -20,6 +22,7 @@ export interface GameBattingRow {
   hr: number;
   tb: number;
   sb: number;
+  cs: number;
 }
 
 function formatAvgOps(value: number): string {
@@ -32,7 +35,8 @@ function computeGameBatting(
   pas: PlateAppearance[],
   players: Player[],
   lineupOrder?: string[] | null,
-  lineupPositionByPlayerId?: Record<string, string | null>
+  lineupPositionByPlayerId?: Record<string, string | null>,
+  baserunningByPlayerId?: Record<string, { sb: number; cs: number }>
 ): GameBattingRow[] {
   const list = players ?? [];
   const playerMap = new Map(list.map((p) => [p.id, p]));
@@ -59,7 +63,7 @@ function computeGameBatting(
   const rows: GameBattingRow[] = [];
   for (const batterId of order) {
     const player = playerMap.get(batterId);
-    if (!player) continue;
+    if (player && isPitcherPlayer(player)) continue;
     const playerPAs = pas.filter((p) => p.batter_id === batterId);
     const stats = battingStatsFromPAs(playerPAs);
 
@@ -74,13 +78,19 @@ function computeGameBatting(
     const tb = singles + 2 * d + 3 * t + 4 * hrCount;
 
     const gamePosition = lineupPositionByPlayerId?.[batterId];
+    const br = baserunningByPlayerId?.[batterId];
+    const evSb = br?.sb ?? 0;
+    const evCs = br?.cs ?? 0;
+    const paSb = stats?.sb ?? 0;
+    const displayName = player?.name ?? "Unknown player";
+    const displayPosition =
+      gamePosition != null && gamePosition !== ""
+        ? gamePosition
+        : player?.positions?.[0] ?? "";
     rows.push({
       playerId: batterId,
-      name: player.name,
-      position:
-        gamePosition != null && gamePosition !== ""
-          ? gamePosition
-          : player.positions?.[0] ?? "",
+      name: displayName,
+      position: displayPosition,
       ab: stats?.ab ?? 0,
       r,
       h: stats?.h ?? 0,
@@ -93,7 +103,8 @@ function computeGameBatting(
       triple: t,
       hr: hrCount,
       tb,
-      sb: stats?.sb ?? 0,
+      sb: paSb + evSb,
+      cs: evCs,
     });
   }
   return rows;
@@ -101,6 +112,7 @@ function computeGameBatting(
 
 interface GameBattingTableProps {
   game: Game;
+  /** Plate appearances for the team whose stats are shown (caller filters by inning half). */
   pas: PlateAppearance[];
   players?: Player[] | null;
   /** Game lineup: player IDs in slot order (1–9). When set, table follows this order for easier reading. */
@@ -111,8 +123,14 @@ interface GameBattingTableProps {
   highlightedBatterId?: string | null;
   /** Tighter layout for side panel (smaller text, padding, min-width). */
   compact?: boolean;
-  /** Pending stolen bases by batter ID (e.g. from current form before save). Shown in BATTING section immediately. */
-  pendingStolenBasesByBatterId?: Record<string, number>;
+  /** SB/CS from baserunning_events for this game (runner-centric). */
+  baserunningByPlayerId?: Record<string, { sb: number; cs: number }>;
+  /** Heading team name (defaults to our club from `game.our_side`). */
+  teamName?: string;
+  /** When true, omit the "Batters – …" heading (e.g. parent renders a shared header row). */
+  hideHeading?: boolean;
+  /** When false, hide the Pitch data card (e.g. show it under the pitching table on Record PAs). */
+  showPitchData?: boolean;
 }
 
 export function GameBattingTable({
@@ -123,20 +141,22 @@ export function GameBattingTable({
   lineupPositionByPlayerId,
   highlightedBatterId,
   compact = false,
-  pendingStolenBasesByBatterId,
+  baserunningByPlayerId,
+  teamName: teamNameProp,
+  hideHeading = false,
+  showPitchData = true,
 }: GameBattingTableProps) {
   const rows = computeGameBatting(
     pas,
     players ?? [],
     lineupOrder,
-    lineupPositionByPlayerId
+    lineupPositionByPlayerId,
+    baserunningByPlayerId
   );
-  const rowsWithPending = rows.map((r) => ({
-    ...r,
-    sb: r.sb + (pendingStolenBasesByBatterId?.[r.playerId] ?? 0),
-  }));
-  // We only record stats for our team; heading always shows our team name.
-  const ourTeamName = game.our_side === "home" ? game.home_team : game.away_team;
+  const rowsWithPending = rows;
+  const headingTeamName =
+    teamNameProp ??
+    (game.our_side === "home" ? game.home_team : game.away_team);
 
   const totals = rowsWithPending.reduce(
     (acc, r) => ({
@@ -153,15 +173,21 @@ export function GameBattingTable({
   const battingNotes = rowsWithPending.filter(
     (r) => r.double > 0 || r.hr > 0 || r.tb > 0 || r.rbi > 0 || r.sb > 0
   );
+  const pitchMix = useMemo(() => {
+    if (!showPitchData) return null;
+    return pitchMixFromPlateAppearances(pas);
+  }, [pas, showPitchData]);
 
   if (rowsWithPending.length === 0) {
     return (
       <section>
-        <h2 className="font-display mb-2 text-sm font-semibold uppercase tracking-wider text-white">
-          Batters – {ourTeamName}
-        </h2>
+        {!hideHeading ? (
+          <h2 className="font-display mb-2 text-sm font-semibold uppercase tracking-wider text-white">
+            Batters – {headingTeamName}
+          </h2>
+        ) : null}
         <p className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-4 text-sm text-[var(--text-muted)]">
-          No plate appearances recorded for this game.
+          No lineup saved for this team in this game yet. Add it in Coach → Lineup or when creating the game.
         </p>
       </section>
     );
@@ -169,12 +195,14 @@ export function GameBattingTable({
 
   return (
     <section className={compact ? "space-y-1" : "space-y-4"}>
-      <h2 className={compact ? "font-display text-xs font-semibold uppercase tracking-wider text-white" : "font-display text-sm font-semibold uppercase tracking-wider text-white"}>
-        Batters – {ourTeamName}
-      </h2>
-      <div className="overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--bg-card)]">
+      {!hideHeading ? (
+        <h2 className={compact ? "font-display text-xs font-semibold uppercase tracking-wider text-white" : "font-display text-sm font-semibold uppercase tracking-wider text-white"}>
+          Batters – {headingTeamName}
+        </h2>
+      ) : null}
+      <div className="max-h-[min(70vh,32rem)] overflow-x-auto overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--bg-card)]">
         <table className={`w-full border-collapse text-left ${compact ? "min-w-0 text-xs" : "min-w-[520px] text-sm"}`}>
-          <thead>
+          <thead className="sticky top-0 z-10 shadow-[0_1px_0_0_var(--border)]">
             <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
               <th className={compact ? "font-display px-1.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-white" : "font-display px-3 py-2 text-xs font-semibold uppercase tracking-wider text-white"}>
                 Player
@@ -294,9 +322,44 @@ export function GameBattingTable({
                 </dd>
               </div>
             )}
+            {battingNotes.some((r) => r.cs > 0) && (
+              <div>
+                <dt className="inline font-semibold text-[var(--text-muted)]">CS: </dt>
+                <dd className="inline">
+                  {battingNotes
+                    .filter((r) => r.cs > 0)
+                    .map((r) => `${r.name} ${r.cs}`)
+                    .join("; ")}
+                </dd>
+              </div>
+            )}
           </dl>
         </div>
       )}
+
+      {showPitchData && pitchMix != null ? (
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-3">
+          <h3 className="font-display mb-2 text-xs font-semibold uppercase tracking-wider text-white">
+            Pitch data
+          </h3>
+          <dl className="space-y-1.5 text-sm text-[var(--text)]">
+            <div>
+              <dt className="inline font-semibold text-[var(--text-muted)]">First pitch strikes: </dt>
+              <dd className="inline tabular-nums">
+                {pitchMix.firstPitchOpportunities > 0
+                  ? `${pitchMix.firstPitchStrikes} / ${pitchMix.firstPitchOpportunities}`
+                  : "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="inline font-semibold text-[var(--text-muted)]">Strike %: </dt>
+              <dd className="inline tabular-nums">
+                {pitchMix.strikePct != null ? `${(pitchMix.strikePct * 100).toFixed(1)}%` : "—"}
+              </dd>
+            </div>
+          </dl>
+        </div>
+      ) : null}
     </section>
   );
 }

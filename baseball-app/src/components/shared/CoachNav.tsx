@@ -12,7 +12,6 @@ const LINKS = [
   { href: "/coach/players", label: "Players", icon: "👤", exact: false },
   { href: "/coach/green-light", label: "Green light", icon: "🟢", exact: false },
   { href: "/coach/situation", label: "Situation", icon: "⚾", exact: false },
-  { href: "/coach/alerts", label: "Alerts", icon: "⚠️", exact: false },
 ] as const;
 
 export function CoachNav() {
@@ -68,7 +67,7 @@ export function CoachNav() {
           <span className="sidebar-label truncate text-[var(--accent-coach)]">Coach</span>
         </Link>
       </div>
-      <nav className="flex flex-1 flex-col gap-0.5 py-3">
+      <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto py-3">
         {LINKS.map((link) => {
           const { href, label, icon } = link;
           const exact = "exact" in link && link.exact;
@@ -87,17 +86,17 @@ export function CoachNav() {
             </Link>
           );
         })}
+        <div className="mt-2 shrink-0 border-t border-[var(--border)] pt-2">
+          <Link
+            href="/"
+            className="sidebar-link sidebar-link-coach opacity-70"
+            title="Exit to home"
+          >
+            <span className="sidebar-icon" aria-hidden>←</span>
+            <span className="sidebar-label">Exit</span>
+          </Link>
+        </div>
       </nav>
-      <div className="border-t border-[var(--border)] p-2">
-        <Link
-          href="/"
-          className="sidebar-link sidebar-link-coach opacity-70"
-          title="Exit to home"
-        >
-          <span className="sidebar-icon" aria-hidden>←</span>
-          <span className="sidebar-label">Exit</span>
-        </Link>
-      </div>
     </aside>
   );
 }

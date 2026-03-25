@@ -11,7 +11,7 @@ export default function Home() {
         >
           ⚾
         </div>
-        <h1 className="home-title-glow mt-4 text-xl font-semibold text-[var(--text)] sm:text-3xl">
+        <h1 className="home-title-glow mt-4 text-3xl font-semibold text-[var(--text)]">
           Baseball Analytics
         </h1>
         <p className="mt-1 text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">

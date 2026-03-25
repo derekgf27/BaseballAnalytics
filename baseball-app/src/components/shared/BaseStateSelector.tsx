@@ -8,13 +8,14 @@ import type { BaseState } from "@/lib/types";
 
 const BASE_LABELS = ["1st", "2nd", "3rd"] as const;
 
-const VIEW_BOX = "0 0 280 280";
-const BASE_SIZE = 72; // diamond (rotated square) side length – large for tap + name
+const VIEW_BOX = "0 0 300 300";
+/** Diamond (rotated square) side length — room for tap targets + name text */
+const BASE_SIZE = 98;
 
-// Base centers [x, y]: 2nd top, 1st right, 3rd left (diamond layout)
-const SECOND = [140, 60];
-const FIRST = [218, 140];
-const THIRD = [62, 140];
+// Base centers [x, y]: 2nd top, 1st right, 3rd left (diamond layout), scaled for VIEW_BOX
+const SECOND = [150, 78];
+const FIRST = [232, 162];
+const THIRD = [70, 162];
 
 const BASE_POSITIONS = [FIRST, SECOND, THIRD]; // index 0=1st, 1=2nd, 2=3rd
 
@@ -31,6 +32,12 @@ interface BaseStateSelectorProps {
   runnerOptions?: RunnerOption[];
   /** Current batter ID – excluded from runner options so batter can't be on base. */
   currentBatterId?: string | null;
+  /** Log SB/CS for the runner on this base (saved immediately; does not change base state). */
+  onBaserunning?: (args: {
+    baseIndex: 0 | 1 | 2;
+    runnerId: string;
+    type: "sb" | "cs";
+  }) => void;
 }
 
 export function BaseStateSelector({
@@ -41,6 +48,7 @@ export function BaseStateSelector({
   onRunnerChange,
   runnerOptions = [],
   currentBatterId,
+  onBaserunning,
 }: BaseStateSelectorProps) {
   const bits = value.split("").map((c) => c === "1");
   const optionsExcludingBatter = currentBatterId
@@ -75,7 +83,7 @@ export function BaseStateSelector({
 
   return (
     <div
-      className="relative inline-block w-[280px] max-w-full"
+      className="relative inline-block w-[300px] max-w-full"
       aria-label="Runners on base (diamond)"
     >
       <svg
@@ -109,7 +117,7 @@ export function BaseStateSelector({
                 y={y - half}
                 width={BASE_SIZE}
                 height={BASE_SIZE}
-                fill={hasRunner ? "var(--accent)" : "#fafafa"}
+                fill={hasRunner ? "#000000" : "#fafafa"}
                 stroke={hasRunner ? "var(--accent)" : "#e8e0d0"}
                 strokeWidth={2}
                 transform={`rotate(45 ${x} ${y})`}
@@ -125,8 +133,8 @@ export function BaseStateSelector({
                       y={jersey != null ? y - 10 : y}
                       textAnchor="middle"
                       dominantBaseline="middle"
-                      fill="var(--bg-base)"
-                      fontSize="20"
+                      fill="var(--accent)"
+                      fontSize="22"
                       fontWeight="800"
                     >
                       {lastName}
@@ -137,8 +145,8 @@ export function BaseStateSelector({
                         y={y + 10}
                         textAnchor="middle"
                         dominantBaseline="middle"
-                        fill="var(--bg-base)"
-                        fontSize="16"
+                        fill="var(--accent)"
+                        fontSize="24"
                         fontWeight="800"
                       >
                         #{jersey}
@@ -174,6 +182,30 @@ export function BaseStateSelector({
                       </option>
                     ))}
                 </select>
+                {onBaserunning && runnerId ? (
+                  <div className="flex flex-wrap justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onBaserunning({ baseIndex: baseIdx as 0 | 1 | 2, runnerId, type: "sb" });
+                      }}
+                      className="min-h-[44px] min-w-[3.5rem] rounded-lg border-2 border-[var(--accent)]/50 bg-[var(--accent-dim)] px-4 py-2 text-sm font-bold tracking-wide text-[var(--accent)] transition hover:bg-[var(--accent)]/20 touch-manipulation"
+                    >
+                      SB
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onBaserunning({ baseIndex: baseIdx as 0 | 1 | 2, runnerId, type: "cs" });
+                      }}
+                      className="min-h-[44px] min-w-[3.5rem] rounded-lg border-2 border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-2 text-sm font-bold tracking-wide text-[var(--text-muted)] transition hover:border-[var(--danger)]/50 hover:text-[var(--danger)] touch-manipulation"
+                    >
+                      CS
+                    </button>
+                  </div>
+                ) : null}
               </div>
             );
           })}

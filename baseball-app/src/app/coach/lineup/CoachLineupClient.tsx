@@ -20,10 +20,11 @@ import {
   fetchSavedLineupSlotsForCoach,
   deleteSavedLineupForCoach,
 } from "./actions";
-import type { Game } from "@/lib/types";
-import type { Player } from "@/lib/types";
-import type { SavedLineup } from "@/lib/types";
+import type { Game, LineupSide, Player, SavedLineup } from "@/lib/types";
 import type { BattingStats, BattingStatsWithSplits } from "@/lib/types";
+import { lineupAggregateFromBattingStats } from "@/lib/compute/battingStats";
+import { formatPPa } from "@/lib/format";
+import { comparePlayersByLastNameThenFull } from "@/lib/playerSort";
 
 const LINEUP_POSITIONS = ["P", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"] as const;
 
@@ -37,17 +38,30 @@ export interface CoachLineupSlot {
 
 type LineupSlotState = { player: Player | null; position: string };
 
-type LineupSplitView = "overall" | "vsL" | "vsR";
-type PoolSortKey = "name" | "obp" | "woba" | "ops" | "avg";
+type LineupSplitView = "overall" | "vsL" | "vsR" | "risp";
+type PoolSortKey = "name" | "obp" | "ops" | "avg";
 
-const BATTING_STAT_LABELS: { key: keyof BattingStats; label: string; format: "avg" | "int" }[] = [
+const BATTING_STAT_LABELS: { key: keyof BattingStats; label: string; format: "avg" | "int" | "pct" }[] = [
   { key: "avg", label: "AVG", format: "avg" },
   { key: "obp", label: "OBP", format: "avg" },
   { key: "slg", label: "SLG", format: "avg" },
   { key: "ops", label: "OPS", format: "avg" },
-  { key: "opsPlus", label: "OPS+", format: "int" },
-  { key: "woba", label: "wOBA", format: "avg" },
+  { key: "kPct", label: "K%", format: "pct" },
+  { key: "pPa", label: "P/PA", format: "avg" },
 ];
+
+function formatLineupBattingCell(s: BattingStats | undefined, key: keyof BattingStats, format: "avg" | "int" | "pct"): string {
+  if (!s) return "—";
+  if (key === "pPa") {
+    return s.pPa != null && !Number.isNaN(s.pPa) ? formatPPa(s.pPa) : "—";
+  }
+  if (format === "pct") {
+    const v = s[key];
+    if (typeof v !== "number" || Number.isNaN(v)) return "—";
+    return `${(v * 100).toFixed(1)}%`;
+  }
+  return formatStat(Number(s[key]) || 0, format);
+}
 
 function formatStat(value: number, format: "avg" | "int"): string {
   if (format === "int") return String(value);
@@ -63,6 +77,17 @@ function getStatValue(statsMap: Record<string, BattingStats>, playerId: string, 
   return typeof v === "number" ? v : -1;
 }
 
+/** Label + formatted value for pool cards when sorting by a stat (not name). */
+function poolCardStatLine(
+  poolSortBy: PoolSortKey,
+  stats: BattingStats | undefined
+): { label: string; value: string } | null {
+  if (poolSortBy === "name") return null;
+  const label = poolSortBy === "avg" ? "AVG" : poolSortBy === "ops" ? "OPS" : "OBP";
+  const key = poolSortBy as keyof BattingStats;
+  return { label, value: formatLineupBattingCell(stats, key, "avg") };
+}
+
 function getStatsForLineupSplit(
   splits: Record<string, BattingStatsWithSplits>,
   playerId: string,
@@ -72,13 +97,14 @@ function getStatsForLineupSplit(
   if (!s) return undefined;
   if (split === "overall") return s.overall;
   if (split === "vsL") return s.vsL ?? undefined;
-  return s.vsR ?? undefined;
+  if (split === "vsR") return s.vsR ?? undefined;
+  return s.risp ?? undefined;
 }
 
 function suggestOrder(
   players: Player[],
   statsMap: Record<string, BattingStats>,
-  stat: "obp" | "woba"
+  stat: "obp" | "avg"
 ): { player: Player; position: string }[] {
   const withStat = players.map((p) => ({
     player: p,
@@ -128,6 +154,8 @@ export interface CoachLineupClientProps {
   initialBattingStatsWithSplits: Record<string, BattingStatsWithSplits>;
   savedLineups: SavedLineup[];
   initialGameId: string | null;
+  /** `our_side` for `initialGameId` (used to hydrate the correct side from SSR). */
+  initialGameOurSide: LineupSide | null;
   initialLineup: CoachLineupSlot[];
 }
 
@@ -139,7 +167,16 @@ function formatGameLabel(game: Game): string {
   return `${d} ${vs}`;
 }
 
-function PlayerCard({ player, isDragging }: { player: Player; isDragging?: boolean }) {
+function PlayerCard({
+  player,
+  isDragging,
+  poolStatLine,
+}: {
+  player: Player;
+  isDragging?: boolean;
+  /** When sorting the pool by AVG/OPS/OBP, show that stat on the card */
+  poolStatLine?: { label: string; value: string } | null;
+}) {
   const position = player.positions?.[0] ?? "—";
   const handedness = formatHandedness(player.bats, player.throws);
   return (
@@ -149,10 +186,20 @@ function PlayerCard({ player, isDragging }: { player: Player; isDragging?: boole
       }`}
     >
       <div className="min-w-0 flex-1">
-        <p className="font-medium text-[var(--neo-text)]">{player.name}</p>
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <p className="min-w-0 flex-1 truncate font-medium text-[var(--neo-text)]">{player.name}</p>
+          {poolStatLine != null && (
+            <div className="shrink-0 text-right text-sm tabular-nums">
+              <span className="text-xs font-medium uppercase tracking-wide text-white">
+                {poolStatLine.label}
+              </span>{" "}
+              <span className="font-semibold text-[var(--neo-accent)]">{poolStatLine.value}</span>
+            </div>
+          )}
+        </div>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--neo-text-muted)]">
           {player.jersey && <span>#{player.jersey}</span>}
-          <span>{position}</span>
+          <span className="font-medium text-[var(--neo-accent)]">{position}</span>
           <span className="font-semibold text-[var(--neo-text)]">{handedness}</span>
         </div>
       </div>
@@ -160,7 +207,15 @@ function PlayerCard({ player, isDragging }: { player: Player; isDragging?: boole
   );
 }
 
-function DraggablePlayer({ player, compact }: { player: Player; compact?: boolean }) {
+function DraggablePlayer({
+  player,
+  compact,
+  poolStatLine,
+}: {
+  player: Player;
+  compact?: boolean;
+  poolStatLine?: { label: string; value: string } | null;
+}) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: player.id,
     data: { player },
@@ -177,7 +232,7 @@ function DraggablePlayer({ player, compact }: { player: Player; compact?: boolea
   }
   return (
     <div ref={setNodeRef} {...listeners} {...attributes}>
-      <PlayerCard player={player} isDragging={isDragging} />
+      <PlayerCard player={player} isDragging={isDragging} poolStatLine={poolStatLine} />
     </div>
   );
 }
@@ -299,7 +354,7 @@ function CoachPlayerStatsTable({
                 </td>
                 {BATTING_STAT_LABELS.map(({ key, format }) => (
                   <td key={key} className="py-1.5 px-2 text-center text-[var(--text)] tabular-nums">
-                    {s ? formatStat(Number(s[key]) || 0, format) : "—"}
+                    {formatLineupBattingCell(s, key, format)}
                   </td>
                 ))}
               </tr>
@@ -344,15 +399,21 @@ function initialLineupToState(initialLineup: CoachLineupSlot[], playerMap: Map<s
 /**
  * Coach lineup: view or edit gameday/future lineups with drag-and-drop and stats.
  */
+function opponentSide(side: LineupSide): LineupSide {
+  return side === "home" ? "away" : "home";
+}
+
 export function CoachLineupClient({
   games,
   players,
   initialBattingStatsWithSplits,
   savedLineups,
   initialGameId,
+  initialGameOurSide,
   initialLineup,
 }: CoachLineupClientProps) {
   const [selectedGameId, setSelectedGameId] = useState<string | null>(initialGameId);
+  const [lineupSide, setLineupSide] = useState<LineupSide>(() => initialGameOurSide ?? "home");
   const playerMap = new Map(players.map((p) => [p.id, p]));
   const [lineup, setLineup] = useState<LineupSlotState[]>(() =>
     initialLineup.length > 0 ? initialLineupToState(initialLineup, playerMap) : Array.from({ length: 9 }, () => ({ player: null, position: LINEUP_POSITIONS[0] }))
@@ -377,31 +438,38 @@ export function CoachLineupClient({
       setLineup(Array.from({ length: 9 }, () => ({ player: null, position: LINEUP_POSITIONS[0] })));
       return;
     }
-    if (selectedGameId === initialGameId && initialLineup.length > 0) {
+    if (
+      selectedGameId === initialGameId &&
+      initialLineup.length > 0 &&
+      initialGameOurSide != null &&
+      lineupSide === initialGameOurSide
+    ) {
       setLineup(initialLineupToState(initialLineup, playerMap));
       return;
     }
     setLoadingLineup(true);
-    fetchGameLineupForCoach(selectedGameId)
+    fetchGameLineupForCoach(selectedGameId, lineupSide)
       .then((slots) => setLineup(slotsToLineupState(slots, playerMap)))
       .finally(() => setLoadingLineup(false));
-  }, [selectedGameId, initialGameId, initialLineup]);
+  }, [selectedGameId, lineupSide, initialGameId, initialLineup, initialGameOurSide]);
 
   const inLineupIds = new Set(lineup.filter((s) => s.player != null).map((s) => s.player!.id));
   const availablePlayers = players.filter((p) => !inLineupIds.has(p.id));
   const sortedAvailablePlayers = [...availablePlayers].sort((a, b) => {
-    if (poolSortBy === "name") return (a.name ?? "").localeCompare(b.name ?? "");
-    return getStatValue(initialBattingStats, b.id, poolSortBy) - getStatValue(initialBattingStats, a.id, poolSortBy);
+    if (poolSortBy === "name") return comparePlayersByLastNameThenFull(a, b);
+    const d =
+      getStatValue(initialBattingStats, b.id, poolSortBy) - getStatValue(initialBattingStats, a.id, poolSortBy);
+    if (d !== 0) return d;
+    return comparePlayersByLastNameThenFull(a, b);
   });
 
   const lineupPlayers = lineup.map((s) => s.player).filter((p): p is Player => p != null);
-  const lineupQuality =
+  const lineupBattingStatsNine =
     lineupPlayers.length === 9
-      ? {
-          obp: lineupPlayers.reduce((s, p) => s + Math.max(0, getStatValue(initialBattingStats, p.id, "obp")), 0) / 9,
-          woba: lineupPlayers.reduce((s, p) => s + Math.max(0, getStatValue(initialBattingStats, p.id, "woba")), 0) / 9,
-        }
-      : null;
+      ? lineupPlayers.map((p) => initialBattingStats[p.id]).filter((s): s is BattingStats => s != null)
+      : [];
+  const lineupQuality =
+    lineupBattingStatsNine.length === 9 ? lineupAggregateFromBattingStats(lineupBattingStatsNine) : null;
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -457,7 +525,7 @@ export function CoachLineupClient({
     });
   }
 
-  function handleSuggestBy(stat: "obp" | "woba") {
+  function handleSuggestBy(stat: "obp" | "avg") {
     const nine = lineupPlayers.length === 9 ? lineupPlayers : [...lineupPlayers, ...availablePlayers].slice(0, 9);
     if (nine.length === 0) return;
     const ordered = suggestOrder(nine, initialBattingStats, stat);
@@ -491,7 +559,7 @@ export function CoachLineupClient({
       .filter((s): s is { player_id: string; position: string | null } => s != null);
     setSaveStatus("saving");
     setSaveError(null);
-    const result = await saveGameLineupForCoachAction(selectedGameId, ordered);
+    const result = await saveGameLineupForCoachAction(selectedGameId, lineupSide, ordered);
     setSaveStatus(result.ok ? "ok" : "err");
     setSaveError(result.error ?? null);
     if (result.ok) setTimeout(() => setSaveStatus("idle"), 2500);
@@ -499,6 +567,9 @@ export function CoachLineupClient({
 
   const hasAnyPlayer = lineup.some((s) => s.player != null);
   const activePlayer = activeId ? players.find((p) => p.id === activeId) ?? null : null;
+  const selectedGame = selectedGameId ? games.find((g) => g.id === selectedGameId) ?? null : null;
+  const ourSide = selectedGame?.our_side ?? "home";
+  const oppSide = opponentSide(ourSide);
 
   const positionsTakenByOthers = (slotIndex: number) => {
     const set = new Set<string>();
@@ -511,9 +582,11 @@ export function CoachLineupClient({
   return (
     <div className="space-y-6 pb-8">
       <header>
-        <div className="section-label">Lineup</div>
+        <h1 className="font-display text-3xl font-semibold tracking-tight text-[var(--text)]">
+          Lineup
+        </h1>
         <p className="mt-1 text-sm text-[var(--neo-text-muted)]">
-          View or edit the batting order for a game. Drag players into slots or use Suggest by OBP/wOBA.
+          View or edit the batting order for a game. Drag players into slots or use Suggest by OBP or AVG.
         </p>
       </header>
 
@@ -536,7 +609,14 @@ export function CoachLineupClient({
                 <div className="font-display mb-1.5 text-xs font-semibold uppercase tracking-wider text-white">Game</div>
                 <select
                   value={selectedGameId ?? ""}
-                  onChange={(e) => setSelectedGameId(e.target.value || null)}
+                  onChange={(e) => {
+                    const id = e.target.value || null;
+                    setSelectedGameId(id);
+                    if (id) {
+                      const g = games.find((x) => x.id === id);
+                      if (g) setLineupSide(g.our_side);
+                    }
+                  }}
                   className="input-tech w-full max-w-xs rounded-lg px-3 py-1.5 text-sm text-[var(--neo-text)]"
                   aria-label="Select game"
                 >
@@ -547,6 +627,32 @@ export function CoachLineupClient({
                     </option>
                   ))}
                 </select>
+                {selectedGame && (
+                  <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Which team lineup to edit">
+                    <button
+                      type="button"
+                      onClick={() => setLineupSide(ourSide)}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                        lineupSide === ourSide
+                          ? "border-[var(--neo-accent)] bg-[var(--neo-accent-dim)] text-[var(--neo-accent)]"
+                          : "border-[var(--neo-border)] text-[var(--neo-text-muted)] hover:border-[var(--neo-accent)]/40"
+                      }`}
+                    >
+                      Our team ({ourSide === "home" ? "Home" : "Away"})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLineupSide(oppSide)}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                        lineupSide === oppSide
+                          ? "border-[var(--neo-accent)] bg-[var(--neo-accent-dim)] text-[var(--neo-accent)]"
+                          : "border-[var(--neo-border)] text-[var(--neo-text-muted)] hover:border-[var(--neo-accent)]/40"
+                      }`}
+                    >
+                      Opponent ({oppSide === "home" ? "Home" : "Away"})
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="min-w-0">
                 <div className="font-display mb-1.5 text-xs font-semibold uppercase tracking-wider text-white">Templates</div>
@@ -600,12 +706,23 @@ export function CoachLineupClient({
                     <option value="vsR">vs RHP</option>
                   </select>
                   <button type="button" onClick={() => handleSuggestBy("obp")} disabled={players.length === 0} className="rounded-lg border border-[var(--neo-accent)]/50 bg-[var(--neo-accent-dim)] px-2.5 py-1 text-xs font-medium text-[var(--neo-accent)] transition hover:bg-[var(--neo-accent)]/20 disabled:opacity-50 disabled:pointer-events-none">Suggest by OBP</button>
-                  <button type="button" onClick={() => handleSuggestBy("woba")} disabled={players.length === 0} className="rounded-lg border border-[var(--neo-accent)]/50 bg-[var(--neo-accent-dim)] px-2.5 py-1 text-xs font-medium text-[var(--neo-accent)] transition hover:bg-[var(--neo-accent)]/20 disabled:opacity-50 disabled:pointer-events-none">Suggest by wOBA</button>
+                  <button type="button" onClick={() => handleSuggestBy("avg")} disabled={players.length === 0} className="rounded-lg border border-[var(--neo-accent)]/50 bg-[var(--neo-accent-dim)] px-2.5 py-1 text-xs font-medium text-[var(--neo-accent)] transition hover:bg-[var(--neo-accent)]/20 disabled:opacity-50 disabled:pointer-events-none">Suggest by AVG</button>
                   {lineupQuality != null && (
                     <span className="text-xs text-[var(--neo-text-muted)]">
                       OBP <strong className="text-[var(--neo-text)]">{formatStat(lineupQuality.obp, "avg")}</strong>
                       {" · "}
-                      wOBA <strong className="text-[var(--neo-text)]">{formatStat(lineupQuality.woba, "avg")}</strong>
+                      K%{" "}
+                      <strong className="text-[var(--neo-text)]">
+                        {lineupQuality.kPct != null && !Number.isNaN(lineupQuality.kPct)
+                          ? `${(lineupQuality.kPct * 100).toFixed(1)}%`
+                          : "—"}
+                      </strong>
+                      {lineupQuality.pPa != null && (
+                        <>
+                          {" · "}
+                          P/PA <strong className="text-[var(--neo-text)]">{formatPPa(lineupQuality.pPa)}</strong>
+                        </>
+                      )}
                     </span>
                   )}
                 </div>
@@ -632,7 +749,6 @@ export function CoachLineupClient({
                         >
                           <option value="name">Name</option>
                           <option value="obp">OBP</option>
-                          <option value="woba">wOBA</option>
                           <option value="ops">OPS</option>
                           <option value="avg">AVG</option>
                         </select>
@@ -649,7 +765,10 @@ export function CoachLineupClient({
                       ) : (
                         sortedAvailablePlayers.map((player) => (
                           <li key={player.id}>
-                            <DraggablePlayer player={player} />
+                            <DraggablePlayer
+                              player={player}
+                              poolStatLine={poolCardStatLine(poolSortBy, initialBattingStats[player.id])}
+                            />
                           </li>
                         ))
                       )}
@@ -731,6 +850,16 @@ export function CoachLineupClient({
                 <div className="mt-3 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                   <div className="min-w-0">
                     <h3 className="font-display mb-2 text-xs font-semibold uppercase tracking-wider text-white">
+                      Pool
+                    </h3>
+                    <CoachPlayerStatsTable
+                      players={availablePlayers}
+                      statsMap={initialBattingStats}
+                      emptyMessage="No players in pool."
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="font-display mb-2 text-xs font-semibold uppercase tracking-wider text-white">
                       Lineup
                     </h3>
                     <CoachPlayerStatsTable
@@ -738,16 +867,6 @@ export function CoachLineupClient({
                       statsMap={initialBattingStats}
                       emptyMessage="No players in lineup."
                       showSpot
-                    />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="font-display mb-2 text-xs font-semibold uppercase tracking-wider text-white">
-                      Pool
-                    </h3>
-                    <CoachPlayerStatsTable
-                      players={availablePlayers}
-                      statsMap={initialBattingStats}
-                      emptyMessage="No players in pool."
                     />
                   </div>
                 </div>
@@ -765,20 +884,11 @@ export function CoachLineupClient({
 
           {selectedGameId && !loadingLineup && lineup.every((s) => !s.player) && (
             <div className="rounded-lg border border-[var(--neo-border)] bg-[var(--neo-bg-card)] p-4 text-sm text-[var(--neo-text-muted)]">
-              No players in this lineup yet. Drag players from the left or use Suggest by OBP/wOBA.
+              No players in this lineup yet. Drag players from the left or use Suggest by OBP or AVG.
             </div>
           )}
         </>
       )}
-
-      <div className="flex flex-wrap items-center gap-4">
-        <Link href="/analyst/lineup" className="text-sm text-[var(--neo-accent)] hover:underline">
-          Full lineup builder (Analyst) →
-        </Link>
-        <Link href="/coach" className="text-sm text-[var(--neo-text-muted)] hover:text-[var(--neo-text)]">
-          ← Back to Today
-        </Link>
-      </div>
     </div>
   );
 }

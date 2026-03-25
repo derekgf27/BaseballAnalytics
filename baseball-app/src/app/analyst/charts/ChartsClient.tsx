@@ -48,7 +48,7 @@ export function ChartsClient({ sprayData, players }: ChartsClientProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-xl font-semibold tracking-tight text-[var(--text)]">Charts</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-tight text-[var(--text)]">Charts</h1>
         <p className="mt-1 text-sm text-[var(--text-muted)]">
           Team-level visuals from plate appearances. Individual player charts live on each player&apos;s profile.
         </p>
