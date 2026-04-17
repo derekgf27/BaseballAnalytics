@@ -1,23 +1,30 @@
 @import "tailwindcss";
+@import "./print-game-review.css";
 
 /* High-tech / tactical palette — neo colors applied app-wide */
 :root {
+  /* Team accent: yellow-gold (Reyes / brand) */
+  --neo-accent-r: 214;
+  --neo-accent-g: 186;
+  --neo-accent-b: 72;
   /* Neo palette (source of truth) */
   --neo-bg-base: #0C0F14;
   --neo-bg-elevated: #151b22;
   --neo-bg-card: #111619;
   --neo-bg-input: #0d1117;
-  --neo-accent: #66E0FF;
-  --neo-accent-dim: rgba(102, 224, 255, 0.12);
+  --neo-accent: #d6ba48;
+  --neo-accent-dim: rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.14);
   --neo-secondary: #FF4C6D;
   --neo-secondary-dim: rgba(255, 76, 109, 0.12);
   --neo-success: #8AFFC1;
+  /** Deep saturated green for compare “better stat” text on dark backgrounds. */
+  --neo-compare-stat-win: #22C55E;
   --neo-warning: #FFD86F;
   --neo-text: #E6EDF3;
   --neo-text-muted: #7D8590;
   --neo-text-faint: #6e7681;
-  --neo-border: rgba(102, 224, 255, 0.18);
-  --neo-border-focus: rgba(102, 224, 255, 0.4);
+  --neo-border: rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.2);
+  --neo-border-focus: rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.45);
 
   /* App-wide vars mapped to neo (all pages use this palette) */
   --bg-base: var(--neo-bg-base);
@@ -35,6 +42,7 @@
   --text-faint: var(--neo-text-faint);
   --success: var(--neo-success);
   --success-dim: rgba(138, 255, 193, 0.15);
+  --compare-stat-win-fg: var(--neo-compare-stat-win);
   --warning: var(--neo-warning);
   --warning-dim: rgba(255, 216, 111, 0.15);
   --danger: var(--neo-secondary);
@@ -72,7 +80,7 @@
   --text-3xl--line-height: 2.25rem;
 }
 
-/* Buttons/elements with solid cyan (accent) background: black text for contrast */
+/* Buttons/elements with solid accent (gold) background: black text for contrast */
 [class*="bg-[var(--accent)]"]:not([class*="bg-[var(--accent)]/"]) {
   color: #000 !important;
 }
@@ -144,8 +152,8 @@ body {
   pointer-events: none;
   z-index: 0;
   background-image:
-    linear-gradient(rgba(102, 224, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(102, 224, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.04) 1px, transparent 1px),
     repeating-linear-gradient(
       0deg,
       transparent 0,
@@ -166,12 +174,12 @@ body {
   border-radius: 0.75rem;
   background: var(--neo-bg-card);
   border: 1px solid var(--neo-border);
-  box-shadow: 0 0 24px -8px rgba(102, 224, 255, 0.08);
+  box-shadow: 0 0 24px -8px rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.1);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 .neo-card:hover {
-  border-color: rgba(102, 224, 255, 0.35);
-  box-shadow: 0 0 0 1px rgba(102, 224, 255, 0.2), 0 0 28px -6px rgba(102, 224, 255, 0.12);
+  border-color: rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.38);
+  box-shadow: 0 0 0 1px rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.22), 0 0 28px -6px rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.14);
 }
 .section-label {
   font-family: var(--font-display);
@@ -181,7 +189,16 @@ body {
   text-transform: uppercase;
   color: #fff;
 }
+/* Tables, stats, linescores: Plex Sans + tabular lining figures (easier to scan than Orbitron) */
 .font-display {
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  letter-spacing: 0;
+}
+
+/* Orbitron — use for intentional display chrome (nav brand, hero badges, etc.) */
+.font-orbitron {
   font-family: var(--font-display);
 }
 
@@ -196,8 +213,8 @@ body {
   position: fixed;
   inset: 0;
   background-image:
-    linear-gradient(rgba(102, 224, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(102, 224, 255, 0.03) 1px, transparent 1px);
+    linear-gradient(rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.04) 1px, transparent 1px);
   background-size: 24px 24px;
   pointer-events: none;
   z-index: 0;
@@ -233,9 +250,9 @@ body {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   text-shadow:
-    0 0 20px rgba(102, 224, 255, 0.5),
-    0 0 40px rgba(102, 224, 255, 0.25),
-    0 0 60px rgba(102, 224, 255, 0.1);
+    0 0 20px rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.45),
+    0 0 40px rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.22),
+    0 0 60px rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.1);
 }
 .home-card-hud {
   border-left-width: 3px;
@@ -339,7 +356,7 @@ body {
 /* Full-page mode panes — app theme, subtle hover tint */
 .home-mode-pane-analyst:hover,
 .home-mode-pane-coach:hover {
-  background: linear-gradient(180deg, rgba(102, 224, 255, 0.14) 0%, var(--bg-base) 40%) !important;
+  background: linear-gradient(180deg, rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.16) 0%, var(--bg-base) 40%) !important;
 }
 
 @keyframes home-prompt-blink {
@@ -385,14 +402,14 @@ body {
   box-shadow: 0 0 0 3px var(--accent-dim);
 }
 
-/* Date input calendar icon — match accent purple */
+/* Date input calendar icon — tint toward accent gold */
 input[type="date"].input-tech::-webkit-calendar-picker-indicator,
 input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: invert(0.5) sepia(1) saturate(5) hue-rotate(230deg);
+  filter: invert(0.72) sepia(0.45) saturate(2.8) hue-rotate(5deg);
   cursor: pointer;
 }
 
-/* Styled date picker popup (react-day-picker) — dark theme, purple accent */
+/* Styled date picker popup (react-day-picker) — dark theme, accent */
 .rdp-dark {
   --rdp-accent-color: var(--accent);
   --rdp-accent-background-color: var(--accent-dim);
@@ -521,5 +538,34 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   .record-pa-stepper-btn:hover {
     background: var(--accent) !important;
     color: var(--bg-base) !important;
+  }
+}
+
+/* Reports hub PDF / print (game review print styles live in print-game-review.css) */
+@media print {
+  .reports-print-area {
+    --bg-base: #ffffff;
+    --bg-card: #ffffff;
+    --bg-elevated: #f1f5f9;
+    --bg-input: #f1f5f9;
+    --border: #cbd5e1;
+    --text: #0f172a;
+    --text-muted: #475569;
+    --text-faint: #64748b;
+    --accent: #a16207;
+    --accent-dim: rgba(161, 98, 7, 0.12);
+    --danger: #b91c1c;
+    --danger-dim: rgba(185, 28, 28, 0.08);
+    --success: #15803d;
+    --success-dim: rgba(21, 128, 61, 0.08);
+    background: #ffffff !important;
+    color: var(--text) !important;
+    border-color: #cbd5e1 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .reports-print-area [class*="text-white"] {
+    color: #0f172a !important;
   }
 }

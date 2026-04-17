@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { PlayersToWatchCard } from "@/components/analyst/PlayersToWatchCard";
 import {
@@ -15,9 +16,11 @@ import { formatDateMMDDYYYY, formatGameTime, formatPPa } from "@/lib/format";
 import { ScheduleCalendar } from "./ScheduleCalendar";
 import { isClubRosterPlayer, isPitcherPlayer } from "@/lib/opponentUtils";
 import type { Game } from "@/lib/types";
+import { analystGameLogHref } from "@/lib/analystRoutes";
 
 function formatAvgLike(val: number): string {
-  return val.toFixed(3);
+  const s = val.toFixed(3);
+  return s.startsWith("0.") ? s.slice(1) : s;
 }
 
 /** K% / BB% stored as 0–1 in BattingStats */
@@ -30,6 +33,28 @@ function formatPctRate(val: number | undefined): string {
 function formatEraLike(val: number, hasIp: boolean): string {
   if (!hasIp || Number.isNaN(val)) return "—";
   return val.toFixed(2);
+}
+
+/** Dashboard team-stats rows: even gaps so labels/values line up across wrapped lines. */
+function StatRow({ children }: { children: ReactNode }) {
+  return (
+    <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-1.5 text-sm tabular-nums">
+      {children}
+    </div>
+  );
+}
+
+function StatPair({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <span className="inline-flex min-w-0 items-baseline gap-1.5">
+      <span className="shrink-0 font-semibold text-white">{label}</span>
+      <span className="min-w-[2.75rem] font-semibold text-[var(--accent)] sm:min-w-[3rem]">{value}</span>
+    </span>
+  );
+}
+
+function StatSep() {
+  return <span className="shrink-0 select-none text-[var(--text-muted)]" aria-hidden>|</span>;
 }
 
 /** Opponent label: "vs Team" at home, "@ Team" away. */
@@ -49,8 +74,21 @@ export default async function AnalystDashboard() {
   const [games, players] = await Promise.all([getGames(), getPlayers()]);
   const teamRecord = computeTeamRecordFromGames(games);
   const recordLabel = formatTeamRecordString(teamRecord);
+  const decidedGames = games.filter(
+    (g) =>
+      g.final_score_home != null &&
+      g.final_score_away != null &&
+      !Number.isNaN(g.final_score_home) &&
+      !Number.isNaN(g.final_score_away)
+  );
+  const runsPerGame =
+    decidedGames.length > 0
+      ? decidedGames.reduce(
+          (sum, g) => sum + (g.our_side === "home" ? (g.final_score_home ?? 0) : (g.final_score_away ?? 0)),
+          0
+        ) / decidedGames.length
+      : null;
   const clubPlayers = players.filter(isClubRosterPlayer);
-  const playerCount = clubPlayers.length;
   const nextGame = getNextGame(games);
   const latestGame = games[0] ?? null;
   const battingStatsPlayerIds = clubPlayers
@@ -91,16 +129,16 @@ export default async function AnalystDashboard() {
           </span>
         </div>
         <div className="card-tech flex flex-col justify-center rounded-lg border p-4">
-          <span className="text-2xl font-bold tabular-nums text-[var(--text)]">
-            {playerCount}
+          <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+            Runs per game
           </span>
-          <span className="mt-0.5 text-sm text-[var(--text-muted)]">
-            {playerCount === 1 ? "player" : "players"}
+          <span className="mt-2 text-2xl font-bold tabular-nums text-[var(--accent)]">
+            {runsPerGame != null ? runsPerGame.toFixed(2) : "—"}
           </span>
         </div>
         {nextGame ? (
           <Link
-            href={`/analyst/record?gameId=${nextGame.id}`}
+            href={analystGameLogHref(nextGame.id)}
             className="card-tech card-hover group flex flex-col justify-center rounded-lg border border-[var(--accent)]/40 bg-[var(--accent-dim)]/40 p-4 transition hover:border-[var(--accent)]/70 hover:bg-[var(--accent-dim)]/60"
           >
             <span className="text-xs font-medium uppercase tracking-wider text-[var(--accent)]">
@@ -113,12 +151,12 @@ export default async function AnalystDashboard() {
               {formatGameTime(nextGame.game_time)}
             </span>
             <span className="mt-1 text-xs text-[var(--text-muted)] group-hover:text-[var(--accent)]">
-              Record PAs →
+              Open game log →
             </span>
           </Link>
         ) : latestGame ? (
           <Link
-            href={`/analyst/record?gameId=${latestGame.id}`}
+            href={analystGameLogHref(latestGame.id)}
             className="card-tech card-hover group flex flex-col justify-center rounded-lg border border-[var(--accent)]/40 bg-[var(--accent-dim)]/40 p-4 transition hover:border-[var(--accent)]/70 hover:bg-[var(--accent-dim)]/60"
           >
             <span className="text-xs font-medium uppercase tracking-wider text-[var(--accent)]">
@@ -131,7 +169,7 @@ export default async function AnalystDashboard() {
               {formatGameTime(latestGame.game_time)}
             </span>
             <span className="mt-1 text-xs text-[var(--text-muted)] group-hover:text-[var(--accent)]">
-              Continue recording →
+              Open game log →
             </span>
           </Link>
         ) : (
@@ -160,80 +198,51 @@ export default async function AnalystDashboard() {
               <p className="font-display text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                 Offensive production
               </p>
-              <p className="mt-1.5 break-words tabular-nums">
-                <span className="font-semibold text-white">AVG</span>{" "}
-                <span className="font-semibold text-[var(--accent)]">
-                  {teamStats ? formatAvgLike(teamStats.avg) : "—"}
-                </span>{" "}
-                <span className="text-[var(--text-muted)]">|</span>{" "}
-                <span className="font-semibold text-white">OBP</span>{" "}
-                <span className="font-semibold text-[var(--accent)]">
-                  {teamStats ? formatAvgLike(teamStats.obp) : "—"}
-                </span>{" "}
-                <span className="text-[var(--text-muted)]">|</span>{" "}
-                <span className="font-semibold text-white">SLG</span>{" "}
-                <span className="font-semibold text-[var(--accent)]">
-                  {teamStats ? formatAvgLike(teamStats.slg) : "—"}
-                </span>{" "}
-                <span className="text-[var(--text-muted)]">|</span>{" "}
-                <span className="font-semibold text-white">OPS</span>{" "}
-                <span className="font-semibold text-[var(--accent)]">
-                  {teamStats ? formatAvgLike(teamStats.ops) : "—"}
-                </span>
-              </p>
+              <StatRow>
+                <StatPair label="AVG" value={teamStats ? formatAvgLike(teamStats.avg) : "—"} />
+                <StatSep />
+                <StatPair label="OBP" value={teamStats ? formatAvgLike(teamStats.obp) : "—"} />
+                <StatSep />
+                <StatPair label="SLG" value={teamStats ? formatAvgLike(teamStats.slg) : "—"} />
+                <StatSep />
+                <StatPair label="OPS" value={teamStats ? formatAvgLike(teamStats.ops) : "—"} />
+              </StatRow>
             </div>
             <div>
               <p className="font-display text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                 Plate discipline
               </p>
-              <p className="mt-1.5 break-words tabular-nums">
-                <span className="font-semibold text-white">K%</span>{" "}
-                <span className="font-semibold text-[var(--accent)]">
-                  {teamStats ? formatPctRate(teamStats.kPct) : "—"}
-                </span>{" "}
-                <span className="text-[var(--text-muted)]">|</span>{" "}
-                <span className="font-semibold text-white">BB%</span>{" "}
-                <span className="font-semibold text-[var(--accent)]">
-                  {teamStats ? formatPctRate(teamStats.bbPct) : "—"}
-                </span>{" "}
-                <span className="text-[var(--text-muted)]">|</span>{" "}
-                <span className="font-semibold text-white">P/PA</span>{" "}
-                <span className="font-semibold text-[var(--accent)]">
-                  {teamStats?.pPa != null ? formatPPa(teamStats.pPa) : "—"}
-                </span>
-              </p>
+              <StatRow>
+                <StatPair label="K%" value={teamStats ? formatPctRate(teamStats.kPct) : "—"} />
+                <StatSep />
+                <StatPair label="BB%" value={teamStats ? formatPctRate(teamStats.bbPct) : "—"} />
+                <StatSep />
+                <StatPair label="P/PA" value={teamStats?.pPa != null ? formatPPa(teamStats.pPa) : "—"} />
+              </StatRow>
             </div>
             <div>
               <p className="font-display text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                 Results
               </p>
-              <p className="mt-1.5 break-words tabular-nums">
-                <span className="font-semibold text-white">RISP</span>{" "}
-                <span className="font-semibold text-[var(--accent)]">
-                  {teamStatsRisp != null ? formatAvgLike(teamStatsRisp.avg) : "—"}
-                </span>
-                {teamStatsRisp != null && teamStatsRisp.pa != null && teamStatsRisp.pa > 0 && (
-                  <span className="text-[11px] text-[var(--text-muted)]">
-                    {" "}
-                    ({teamStatsRisp.h ?? 0} for {teamStatsRisp.ab ?? 0})
+              <StatRow>
+                <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                  <span className="shrink-0 font-semibold text-white">RISP</span>
+                  <span className="min-w-[2.75rem] font-semibold text-[var(--accent)] sm:min-w-[3rem]">
+                    {teamStatsRisp != null ? formatAvgLike(teamStatsRisp.avg) : "—"}
                   </span>
-                )}{" "}
-                <span className="text-[var(--text-muted)]">|</span>{" "}
-                <span className="font-semibold text-white">RBI</span>{" "}
-                <span className="font-semibold text-[var(--accent)]">
-                  {teamStats != null ? String(teamStats.rbi ?? 0) : "—"}
-                </span>{" "}
-                <span className="text-[var(--text-muted)]">|</span>{" "}
-                <span className="font-semibold text-white">2B</span>{" "}
-                <span className="font-semibold text-[var(--accent)]">
-                  {teamStats != null ? String(teamStats.double ?? 0) : "—"}
-                </span>{" "}
-                <span className="text-[var(--text-muted)]">|</span>{" "}
-                <span className="font-semibold text-white">HR</span>{" "}
-                <span className="font-semibold text-[var(--accent)]">
-                  {teamStats != null ? String(teamStats.hr ?? 0) : "—"}
+                  {teamStatsRisp != null && teamStatsRisp.pa != null && teamStatsRisp.pa > 0 && (
+                    <span className="text-[11px] text-[var(--text-muted)]">
+                      (<span className="text-white">{teamStatsRisp.h ?? 0} for {teamStatsRisp.ab ?? 0}</span>)
+                    </span>
+                  )}
                 </span>
-              </p>
+                <StatSep />
+                <StatPair label="RBI" value={teamStats != null ? String(teamStats.rbi ?? 0) : "—"} />
+                <StatSep />
+                <StatPair label="2B" value={teamStats != null ? String(teamStats.double ?? 0) : "—"} />
+                <StatSep />
+                <StatPair label="HR" value={teamStats != null ? String(teamStats.hr ?? 0) : "—"} />
+              </StatRow>
             </div>
           </div>
 
@@ -242,63 +251,70 @@ export default async function AnalystDashboard() {
               <p className="font-display text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                 Run prevention
               </p>
-              <p className="mt-1.5 break-words tabular-nums">
-                <span className="font-semibold text-white">ERA</span>{" "}
-                <span className="font-semibold text-[var(--accent)]">
-                  {teamPitchingStats ? formatEraLike(teamPitchingStats.era, teamPitchingStats.ip > 0) : "—"}
-                </span>{" "}
-                <span className="text-[var(--text-muted)]">|</span>{" "}
-                <span className="font-semibold text-white">WHIP</span>{" "}
-                <span className="font-semibold text-[var(--accent)]">
-                  {teamPitchingStats ? formatEraLike(teamPitchingStats.whip, teamPitchingStats.ip > 0) : "—"}
-                </span>{" "}
-                <span className="text-[var(--text-muted)]">|</span>{" "}
-                <span className="font-semibold text-white">FIP</span>{" "}
-                <span className="font-semibold text-[var(--accent)]">
-                  {teamPitchingStats ? formatEraLike(teamPitchingStats.fip, teamPitchingStats.ip > 0) : "—"}
-                </span>
-              </p>
+              <StatRow>
+                <StatPair
+                  label="ERA"
+                  value={teamPitchingStats ? formatEraLike(teamPitchingStats.era, teamPitchingStats.ip > 0) : "—"}
+                />
+                <StatSep />
+                <StatPair
+                  label="WHIP"
+                  value={teamPitchingStats ? formatEraLike(teamPitchingStats.whip, teamPitchingStats.ip > 0) : "—"}
+                />
+                <StatSep />
+                <StatPair
+                  label="FIP"
+                  value={teamPitchingStats ? formatEraLike(teamPitchingStats.fip, teamPitchingStats.ip > 0) : "—"}
+                />
+                <StatSep />
+                <StatPair
+                  label="BAA"
+                  value={
+                    teamPitchingStats != null && teamPitchingStats.abAgainst >= 1
+                      ? formatAvgLike(teamPitchingStats.h / teamPitchingStats.abAgainst)
+                      : "—"
+                  }
+                />
+              </StatRow>
             </div>
             <div>
               <p className="font-display text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                 Command
               </p>
-              <p className="mt-1.5 break-words tabular-nums">
-                <span className="font-semibold text-white">K%</span>{" "}
-                <span className="font-semibold text-[var(--accent)]">
-                  {teamPitchingStats ? formatPctRate(teamPitchingStats.rates.kPct) : "—"}
-                </span>{" "}
-                <span className="text-[var(--text-muted)]">|</span>{" "}
-                <span className="font-semibold text-white">BB%</span>{" "}
-                <span className="font-semibold text-[var(--accent)]">
-                  {teamPitchingStats ? formatPctRate(teamPitchingStats.rates.bbPct) : "—"}
-                </span>{" "}
-                <span className="text-[var(--text-muted)]">|</span>{" "}
-                <span className="font-semibold text-white">Strike%</span>{" "}
-                <span className="font-semibold text-[var(--accent)]">
-                  {teamPitchingStats?.rates.strikePct != null
-                    ? formatPctRate(teamPitchingStats.rates.strikePct)
-                    : "—"}
-                </span>
-              </p>
+              <StatRow>
+                <StatPair label="K%" value={teamPitchingStats ? formatPctRate(teamPitchingStats.rates.kPct) : "—"} />
+                <StatSep />
+                <StatPair label="BB%" value={teamPitchingStats ? formatPctRate(teamPitchingStats.rates.bbPct) : "—"} />
+                <StatSep />
+                <StatPair
+                  label="Strike%"
+                  value={
+                    teamPitchingStats?.rates.strikePct != null
+                      ? formatPctRate(teamPitchingStats.rates.strikePct)
+                      : "—"
+                  }
+                />
+              </StatRow>
             </div>
             <div>
               <p className="font-display text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                 Efficiency
               </p>
-              <p className="mt-1.5 break-words tabular-nums">
-                <span className="font-semibold text-white">P/PA</span>{" "}
-                <span className="font-semibold text-[var(--accent)]">
-                  {teamPitchingStats?.rates.pPa != null ? formatPPa(teamPitchingStats.rates.pPa) : "—"}
-                </span>{" "}
-                <span className="text-[var(--text-muted)]">|</span>{" "}
-                <span className="font-semibold text-white">FPS%</span>{" "}
-                <span className="font-semibold text-[var(--accent)]">
-                  {teamPitchingStats?.rates.fpsPct != null
-                    ? formatPctRate(teamPitchingStats.rates.fpsPct)
-                    : "—"}
-                </span>
-              </p>
+              <StatRow>
+                <StatPair
+                  label="P/PA"
+                  value={teamPitchingStats?.rates.pPa != null ? formatPPa(teamPitchingStats.rates.pPa) : "—"}
+                />
+                <StatSep />
+                <StatPair
+                  label="FPS%"
+                  value={
+                    teamPitchingStats?.rates.fpsPct != null
+                      ? formatPctRate(teamPitchingStats.rates.fpsPct)
+                      : "—"
+                  }
+                />
+              </StatRow>
             </div>
           </div>
 
@@ -307,22 +323,13 @@ export default async function AnalystDashboard() {
               <p className="font-display text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                 Stolen bases
               </p>
-              <p className="mt-1.5 break-words tabular-nums">
-                <span className="font-semibold text-white">SB</span>{" "}
-                <span className="font-semibold text-[var(--accent)]">
-                  {teamStats != null ? String(teamStats.sb ?? 0) : "—"}
-                </span>{" "}
-                <span className="text-[var(--text-muted)]">|</span>{" "}
-                <span className="font-semibold text-white">CS</span>{" "}
-                <span className="font-semibold text-[var(--accent)]">
-                  {teamStats != null ? String(teamStats.cs ?? 0) : "—"}
-                </span>{" "}
-                <span className="text-[var(--text-muted)]">|</span>{" "}
-                <span className="font-semibold text-white">SB%</span>{" "}
-                <span className="font-semibold text-[var(--accent)]">
-                  {teamStats?.sbPct != null ? formatPctRate(teamStats.sbPct) : "—"}
-                </span>
-              </p>
+              <StatRow>
+                <StatPair label="SB" value={teamStats != null ? String(teamStats.sb ?? 0) : "—"} />
+                <StatSep />
+                <StatPair label="CS" value={teamStats != null ? String(teamStats.cs ?? 0) : "—"} />
+                <StatSep />
+                <StatPair label="SB%" value={teamStats?.sbPct != null ? formatPctRate(teamStats.sbPct) : "—"} />
+              </StatRow>
             </div>
           </div>
         </div>

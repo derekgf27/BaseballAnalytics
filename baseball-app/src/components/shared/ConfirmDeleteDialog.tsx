@@ -12,6 +12,7 @@ export function ConfirmDeleteDialog({
   pendingLabel = "Working…",
   onConfirm,
   pending = false,
+  confirmDisabled = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -23,6 +24,8 @@ export function ConfirmDeleteDialog({
   pendingLabel?: string;
   onConfirm: () => void | Promise<void>;
   pending?: boolean;
+  /** When true, the destructive confirm control is disabled (e.g. preconditions not met). */
+  confirmDisabled?: boolean;
 }) {
   const titleId = useId();
   const descId = useId();
@@ -76,7 +79,7 @@ export function ConfirmDeleteDialog({
           <button
             type="button"
             onClick={() => void onConfirm()}
-            disabled={pending}
+            disabled={pending || confirmDisabled}
             className="font-display inline-flex items-center justify-center rounded-lg bg-[var(--danger)] px-4 py-2 text-sm font-semibold tracking-wide text-white transition hover:opacity-90 disabled:opacity-50"
           >
             {pending ? pendingLabel : confirmLabel}

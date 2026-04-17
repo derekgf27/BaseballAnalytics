@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:webpack": "next dev --webpack",
     "live-server": "next dev",
     "build": "next build",
     "start": "next start",
@@ -17,10 +18,13 @@
     "@supabase/supabase-js": "^2.95.3",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.34.5",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.7",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-day-picker": "^9.14.0",
     "react-dom": "19.2.3",
+    "react-to-print": "^3.3.0",
     "recharts": "^3.7.0"
   },
   "devDependencies": {

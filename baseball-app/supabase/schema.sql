@@ -13,6 +13,13 @@ create table if not exists public.games (
   final_score_away int,
   starting_pitcher_home_id uuid references public.players(id) on delete set null,
   starting_pitcher_away_id uuid references public.players(id) on delete set null,
+  our_sp_plan_notes text,
+  pitch_tracker_group_id uuid,
+  pitch_tracker_batter_id uuid references public.players(id) on delete set null,
+  pitch_tracker_outs smallint not null default 0,
+  pitch_tracker_pitcher_id uuid references public.players(id) on delete set null,
+  pitch_tracker_balls smallint not null default 0,
+  pitch_tracker_strikes smallint not null default 0,
   created_at timestamptz default now()
 );
 
@@ -54,10 +61,13 @@ create table if not exists public.plate_appearances (
   first_pitch_strike boolean,
   rbi int default 0,
   runs_scored_player_ids uuid[] default '{}',
+  unearned_runs_scored_player_ids uuid[] default '{}',
+  runs_scored_charged_pitcher_by_scorer jsonb not null default '{}'::jsonb,
   stolen_bases int default 0 check (stolen_bases is null or (stolen_bases >= 0 and stolen_bases <= 10)),
   hit_direction text check (hit_direction is null or hit_direction in ('pulled', 'up_the_middle', 'opposite_field')),
   pitcher_hand text check (pitcher_hand is null or pitcher_hand in ('L', 'R')),
   pitcher_id uuid references public.players(id) on delete set null,
+  error_fielder_id uuid references public.players(id) on delete set null,
   inning_half text check (inning_half is null or inning_half in ('top', 'bottom')),
   notes text,
   created_at timestamptz default now()
@@ -67,6 +77,43 @@ create index if not exists idx_pa_game on public.plate_appearances(game_id);
 create index if not exists idx_pa_batter on public.plate_appearances(batter_id);
 create index if not exists idx_pa_game_batter on public.plate_appearances(game_id, batter_id);
 create index if not exists idx_pa_pitcher on public.plate_appearances(pitcher_id);
+create index if not exists idx_pa_error_fielder on public.plate_appearances(error_fielder_id);
+
+-- Pitch-by-pitch log (count before each pitch + outcome); optional per PA.
+create table if not exists public.pitch_events (
+  id uuid primary key default gen_random_uuid(),
+  pa_id uuid not null references public.plate_appearances(id) on delete cascade,
+  pitch_index int not null check (pitch_index >= 1),
+  balls_before int not null check (balls_before >= 0 and balls_before <= 3),
+  strikes_before int not null check (strikes_before >= 0 and strikes_before <= 2),
+  outcome text not null check (outcome in (
+    'ball', 'called_strike', 'swinging_strike', 'foul', 'in_play', 'hbp'
+  )),
+  pitch_type text,
+  created_at timestamptz default now(),
+  unique (pa_id, pitch_index)
+);
+
+create index if not exists idx_pitch_events_pa on public.pitch_events(pa_id);
+
+-- Coach / analyst pitch tracker (real-time); `tracker_group_id` ties pitches before PA is saved.
+create table if not exists public.pitches (
+  id uuid primary key default gen_random_uuid(),
+  game_id uuid not null references public.games(id) on delete cascade,
+  at_bat_id uuid references public.plate_appearances(id) on delete set null,
+  tracker_group_id uuid not null,
+  pitch_number int not null check (pitch_number >= 1),
+  pitch_type text not null check (pitch_type in ('fastball', 'slider', 'curveball', 'changeup')),
+  result text check (result is null or result in ('ball', 'called_strike', 'swinging_strike', 'foul', 'in_play')),
+  batter_id uuid not null references public.players(id) on delete cascade,
+  pitcher_id uuid references public.players(id) on delete set null,
+  created_at timestamptz not null default now(),
+  unique (tracker_group_id, pitch_number)
+);
+
+create index if not exists idx_pitches_game on public.pitches(game_id);
+create index if not exists idx_pitches_tracker_group on public.pitches(tracker_group_id);
+create index if not exists idx_pitches_at_bat on public.pitches(at_bat_id);
 
 -- Baserunning (SB / CS per runner); can be saved without completing a plate appearance.
 create table if not exists public.baserunning_events (
@@ -158,21 +205,25 @@ alter table public.tracked_opponents enable row level security;
 alter table public.games enable row level security;
 alter table public.players enable row level security;
 alter table public.plate_appearances enable row level security;
+alter table public.pitch_events enable row level security;
 alter table public.defensive_events enable row level security;
 alter table public.player_ratings enable row level security;
 alter table public.game_lineups enable row level security;
 alter table public.saved_lineups enable row level security;
 alter table public.saved_lineup_slots enable row level security;
 alter table public.baserunning_events enable row level security;
+alter table public.pitches enable row level security;
 
 -- Policy: allow all for MVP (internal tool). Tighten later with roles.
 create policy "Allow all for internal tool" on public.games for all using (true) with check (true);
 create policy "Allow all for internal tool" on public.players for all using (true) with check (true);
 create policy "Allow all for internal tool" on public.plate_appearances for all using (true) with check (true);
+create policy "Allow all for internal tool" on public.pitch_events for all using (true) with check (true);
 create policy "Allow all for internal tool" on public.defensive_events for all using (true) with check (true);
 create policy "Allow all for internal tool" on public.player_ratings for all using (true) with check (true);
 create policy "Allow all for internal tool" on public.game_lineups for all using (true) with check (true);
 create policy "Allow all for internal tool" on public.saved_lineups for all using (true) with check (true);
 create policy "Allow all for internal tool" on public.saved_lineup_slots for all using (true) with check (true);
 create policy "Allow all for internal tool" on public.baserunning_events for all using (true) with check (true);
+create policy "Allow all for internal tool" on public.pitches for all using (true) with check (true);
 create policy "Allow all for internal tool" on public.tracked_opponents for all using (true) with check (true);

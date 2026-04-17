@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo } from "react";
+import { analystPlayerProfileHref } from "@/lib/analystRoutes";
 import { computeGamePitchingBox } from "@/lib/compute/gamePitchingBox";
 import type { Game, PlateAppearance, Player } from "@/lib/types";
 
@@ -19,6 +21,8 @@ interface GamePitchingBoxTableProps {
   compact?: boolean;
   /** When true, omit the "Pitchers – …" heading (e.g. parent renders a shared header row). */
   hideHeading?: boolean;
+  /** Link pitcher names to Analyst roster profile. */
+  linkPlayersToProfile?: boolean;
 }
 
 export function GamePitchingBoxTable({
@@ -28,6 +32,7 @@ export function GamePitchingBoxTable({
   players,
   compact = false,
   hideHeading = false,
+  linkPlayersToProfile = true,
 }: GamePitchingBoxTableProps) {
   const teamName = side === "home" ? game.home_team : game.away_team;
   const byId = useMemo(() => playerMap(players), [players]);
@@ -57,7 +62,7 @@ export function GamePitchingBoxTable({
               : "rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-4 text-sm text-[var(--text-muted)]"
           }
         >
-          No pitching recorded yet.
+          No pitching recorded yet. Choose the pitcher above and save plate appearances to populate this table.
         </p>
       </section>
     );
@@ -145,8 +150,22 @@ export function GamePitchingBoxTable({
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.playerId} className="border-b border-[var(--border)]">
-                <td className={tdPlayer}>{row.name}</td>
+              <tr
+                key={row.playerId}
+                className="break-inside-avoid border-b border-[var(--border)]"
+              >
+                <td className={tdPlayer}>
+                  {linkPlayersToProfile ? (
+                    <Link
+                      href={analystPlayerProfileHref(row.playerId)}
+                      className="text-[var(--accent)] hover:underline"
+                    >
+                      {row.name}
+                    </Link>
+                  ) : (
+                    row.name
+                  )}
+                </td>
                 <td className={tdStat}>{row.ip}</td>
                 <td className={tdStat}>{row.h}</td>
                 <td className={tdStat}>{row.r}</td>
@@ -157,7 +176,7 @@ export function GamePitchingBoxTable({
                 <td className={tdStat}>{row.era}</td>
               </tr>
             ))}
-            <tr className="border-t-2 border-[var(--border)] bg-[var(--bg-elevated)] font-medium">
+            <tr className="break-inside-avoid border-t-2 border-[var(--border)] bg-[var(--bg-elevated)] font-medium">
               <td className={tdPlayer}>Totals</td>
               <td className={tdStat}>{totals.ip}</td>
               <td className={tdStat}>{totals.h}</td>

@@ -4,16 +4,24 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { isDemoId } from "@/lib/db/mockData";
-import { insertPlayerAction, updatePlayerAction } from "./actions";
+import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
+import {
+  deletePlayerAction,
+  getPlayerDeletionPreviewAction,
+  insertPlayerAction,
+  updatePlayerAction,
+} from "./actions";
+import type { PlayerDeletionPreview } from "@/lib/types";
 import { heightInToFeetInches, feetInchesToHeightIn } from "@/lib/height";
 import { StyledDatePicker } from "@/components/shared/StyledDatePicker";
 import { isClubRosterPlayer, opponentNameKey } from "@/lib/opponentUtils";
+import { analystPlayerProfileHref } from "@/lib/analystRoutes";
 import { comparePlayersByLastNameThenFull } from "@/lib/playerSort";
 import type { Player } from "@/lib/types";
 
 const POSITION_OPTIONS = ["P", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"] as const;
 
-interface PlayersPageClientProps {
+interface RosterPageClientProps {
   initialPlayers: Player[];
   canEdit: boolean;
   /** When set (e.g. View roster from Opponents), prefill opponent team when you click Add player. */
@@ -22,17 +30,20 @@ interface PlayersPageClientProps {
 
 type SupabaseStatus = "loading" | "connected" | { error: string };
 
-export function PlayersPageClient({
+export function RosterPageClient({
   initialPlayers,
   canEdit,
   defaultOpponentTeam,
-}: PlayersPageClientProps) {
+}: RosterPageClientProps) {
   const router = useRouter();
   const [players, setPlayers] = useState(initialPlayers);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [message, setMessage] = useState<{ type: "ok" | "err" | "delete"; text: string } | null>(null);
   const [supabaseStatus, setSupabaseStatus] = useState<SupabaseStatus>("loading");
+  const [deleteTarget, setDeleteTarget] = useState<Player | null>(null);
+  const [deletePreview, setDeletePreview] = useState<PlayerDeletionPreview | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
 
   const checkSupabaseStatus = () => {
     setSupabaseStatus("loading");
@@ -57,6 +68,20 @@ export function PlayersPageClient({
     setPlayers(initialPlayers);
   }, [initialPlayers]);
 
+  useEffect(() => {
+    if (!deleteTarget?.id) {
+      setDeletePreview(null);
+      return;
+    }
+    let cancelled = false;
+    void getPlayerDeletionPreviewAction(deleteTarget.id).then((p) => {
+      if (!cancelled) setDeletePreview(p);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [deleteTarget?.id]);
+
   /** When viewing an opponent roster (?opponentTeam=), only list players tagged with that opponent — not your full club. */
   const opponentFilterKey = defaultOpponentTeam?.trim() ? opponentNameKey(defaultOpponentTeam.trim()) : null;
 
@@ -75,6 +100,28 @@ export function PlayersPageClient({
   );
 
   const refresh = () => router.refresh();
+
+  const deleteDescription =
+    deleteTarget &&
+    (deletePreview == null
+      ? "Loading…"
+      : deletePreview.batterPlateAppearances > 0
+        ? `This player has ${deletePreview.batterPlateAppearances} plate appearance(s) as batter. Remove or edit those PAs in game logs before deleting.`
+        : [
+            `Permanently delete ${deleteTarget.name}?`,
+            deletePreview.gameLineups > 0
+              ? `${deletePreview.gameLineups} game lineup slot(s) will be removed.`
+              : null,
+            deletePreview.savedLineupSlots > 0
+              ? `${deletePreview.savedLineupSlots} saved lineup template slot(s) will be removed.`
+              : null,
+            "Credits as pitcher on old PAs will be cleared. Baserunning events where they were the runner will be removed. This cannot be undone.",
+          ]
+            .filter(Boolean)
+            .join(" "));
+
+  const deleteConfirmBlocked =
+    deletePreview != null && deletePreview.batterPlateAppearances > 0;
 
   const handleSavePlayer = async (player: Omit<Player, "id" | "created_at">) => {
     if (!canEdit) {
@@ -135,7 +182,7 @@ export function PlayersPageClient({
             />
           ) : (
             <p className="mt-1 text-sm text-[var(--text-muted)]">
-              Your club roster only. Players tagged with an opponent team (scouting) are managed from Opponents.
+              Main roster only. Players tagged for opponent scouting are managed from Opponents.
             </p>
           )}
           {defaultOpponentTeam?.trim() && (
@@ -148,15 +195,20 @@ export function PlayersPageClient({
             </div>
           )}
         </div>
-        {canEdit && (
-          <button
-            type="button"
-            onClick={() => { setShowAddForm(true); setEditingPlayer(null); }}
-            className="shrink-0 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--bg-base)] transition hover:opacity-90 font-display"
-          >
-            Add player
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowAddForm(true);
+                setEditingPlayer(null);
+              }}
+              className="shrink-0 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--bg-base)] transition hover:opacity-90 font-display"
+            >
+              Add player
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--text-faint)]">
@@ -188,7 +240,10 @@ export function PlayersPageClient({
           className={`rounded-lg border border-[var(--border)] p-4 ${
             message.type === "ok" ? "text-[var(--success)]" : "text-[var(--danger)]"
           }`}
-          style={{ background: message.type === "ok" ? "var(--success-dim)" : "var(--danger-dim)" }}
+          style={{
+            background:
+              message.type === "ok" ? "var(--success-dim)" : "var(--danger-dim)",
+          }}
         >
           {message.text}
         </div>
@@ -229,7 +284,7 @@ export function PlayersPageClient({
               key={p.id}
               className="card-tech flex flex-wrap items-center justify-between gap-2 px-4 py-3"
             >
-              <div className="flex items-center gap-3">
+              <div className="flex min-w-0 items-center gap-3">
                 <span className="font-medium text-[var(--text)]">
                   {p.name} {p.jersey ? `#${p.jersey}` : ""}
                 </span>
@@ -244,7 +299,7 @@ export function PlayersPageClient({
                   </span>
                 )}
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {canEdit && !isDemoId(p.id) && (
                   <button
                     type="button"
@@ -258,16 +313,51 @@ export function PlayersPageClient({
                   </button>
                 )}
                 <Link
-                  href={`/analyst/players/${p.id}`}
+                  href={analystPlayerProfileHref(p.id)}
                   className="rounded-full border border-[var(--accent)] px-3 py-1 text-sm font-medium text-[var(--accent)] transition hover:bg-[var(--accent-dim)] font-display"
                 >
                   Profile
                 </Link>
+                {canEdit && !isDemoId(p.id) && (
+                  <button
+                    type="button"
+                    onClick={() => setDeleteTarget(p)}
+                    className="rounded-full border border-[var(--danger)] px-3 py-1 text-sm font-medium text-[var(--danger)] transition hover:bg-[var(--danger)]/15 font-display"
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
             </li>
           ))}
         </ul>
       )}
+
+      <ConfirmDeleteDialog
+        open={deleteTarget != null}
+        onClose={() => !deletePending && setDeleteTarget(null)}
+        title="Delete player?"
+        description={typeof deleteDescription === "string" ? deleteDescription : ""}
+        confirmLabel="Delete player"
+        pending={deletePending}
+        pendingLabel="Deleting…"
+        confirmDisabled={deleteTarget == null || deletePreview == null || deleteConfirmBlocked}
+        onConfirm={async () => {
+          if (!deleteTarget || deleteConfirmBlocked || deletePreview == null) return;
+          setDeletePending(true);
+          const result = await deletePlayerAction(deleteTarget.id);
+          setDeletePending(false);
+          if (result.ok) {
+            setDeleteTarget(null);
+            setPlayers((prev) => prev.filter((x) => x.id !== deleteTarget.id));
+            setMessage({ type: "delete", text: `${deleteTarget.name} was deleted.` });
+            refresh();
+          } else {
+            setMessage({ type: "err", text: result.error });
+            setDeleteTarget(null);
+          }
+        }}
+      />
     </div>
   );
 }
@@ -357,7 +447,7 @@ function PlayerForm({
               value={opponent_team}
               onChange={(e) => setOpponentTeam(e.target.value)}
               className="input-tech mt-1 block w-full px-3 py-2"
-              placeholder="e.g. Mayaguez — leave empty for your club"
+              placeholder="e.g. Mayaguez — leave empty for main roster"
             />
             <span className="mt-1 block text-[10px] text-white/60">
               Set when this player is on an opposing roster (scouting / opponent stats).

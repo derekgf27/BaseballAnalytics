@@ -24,6 +24,7 @@ import type { Game, LineupSide, Player, SavedLineup } from "@/lib/types";
 import type { BattingStats, BattingStatsWithSplits } from "@/lib/types";
 import { lineupAggregateFromBattingStats } from "@/lib/compute/battingStats";
 import { formatPPa } from "@/lib/format";
+import { formatBattingTripleSlash } from "@/lib/format/battingSlash";
 import { comparePlayersByLastNameThenFull } from "@/lib/playerSort";
 
 const LINEUP_POSITIONS = ["P", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"] as const;
@@ -41,14 +42,15 @@ type LineupSlotState = { player: Player | null; position: string };
 type LineupSplitView = "overall" | "vsL" | "vsR" | "risp";
 type PoolSortKey = "name" | "obp" | "ops" | "avg";
 
-const BATTING_STAT_LABELS: { key: keyof BattingStats; label: string; format: "avg" | "int" | "pct" }[] = [
-  { key: "avg", label: "AVG", format: "avg" },
-  { key: "obp", label: "OBP", format: "avg" },
-  { key: "slg", label: "SLG", format: "avg" },
-  { key: "ops", label: "OPS", format: "avg" },
+const BATTING_TAIL_LABELS: { key: keyof BattingStats; label: string; format: "avg" | "int" | "pct" }[] = [
   { key: "kPct", label: "K%", format: "pct" },
   { key: "pPa", label: "P/PA", format: "avg" },
 ];
+
+function formatSlashCell(s: BattingStats | undefined): string {
+  if (!s) return "—";
+  return formatBattingTripleSlash(s.avg, s.obp, s.slg);
+}
 
 function formatLineupBattingCell(s: BattingStats | undefined, key: keyof BattingStats, format: "avg" | "int" | "pct"): string {
   if (!s) return "—";
@@ -82,7 +84,10 @@ function poolCardStatLine(
   poolSortBy: PoolSortKey,
   stats: BattingStats | undefined
 ): { label: string; value: string } | null {
-  if (poolSortBy === "name") return null;
+  if (poolSortBy === "name") {
+    if (!stats) return null;
+    return { label: "AVG/OBP/SLG", value: formatBattingTripleSlash(stats.avg, stats.obp, stats.slg) };
+  }
   const label = poolSortBy === "avg" ? "AVG" : poolSortBy === "ops" ? "OPS" : "OBP";
   const key = poolSortBy as keyof BattingStats;
   return { label, value: formatLineupBattingCell(stats, key, "avg") };
@@ -333,7 +338,13 @@ function CoachPlayerStatsTable({
               <th className="font-display py-1.5 pr-2 text-center text-xs font-semibold uppercase">#</th>
             )}
             <th className="font-display py-1.5 pr-2 text-xs font-semibold uppercase">Player</th>
-            {BATTING_STAT_LABELS.map(({ key, label }) => (
+            <th
+              className="font-display py-1.5 px-2 text-center text-xs font-semibold uppercase"
+              title="AVG / OBP / SLG"
+            >
+              AVG/OBP/SLG
+            </th>
+            {BATTING_TAIL_LABELS.map(({ key, label }) => (
               <th key={key} className="font-display py-1.5 px-2 text-center text-xs font-semibold uppercase">
                 {label}
               </th>
@@ -352,7 +363,8 @@ function CoachPlayerStatsTable({
                   {player.name}
                   {player.jersey && <span className="ml-1 text-[var(--text-muted)]">#{player.jersey}</span>}
                 </td>
-                {BATTING_STAT_LABELS.map(({ key, format }) => (
+                <td className="py-1.5 px-2 text-center text-[var(--text)] tabular-nums">{formatSlashCell(s)}</td>
+                {BATTING_TAIL_LABELS.map(({ key, format }) => (
                   <td key={key} className="py-1.5 px-2 text-center text-[var(--text)] tabular-nums">
                     {formatLineupBattingCell(s, key, format)}
                   </td>
@@ -638,7 +650,8 @@ export function CoachLineupClient({
                           : "border-[var(--neo-border)] text-[var(--neo-text-muted)] hover:border-[var(--neo-accent)]/40"
                       }`}
                     >
-                      Our team ({ourSide === "home" ? "Home" : "Away"})
+                      {ourSide === "home" ? selectedGame.home_team : selectedGame.away_team}{" "}
+                      <span className="text-[var(--neo-text-muted)]">({ourSide === "home" ? "Home" : "Away"})</span>
                     </button>
                     <button
                       type="button"
@@ -649,7 +662,8 @@ export function CoachLineupClient({
                           : "border-[var(--neo-border)] text-[var(--neo-text-muted)] hover:border-[var(--neo-accent)]/40"
                       }`}
                     >
-                      Opponent ({oppSide === "home" ? "Home" : "Away"})
+                      {oppSide === "home" ? selectedGame.home_team : selectedGame.away_team}{" "}
+                      <span className="text-[var(--neo-text-muted)]">({oppSide === "home" ? "Home" : "Away"})</span>
                     </button>
                   </div>
                 )}

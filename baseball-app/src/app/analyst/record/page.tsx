@@ -1,4 +1,7 @@
+import { redirect } from "next/navigation";
 import { getGames, getPlayers } from "@/lib/db/queries";
+import { isGameFinalized } from "@/lib/gameRecord";
+import { analystGameReviewHref } from "@/lib/analystRoutes";
 import {
   fetchPAsForGame,
   fetchGameLineupOrder,
@@ -7,6 +10,9 @@ import {
   fetchBaserunningEventsForGame,
   saveBaserunningEventAction,
   deleteBaserunningEventAction,
+  saveRecordGameLineupAction,
+  finalizeGameScoreAction,
+  linkPitchTrackerGroupToPaAction,
 } from "./actions";
 import RecordPageClient from "./RecordPageClient";
 
@@ -24,6 +30,11 @@ export default async function RecordPAsPage({
       ? requestedGameId
       : undefined;
 
+  const gameForRecord = initialGameId ? games.find((g) => g.id === initialGameId) : undefined;
+  if (gameForRecord && isGameFinalized(gameForRecord)) {
+    redirect(analystGameReviewHref(gameForRecord.id));
+  }
+
   return (
     <RecordPageClient
       games={games}
@@ -36,6 +47,9 @@ export default async function RecordPAsPage({
       fetchBaserunningEventsForGame={fetchBaserunningEventsForGame}
       saveBaserunningEventAction={saveBaserunningEventAction}
       deleteBaserunningEventAction={deleteBaserunningEventAction}
+      saveRecordGameLineup={saveRecordGameLineupAction}
+      finalizeGameScore={finalizeGameScoreAction}
+      linkPitchTrackerGroupToPa={linkPitchTrackerGroupToPaAction}
     />
   );
 }

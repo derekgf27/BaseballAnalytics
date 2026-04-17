@@ -7,8 +7,11 @@ export function isPaHit(result: PAResult): boolean {
   return HIT_RESULTS.has(result);
 }
 
-function runsOnPa(pa: PlateAppearance): number {
-  return pa.runs_scored_player_ids?.length ?? 0;
+/** Prefer explicit scorer IDs; fall back to RBI when scorer IDs are missing/incomplete. */
+export function runsOnPaForLinescore(pa: PlateAppearance): number {
+  const scoredIds = pa.runs_scored_player_ids?.length ?? 0;
+  const rbi = typeof pa.rbi === "number" && pa.rbi > 0 ? pa.rbi : 0;
+  return Math.max(scoredIds, rbi);
 }
 
 /** PAs that count toward inning lines (must know top vs bottom). */
@@ -19,13 +22,13 @@ function usablePas(pas: PlateAppearance[]): PlateAppearance[] {
 export function sumRunsTopInning(pas: PlateAppearance[], inning: number): number {
   return usablePas(pas)
     .filter((p) => p.inning === inning && p.inning_half === "top")
-    .reduce((s, p) => s + runsOnPa(p), 0);
+    .reduce((s, p) => s + runsOnPaForLinescore(p), 0);
 }
 
 export function sumRunsBottomInning(pas: PlateAppearance[], inning: number): number {
   return usablePas(pas)
     .filter((p) => p.inning === inning && p.inning_half === "bottom")
-    .reduce((s, p) => s + runsOnPa(p), 0);
+    .reduce((s, p) => s + runsOnPaForLinescore(p), 0);
 }
 
 export function countHitsTop(pas: PlateAppearance[]): number {
@@ -43,32 +46,50 @@ export function countHitsBottom(pas: PlateAppearance[]): number {
 export function totalRunsTop(pas: PlateAppearance[]): number {
   return usablePas(pas)
     .filter((p) => p.inning_half === "top")
-    .reduce((s, p) => s + runsOnPa(p), 0);
+    .reduce((s, p) => s + runsOnPaForLinescore(p), 0);
 }
 
 export function totalRunsBottom(pas: PlateAppearance[]): number {
   return usablePas(pas)
     .filter((p) => p.inning_half === "bottom")
-    .reduce((s, p) => s + runsOnPa(p), 0);
+    .reduce((s, p) => s + runsOnPaForLinescore(p), 0);
 }
 
-/** True if this PA records a defensive error (batter reaches on error). */
+/** Batter’s PA result is reached on error (no hit credit). */
 export function isReachedOnError(pa: PlateAppearance): boolean {
   return pa.result === "reached_on_error";
+}
+
+/**
+ * Count this PA as one team error on the linescore (ROE, or 1B/2B/3B with a charged fielder).
+ */
+export function paCountsAsDefensiveErrorForLinescore(pa: PlateAppearance): boolean {
+  if (pa.result === "reached_on_error") return true;
+  if (
+    pa.error_fielder_id &&
+    (pa.result === "single" || pa.result === "double" || pa.result === "triple")
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /**
  * Errors charged to the **home** team (they are fielding in the top of each inning).
  */
 export function totalErrorsChargedToHome(pas: PlateAppearance[]): number {
-  return usablePas(pas).filter((p) => p.inning_half === "top" && isReachedOnError(p)).length;
+  return usablePas(pas).filter(
+    (p) => p.inning_half === "top" && paCountsAsDefensiveErrorForLinescore(p)
+  ).length;
 }
 
 /**
  * Errors charged to the **away** team (they field in the bottom of each inning).
  */
 export function totalErrorsChargedToAway(pas: PlateAppearance[]): number {
-  return usablePas(pas).filter((p) => p.inning_half === "bottom" && isReachedOnError(p)).length;
+  return usablePas(pas).filter(
+    (p) => p.inning_half === "bottom" && paCountsAsDefensiveErrorForLinescore(p)
+  ).length;
 }
 
 /**

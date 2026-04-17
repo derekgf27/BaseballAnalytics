@@ -1,0 +1,178 @@
+/* Game review PDF / print — imported from globals.css */
+
+.game-review-print-only {
+  display: none;
+}
+
+@media print {
+  .game-review-print-area {
+    --bg-base: #ffffff;
+    --bg-card: #ffffff;
+    --bg-elevated: #f8fafc;
+    --bg-input: #f8fafc;
+    --border: #e5e7eb;
+    --text: #0f172a;
+    --text-muted: #475569;
+    --text-faint: #64748b;
+    --accent: #92400e;
+    --accent-dim: rgba(146, 64, 14, 0.1);
+    --danger: #b91c1c;
+    --danger-dim: rgba(185, 28, 28, 0.08);
+    --success: #15803d;
+    --success-dim: rgba(21, 128, 61, 0.08);
+    background: #ffffff !important;
+    color: var(--text) !important;
+    border-color: var(--border) !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    box-shadow: none !important;
+  }
+
+  .game-review-print-area *,
+  .game-review-print-area *::before,
+  .game-review-print-area *::after {
+    box-shadow: none !important;
+  }
+
+  .game-review-print-area .rounded-lg,
+  .game-review-print-area .rounded-md,
+  .game-review-print-area .rounded-xl,
+  .game-review-print-area .rounded {
+    border-color: var(--border) !important;
+  }
+
+  .game-review-screen-only {
+    display: none !important;
+  }
+
+  .game-review-print-only {
+    display: block !important;
+  }
+
+  .game-review-print-area [class*="text-white"] {
+    color: #0f172a !important;
+  }
+
+  .game-review-print-team-break {
+    break-before: page;
+    page-break-before: always;
+    padding-top: 0.25rem;
+  }
+
+  .game-review-pdf-break-before-pitching {
+    break-before: page;
+    page-break-before: always;
+    padding-top: 0.35rem;
+  }
+
+  .game-review-pdf-break-before-pitch-mix {
+    break-before: page;
+    page-break-before: always;
+    padding-top: 0.35rem;
+  }
+
+  .game-review-print-area {
+    font-size: 10.25pt;
+    line-height: 1.35;
+  }
+
+  .game-review-print-area table {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .game-review-pdf-doc-header {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .game-review-pdf-linescore {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .box-score-print-wrap {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .game-review-pdf-team-heading {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  .game-review-pdf-team-stack {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0.5rem !important;
+    width: 100% !important;
+  }
+
+  .game-review-pdf-team-stack .game-review-pdf-subsection {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .game-review-print-area .game-batting-table-scroll {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .game-review-print-area .batting-pitch-mix-inner-scroll {
+    overflow: visible !important;
+  }
+
+  .game-review-print-area .pitch-mix-pdf-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.35rem !important;
+  }
+
+  .game-review-print-area thead {
+    display: table-header-group;
+    position: static !important;
+    box-shadow: none !important;
+  }
+
+  .game-review-print-area table tbody tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .game-review-print-area ul > li {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .game-review-print-area .game-batting-notes-card {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .game-review-pdf-onepager-notes {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    padding: 0.65rem 0.75rem;
+    background: var(--bg-elevated) !important;
+  }
+
+  .game-review-pdf-onepager-notes-body {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .game-review-pdf-fixed-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 9999;
+    padding: 3mm 6mm;
+    font-size: 8pt;
+    line-height: 1.3;
+    color: var(--text-muted) !important;
+    background: #ffffff !important;
+    border-top: 1px solid var(--border);
+    text-align: center;
+  }
+}

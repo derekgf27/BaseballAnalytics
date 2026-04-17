@@ -26,10 +26,10 @@ export default function Home() {
       >
         <Link
           href="/analyst"
-          className="home-mode-pane home-mode-pane-analyst group relative flex min-h-[45vh] flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-[var(--accent)]/60 bg-[var(--accent-dim)]/40 px-6 py-12 shadow-[0_0_32px_rgba(102,224,255,0.35)] transition sm:min-h-0 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 focus:ring-offset-[var(--bg-base)] hover:border-[var(--accent)] hover:bg-[var(--accent-dim)]/60"
+          className="home-mode-pane home-mode-pane-analyst group relative flex min-h-[45vh] flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-[var(--accent)]/60 bg-[var(--accent-dim)]/40 px-6 py-12 shadow-[0_0_32px_rgba(214,186,72,0.32)] transition sm:min-h-0 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 focus:ring-offset-[var(--bg-base)] hover:border-[var(--accent)] hover:bg-[var(--accent-dim)]/60"
         >
           <span className="text-4xl sm:text-5xl" aria-hidden>📊</span>
-          <span className="font-display text-xl font-semibold uppercase tracking-wider text-[var(--text)] sm:text-2xl">
+          <span className="font-orbitron text-xl font-semibold uppercase tracking-wider text-[var(--text)] sm:text-2xl">
             Analyst
           </span>
           <p className="max-w-[260px] text-center text-sm text-[var(--text-muted)]">
@@ -42,10 +42,10 @@ export default function Home() {
 
         <Link
           href="/coach"
-          className="home-mode-pane home-mode-pane-coach group relative flex min-h-[45vh] flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-[var(--accent-coach)]/60 bg-[var(--accent-coach-dim)]/40 px-6 py-12 shadow-[0_0_32px_rgba(102,224,255,0.35)] transition sm:min-h-0 focus:outline-none focus:ring-2 focus:ring-[var(--accent-coach)] focus:ring-offset-2 focus:ring-offset-[var(--bg-base)] hover:border-[var(--accent-coach)] hover:bg-[var(--accent-coach-dim)]/60"
+          className="home-mode-pane home-mode-pane-coach group relative flex min-h-[45vh] flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-[var(--accent-coach)]/60 bg-[var(--accent-coach-dim)]/40 px-6 py-12 shadow-[0_0_32px_rgba(214,186,72,0.32)] transition sm:min-h-0 focus:outline-none focus:ring-2 focus:ring-[var(--accent-coach)] focus:ring-offset-2 focus:ring-offset-[var(--bg-base)] hover:border-[var(--accent-coach)] hover:bg-[var(--accent-coach-dim)]/60"
         >
           <span className="text-4xl sm:text-5xl" aria-hidden>👟</span>
-          <span className="font-display text-xl font-semibold uppercase tracking-wider text-[var(--text)] sm:text-2xl">
+          <span className="font-orbitron text-xl font-semibold uppercase tracking-wider text-[var(--text)] sm:text-2xl">
             Coach
           </span>
           <p className="max-w-[260px] text-center text-sm text-[var(--text-muted)]">

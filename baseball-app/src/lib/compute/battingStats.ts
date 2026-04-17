@@ -2,7 +2,8 @@
  * Compute traditional and advanced batting stats (AVG, OBP, SLG, OPS, OPS+, wOBA) from plate appearance events.
  */
 
-import type { BattingStats, PAResult, PlateAppearance } from "@/lib/types";
+import { pitchOutcomeStrikesThrownIncrement } from "@/lib/compute/pitchSequence";
+import type { BattingStats, PAResult, PitchEvent, PlateAppearance } from "@/lib/types";
 
 function countByResult(pas: PlateAppearance[], result: PAResult): number {
   return pas.filter((pa) => pa.result === result).length;
@@ -10,13 +11,45 @@ function countByResult(pas: PlateAppearance[], result: PAResult): number {
 
 const DEFAULT_LEAGUE_OPS = 0.73;
 
+/** Normalize `base_state` to three chars: 1st, 2nd, 3rd occupied (e.g. `"100"` = 1st only). */
+export function normBaseState(baseState: string | null | undefined): string {
+  return String(baseState ?? "")
+    .replace(/[^01]/g, "0")
+    .padStart(3, "0")
+    .slice(0, 3);
+}
+
+export function isBasesEmpty(baseState: string | null | undefined): boolean {
+  return normBaseState(baseState) === "000";
+}
+
+/** At least one runner on any base. */
+export function isRunnersOn(baseState: string | null | undefined): boolean {
+  return !isBasesEmpty(baseState);
+}
+
+export function isBasesLoaded(baseState: string | null | undefined): boolean {
+  return normBaseState(baseState) === "111";
+}
+
 /**
- * Runners in scoring position: runner on 2nd and/or 3rd before the PA.
- * `base_state` is 3 chars: 1st, 2nd, 3rd ("100" = first only, "011" = 2nd+3rd).
+ * Runners in scoring position: **only** if someone is on **2nd and/or 3rd** before the PA.
+ * Runner on 1st only (`"100"`) is not RISP; `"110"` / `"101"` / `"011"` / `"111"` are (2nd or 3rd occupied).
  */
 export function isRisp(baseState: string | null | undefined): boolean {
-  const b = String(baseState ?? "").padStart(3, "0").slice(0, 3);
+  const b = normBaseState(baseState);
   return b[1] === "1" || b[2] === "1";
+}
+
+/** Count defensive errors charged per player (`error_fielder_id`), including ROE and hit + extra-base errors. */
+export function fieldingErrorsByPlayerFromPas(pas: PlateAppearance[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const pa of pas) {
+    const fid = pa.error_fielder_id;
+    if (!fid) continue;
+    counts[fid] = (counts[fid] ?? 0) + 1;
+  }
+  return counts;
 }
 
 /** wOBA linear weights (typical run environment; adjust per league if needed) */
@@ -243,6 +276,76 @@ export function pitchMixFromPlateAppearances(pas: PlateAppearance[]): {
     if (pa.first_pitch_strike != null && pa.pitches_seen != null && pa.pitches_seen >= 1) {
       fpsDenom += 1;
       if (pa.first_pitch_strike) fpsNumer += 1;
+    }
+  }
+
+  return {
+    firstPitchStrikes: fpsNumer,
+    firstPitchOpportunities: fpsDenom,
+    strikePct: pitchSumStrike > 0 ? strikeSum / pitchSumStrike : null,
+    firstPitchStrikePct: fpsDenom > 0 ? fpsNumer / fpsDenom : null,
+    pitchesTotal: pitchSumAll,
+    plateAppearancesWithPitchCount: pitchPaCount,
+    pitchesPerPA: pitchPaCount > 0 ? pitchSumAll / pitchPaCount : null,
+  };
+}
+
+export type PitchMixRates = ReturnType<typeof pitchMixFromPlateAppearances>;
+
+/**
+ * Same as {@link pitchMixFromPlateAppearances}, but when a PA has a pitch-by-pitch log,
+ * uses those rows for rates (FPS, strike %, pitch counts). Fixes empty “Rates” when
+ * `pitches_seen` / `first_pitch_strike` were not stored but `pitch_events` exist.
+ */
+export function pitchMixFromPlateAppearancesOrPitchLog(
+  pas: PlateAppearance[],
+  eventsByPaId: Map<string, PitchEvent[]>
+): PitchMixRates {
+  let strikeSum = 0;
+  let pitchSumStrike = 0;
+  let fpsNumer = 0;
+  let fpsDenom = 0;
+  let pitchSumAll = 0;
+  let pitchPaCount = 0;
+
+  for (const pa of pas) {
+    const evs = eventsByPaId.get(pa.id) ?? [];
+    if (evs.length > 0) {
+      const pv = evs.length;
+      pitchSumAll += pv;
+      pitchPaCount += 1;
+      let stForPa = 0;
+      for (const e of evs) {
+        stForPa += pitchOutcomeStrikesThrownIncrement(e.outcome);
+      }
+      strikeSum += stForPa;
+      pitchSumStrike += pv;
+      fpsDenom += 1;
+      const first = evs[0]!;
+      if (first.outcome !== "ball") fpsNumer += 1;
+    } else {
+      const pv = pa.pitches_seen;
+      const st = pa.strikes_thrown;
+      if (pv != null && !Number.isNaN(pv)) {
+        pitchSumAll += pv;
+        pitchPaCount += 1;
+      }
+      if (
+        pv != null &&
+        st != null &&
+        !Number.isNaN(pv) &&
+        !Number.isNaN(st) &&
+        pv > 0 &&
+        st >= 0 &&
+        st <= pv
+      ) {
+        pitchSumStrike += pv;
+        strikeSum += st;
+      }
+      if (pa.first_pitch_strike != null && pa.pitches_seen != null && pa.pitches_seen >= 1) {
+        fpsDenom += 1;
+        if (pa.first_pitch_strike) fpsNumer += 1;
+      }
     }
   }
 

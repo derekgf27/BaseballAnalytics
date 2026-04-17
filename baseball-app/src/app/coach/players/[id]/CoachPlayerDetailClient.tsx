@@ -1,11 +1,18 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { PlayerTagList } from "@/components/ui/PlayerTag";
 import { formatPPa } from "@/lib/format";
 import { formatHeight } from "@/lib/height";
 import { BATTING_STAT_HEADER_TOOLTIPS } from "@/lib/statHeaderTooltips";
 import { TeamSprayChart } from "@/components/analyst/TeamSprayChart";
+import {
+  SPRAY_CHART_HIT_RESULTS,
+  SPRAY_CHART_OUT_RESULTS,
+  sprayResultMatchesFilter,
+  type SprayResultFilterKey,
+} from "@/lib/sprayChartFilters";
 import type { HitDirection, Player, BattingStatsWithSplits } from "@/lib/types";
 
 const TREND_STYLES = {
@@ -18,17 +25,31 @@ interface CoachPlayerDetailClientProps {
   player: Player;
   battingSplits: BattingStatsWithSplits | null;
   spraySplits:
-    | {
+    | ({
+        mode: "batting";
         vsL: {
           hand: "L" | "R";
-          data: { hit_direction: HitDirection }[];
+          data: { hit_direction: HitDirection; result: string }[];
           line: { pa: number; h: number; ab: number };
         } | null;
         vsR: {
           hand: "L" | "R";
-          data: { hit_direction: HitDirection }[];
+          data: { hit_direction: HitDirection; result: string }[];
           line: { pa: number; h: number; ab: number };
         } | null;
+      })
+    | {
+        mode: "pitching";
+        vsL: {
+          hand: "L";
+          data: { hit_direction: HitDirection; result: string }[];
+          line: { pa: number; h: number; ab: number };
+        };
+        vsR: {
+          hand: "R";
+          data: { hit_direction: HitDirection; result: string }[];
+          line: { pa: number; h: number; ab: number };
+        };
       }
     | null;
 }
@@ -55,6 +76,40 @@ function formatAvg(n: number): string {
 
 export function CoachPlayerDetailClient({ player, battingSplits, spraySplits }: CoachPlayerDetailClientProps) {
   const isSwitch = player.bats?.toUpperCase().startsWith("S") ?? false;
+  const [sprayResultFilter, setSprayResultFilter] = useState<SprayResultFilterKey>("hits");
+
+  const filterSprayRows = (
+    rows: { hit_direction: HitDirection; result: string }[],
+    filter: SprayResultFilterKey
+  ) => rows.filter((r) => sprayResultMatchesFilter(r.result, filter));
+
+  const sprayRowCounts = (rows: { result: string }[] | null | undefined) => {
+    const list = rows ?? [];
+    const n = list.length;
+    const hits = list.filter((r) => SPRAY_CHART_HIT_RESULTS.has(r.result)).length;
+    const outs = list.filter((r) => SPRAY_CHART_OUT_RESULTS.has(r.result)).length;
+    return { n, hits, outs };
+  };
+
+  const toSprayChartData = (rows: { hit_direction: HitDirection; result: string }[] | null | undefined) =>
+    (rows ?? []).map(({ hit_direction }) => ({ hit_direction }));
+
+  const filteredSpray = useMemo(() => {
+    if (!spraySplits) return null;
+    if (spraySplits.mode === "pitching") {
+      return {
+        mode: "pitching" as const,
+        vsL: filterSprayRows(spraySplits.vsL.data, sprayResultFilter),
+        vsR: filterSprayRows(spraySplits.vsR.data, sprayResultFilter),
+      };
+    }
+    return {
+      mode: "batting" as const,
+      vsL: spraySplits.vsL ? filterSprayRows(spraySplits.vsL.data, sprayResultFilter) : null,
+      vsR: spraySplits.vsR ? filterSprayRows(spraySplits.vsR.data, sprayResultFilter) : null,
+    };
+  }, [spraySplits, sprayResultFilter]);
+
   const trend = "neutral";
   const trendStyle = TREND_STYLES[trend];
   const trendLabel = "Neutral";
@@ -332,52 +387,125 @@ export function CoachPlayerDetailClient({ player, battingSplits, spraySplits }: 
         </div>
       )}
 
-      {spraySplits && (
+      {spraySplits && filteredSpray && (
         <section className="space-y-4">
-          <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-white">Spray charts</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-white">Spray charts</h2>
+            <label className="flex items-center gap-2 text-xs">
+              <span className="font-display uppercase tracking-wider text-white">Filter</span>
+              <select
+                value={sprayResultFilter}
+                onChange={(e) => setSprayResultFilter(e.target.value as SprayResultFilterKey)}
+                className="rounded border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-xs text-[var(--text)] focus:border-[var(--accent)] focus:outline-none"
+                aria-label="Spray chart result filter"
+              >
+                <option value="hits">Hits</option>
+                <option value="outs">Outs</option>
+                <option value="both">Hits + Outs</option>
+              </select>
+            </label>
+          </div>
+          <p className="text-xs text-[var(--text-muted)]">
+            {spraySplits.mode === "pitching"
+              ? "Balls in play allowed as pitcher, split by batter handedness (switch hitters use the side they batted from vs you)."
+              : "Balls in play as a batter, split by opposing pitcher handedness (switch hitters use the side they batted from)."}
+          </p>
           <div className="grid gap-6 lg:grid-cols-2">
-            <div className="card-tech min-w-0 rounded-lg border border-[var(--border)] p-4">
-              {spraySplits.vsL ? (
-                <>
-                  <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-white">
-                    {isSwitch ? `${spraySplits.vsL.hand === "R" ? "RHB" : "LHB"} vs LHP` : "vs LHP"}
-                  </h3>
+            {spraySplits.mode === "pitching" ? (
+              <>
+                <div className="card-tech min-w-0 rounded-lg border border-[var(--border)] p-4">
+                  <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-white">vs LHB</h3>
                   <p className="mt-1 text-xs tabular-nums">
-                    <span className="text-[var(--neo-accent)]">{spraySplits.vsL.line.pa}</span>
+                    <span className="text-[var(--neo-accent)]">{sprayRowCounts(filteredSpray.vsL).n}</span>
                     <span className="text-white"> PA: </span>
-                    <span className="text-[var(--neo-accent)]">{spraySplits.vsL.line.h}</span>
-                    <span className="text-white"> for </span>
-                    <span className="text-[var(--neo-accent)]">{spraySplits.vsL.line.ab}</span>
+                    <span className="text-[var(--neo-accent)]">{sprayRowCounts(filteredSpray.vsL).hits}</span>
+                    <span className="text-white"> Hits</span>
+                    <span className="text-white"> · </span>
+                    <span className="text-[var(--neo-accent)]">{sprayRowCounts(filteredSpray.vsL).outs}</span>
+                    <span className="text-white"> Outs</span>
                   </p>
                   <div className="mt-3">
-                    <TeamSprayChart data={spraySplits.vsL.data} hand={spraySplits.vsL.hand} compact />
+                    <TeamSprayChart data={toSprayChartData(filteredSpray.vsL)} hand={spraySplits.vsL.hand} compact />
                   </div>
-                </>
-              ) : (
-                <p className="text-sm text-[var(--text-muted)]">No vs LHP spray chart available.</p>
-              )}
-            </div>
-            <div className="card-tech min-w-0 rounded-lg border border-[var(--border)] p-4">
-              {spraySplits.vsR ? (
-                <>
-                  <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-white">
-                    {isSwitch ? `${spraySplits.vsR.hand === "R" ? "RHB" : "LHB"} vs RHP` : "vs RHP"}
-                  </h3>
+                </div>
+                <div className="card-tech min-w-0 rounded-lg border border-[var(--border)] p-4">
+                  <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-white">vs RHB</h3>
                   <p className="mt-1 text-xs tabular-nums">
-                    <span className="text-[var(--neo-accent)]">{spraySplits.vsR.line.pa}</span>
+                    <span className="text-[var(--neo-accent)]">{sprayRowCounts(filteredSpray.vsR).n}</span>
                     <span className="text-white"> PA: </span>
-                    <span className="text-[var(--neo-accent)]">{spraySplits.vsR.line.h}</span>
-                    <span className="text-white"> for </span>
-                    <span className="text-[var(--neo-accent)]">{spraySplits.vsR.line.ab}</span>
+                    <span className="text-[var(--neo-accent)]">{sprayRowCounts(filteredSpray.vsR).hits}</span>
+                    <span className="text-white"> Hits</span>
+                    <span className="text-white"> · </span>
+                    <span className="text-[var(--neo-accent)]">{sprayRowCounts(filteredSpray.vsR).outs}</span>
+                    <span className="text-white"> Outs</span>
                   </p>
                   <div className="mt-3">
-                    <TeamSprayChart data={spraySplits.vsR.data} hand={spraySplits.vsR.hand} compact />
+                    <TeamSprayChart data={toSprayChartData(filteredSpray.vsR)} hand={spraySplits.vsR.hand} compact />
                   </div>
-                </>
-              ) : (
-                <p className="text-sm text-[var(--text-muted)]">No vs RHP spray chart available.</p>
-              )}
-            </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="card-tech min-w-0 rounded-lg border border-[var(--border)] p-4">
+                  {spraySplits.vsL ? (
+                    <>
+                      <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-white">
+                        {isSwitch
+                          ? `${spraySplits.vsL.hand === "R" ? "RHB" : "LHB"} vs LHP`
+                          : "vs LHP"}
+                      </h3>
+                      <p className="mt-1 text-xs tabular-nums">
+                        <span className="text-[var(--neo-accent)]">{sprayRowCounts(filteredSpray.vsL ?? []).n}</span>
+                        <span className="text-white"> PA: </span>
+                        <span className="text-[var(--neo-accent)]">{sprayRowCounts(filteredSpray.vsL ?? []).hits}</span>
+                        <span className="text-white"> Hits</span>
+                        <span className="text-white"> · </span>
+                        <span className="text-[var(--neo-accent)]">{sprayRowCounts(filteredSpray.vsL ?? []).outs}</span>
+                        <span className="text-white"> Outs</span>
+                      </p>
+                      <div className="mt-3">
+                        <TeamSprayChart
+                          data={toSprayChartData(filteredSpray.vsL ?? [])}
+                          hand={spraySplits.vsL.hand}
+                          compact
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-sm text-[var(--text-muted)]">No vs LHP spray chart available.</p>
+                  )}
+                </div>
+                <div className="card-tech min-w-0 rounded-lg border border-[var(--border)] p-4">
+                  {spraySplits.vsR ? (
+                    <>
+                      <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-white">
+                        {isSwitch
+                          ? `${spraySplits.vsR.hand === "R" ? "RHB" : "LHB"} vs RHP`
+                          : "vs RHP"}
+                      </h3>
+                      <p className="mt-1 text-xs tabular-nums">
+                        <span className="text-[var(--neo-accent)]">{sprayRowCounts(filteredSpray.vsR ?? []).n}</span>
+                        <span className="text-white"> PA: </span>
+                        <span className="text-[var(--neo-accent)]">{sprayRowCounts(filteredSpray.vsR ?? []).hits}</span>
+                        <span className="text-white"> Hits</span>
+                        <span className="text-white"> · </span>
+                        <span className="text-[var(--neo-accent)]">{sprayRowCounts(filteredSpray.vsR ?? []).outs}</span>
+                        <span className="text-white"> Outs</span>
+                      </p>
+                      <div className="mt-3">
+                        <TeamSprayChart
+                          data={toSprayChartData(filteredSpray.vsR ?? [])}
+                          hand={spraySplits.vsR.hand}
+                          compact
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-sm text-[var(--text-muted)]">No vs RHP spray chart available.</p>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </section>
       )}

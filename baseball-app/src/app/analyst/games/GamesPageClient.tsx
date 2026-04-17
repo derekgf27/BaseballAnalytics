@@ -12,14 +12,19 @@ import {
   fetchGameLineupSlots,
   replaceOurGameLineupAction,
 } from "./actions";
+import { isGameFinalized, ourTeamOutcomeFromFinalScore } from "@/lib/gameRecord";
 import { isClubRosterPlayer, pitchersForGameTeamSide } from "@/lib/opponentUtils";
 import { formatDateMMDDYYYY } from "@/lib/format";
 import { StyledDatePicker } from "@/components/shared/StyledDatePicker";
-import type { Game, Player } from "@/lib/types";
-import type { SavedLineup } from "@/lib/types";
+import type { Game, Player, SavedLineup } from "@/lib/types";
 import { fetchSavedLineupWithSlots } from "@/app/analyst/lineup/actions";
 import { OpponentLineupModal } from "@/components/analyst/OpponentLineupModal";
 import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
+import {
+  analystGameLogHref,
+  analystGameReviewHref,
+  analystRecordHref,
+} from "@/lib/analystRoutes";
 
 interface GamesPageClientProps {
   initialGames: Game[];
@@ -47,6 +52,10 @@ export function GamesPageClient({
   const isFormOpen = editingGame !== null || showAddForm;
 
   const refresh = () => router.refresh();
+
+  useEffect(() => {
+    setGames(initialGames);
+  }, [initialGames]);
 
   // Auto-dismiss message after 4s, with fade-out
   useEffect(() => {
@@ -89,20 +98,20 @@ export function GamesPageClient({
         setShowAddForm(false);
         setMessage({
           type: "ok",
-          text: ourCustom ? "Game updated with your lineup changes." : "Game updated.",
+          text: ourCustom ? "Game updated with lineup changes." : "Game updated.",
         });
         refresh();
       } else {
         setMessage({ type: "err", text: "Could not update game." });
       }
     } else {
-      const created = await createGameWithLineupAction(
-        game,
-        savedLineupId,
-        opponentSlots && opponentSlots.length > 0 ? opponentSlots : null,
-        ourCustom
-      );
-      if (created) {
+      try {
+        const created = await createGameWithLineupAction(
+          game,
+          savedLineupId,
+          opponentSlots && opponentSlots.length > 0 ? opponentSlots : null,
+          ourCustom
+        );
         setGames((prev) => [created, ...prev]);
         setEditingGame(null);
         setShowAddForm(false);
@@ -111,18 +120,26 @@ export function GamesPageClient({
         setMessage({
           type: "ok",
           text: hasOpp && hasOur
-            ? "Game added with your lineup and opponent lineup."
+            ? "Game added with both lineups."
             : hasOpp
-              ? "Game added with opponent lineup."
+              ? "Game added with second lineup."
               : hasOur
-                ? "Game added with your custom lineup."
+                ? "Game added with custom lineup."
                 : savedLineupId
                   ? "Game added with selected lineup."
                   : "Game added with default lineup.",
         });
         refresh();
-      } else {
-        setMessage({ type: "err", text: "Could not add game. Is Supabase connected?" });
+      } catch (e) {
+        const raw = e instanceof Error ? e.message : String(e);
+        const rlsHint =
+          /row-level security|rls policy/i.test(raw) || /permission denied/i.test(raw)
+            ? " Use the app Log in so your session is authenticated — many Supabase setups only allow writes for signed-in users."
+            : "";
+        setMessage({
+          type: "err",
+          text: `Could not add game: ${raw}.${rlsHint}`,
+        });
       }
     }
   };
@@ -132,9 +149,6 @@ export function GamesPageClient({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="font-display text-3xl font-semibold tracking-tight text-[var(--text)]">Games</h1>
-          <p className="mt-1 text-sm text-[var(--text-muted)]">
-            Select a game to log plate appearances.
-          </p>
         </div>
         {canEdit && (
           <button
@@ -156,12 +170,15 @@ export function GamesPageClient({
       {message && (
         <div
           className={`rounded-lg border p-4 transition-opacity duration-300 ${
-            message.type === "ok"
+            message.type === "ok" || message.type === "deleted"
               ? "text-[var(--success)]"
               : "text-[var(--danger)]"
           } ${messageDismissing ? "opacity-0" : "opacity-100"}`}
           style={{
-            background: message.type === "ok" ? "var(--success-dim)" : "var(--danger-dim)",
+            background:
+              message.type === "ok" || message.type === "deleted"
+                ? "var(--success-dim)"
+                : "var(--danger-dim)",
             borderColor: "var(--border)",
           }}
           role="alert"
@@ -174,7 +191,7 @@ export function GamesPageClient({
       {isFormOpen && (
       <GameForm
         key={editingGame?.id ?? "new-game"}
-        game={editingGame}
+        game={editingGame && isGameFinalized(editingGame) ? null : editingGame}
         savedLineups={initialSavedLineups}
         players={initialPlayers}
         trackedOpponentNames={initialTrackedOpponentNames}
@@ -206,17 +223,34 @@ export function GamesPageClient({
           </p>
         </div>
       ) : (
-        <ul className="space-y-2">
-          {games.map((g) => (
+        <ul className="space-y-2" aria-label="Games list">
+          {games.map((g) => {
+            const finalized = isGameFinalized(g);
+            const outcome = finalized ? ourTeamOutcomeFromFinalScore(g) : null;
+            return (
             <li
               key={g.id}
-              className="card-tech flex flex-wrap items-center justify-between gap-2 p-4"
+              className="card-tech flex flex-wrap items-center justify-between gap-3 p-4"
             >
               <div className="flex items-center gap-3">
                 <span className="font-medium text-[var(--text)]">
                   {formatDateMMDDYYYY(g.date)} — {g.away_team} @ {g.home_team}
                 </span>
-                {g.final_score_home != null && g.final_score_away != null && (
+                {outcome != null && (
+                  <span
+                    className={`font-display font-semibold tabular-nums ${
+                      outcome === "W"
+                        ? "text-[var(--success)]"
+                        : outcome === "L"
+                          ? "text-[var(--danger)]"
+                          : "text-[var(--text-muted)]"
+                    }`}
+                    title={outcome === "T" ? "Tie game" : outcome === "W" ? "Win" : "Loss"}
+                  >
+                    {outcome}
+                  </span>
+                )}
+                {finalized && (
                   <span className="text-[var(--text-muted)]">
                     ({g.final_score_away}-{g.final_score_home})
                   </span>
@@ -227,31 +261,44 @@ export function GamesPageClient({
                   </span>
                 )}
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 <Link
-                  href={`/analyst/record?gameId=${g.id}`}
-                  className="font-display inline-flex items-center rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold tracking-wide text-[var(--bg-base)] transition hover:opacity-90"
+                  href={analystGameLogHref(g.id)}
+                  className="font-display inline-flex min-h-[40px] items-center rounded-lg border-2 border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-1.5 text-sm font-semibold tracking-wide text-[var(--text)] transition hover:border-[var(--accent)]/50 hover:text-[var(--accent)]"
                 >
-                  Record PAs
+                  Log
                 </Link>
+                {!finalized && (
+                  <Link
+                    href={analystRecordHref(g.id)}
+                    className="font-display inline-flex min-h-[40px] items-center rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold tracking-wide text-[var(--bg-base)] transition hover:opacity-90"
+                  >
+                    Record
+                  </Link>
+                )}
                 <Link
-                  href={`/analyst/games/${g.id}/review`}
-                  className="inline-flex items-center rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-1.5 text-sm font-medium text-[var(--text)] transition hover:opacity-90"
+                  href={analystGameReviewHref(g.id)}
+                  className={`inline-flex min-h-[40px] items-center rounded-lg px-3 py-1.5 text-sm font-medium transition hover:opacity-90 ${
+                    finalized
+                      ? "font-display bg-[var(--accent)] font-semibold tracking-wide text-[var(--bg-base)]"
+                      : "border border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text)]"
+                  }`}
                 >
-                  Box score
+                  Review
                 </Link>
-                {canEdit && !isDemoId(g.id) && (
+                {canEdit && !isDemoId(g.id) && !finalized ? (
                   <button
                     type="button"
                     onClick={() => { setEditingGame(g); setShowAddForm(false); }}
-                    className="inline-flex items-center rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-1.5 text-sm font-medium text-[var(--text)] transition hover:bg-[var(--accent-dim)]"
+                    className="inline-flex min-h-[40px] items-center rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-1.5 text-sm font-medium text-[var(--text)] transition hover:bg-[var(--accent-dim)]"
                   >
                     Edit
                   </button>
-                )}
+                ) : null}
               </div>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </div>
@@ -308,7 +355,7 @@ function GameForm({
   const [deleteGameConfirmOpen, setDeleteGameConfirmOpen] = useState(false);
   const [ourLineupModalOpen, setOurLineupModalOpen] = useState(false);
   const [ourModalInitialSlots, setOurModalInitialSlots] = useState<{ player_id: string; position: string | null }[]>([]);
-  const [ourLineupModalTitle, setOurLineupModalTitle] = useState("Your lineup");
+  const [ourLineupModalTitle, setOurLineupModalTitle] = useState("Lineup");
   const [ourModalOpening, setOurModalOpening] = useState(false);
   const [ourOrderedSlots, setOurOrderedSlots] = useState<{ player_id: string; position: string | null }[]>([]);
   const [opponentModalOpen, setOpponentModalOpen] = useState(false);
@@ -398,7 +445,7 @@ function GameForm({
     }
     const data = await fetchSavedLineupWithSlots(lineupId);
     if (!data?.slots?.length) {
-      return { ordered: [], title: "Your lineup" };
+      return { ordered: [], title: "Lineup" };
     }
     const ordered = [...data.slots]
       .sort((a, b) => a.slot - b.slot)
@@ -484,7 +531,7 @@ function GameForm({
         <span className="text-xs font-medium uppercase tracking-wider text-white">Matchup</span>
         <div className="mt-2 space-y-3">
           <div>
-            <span className="text-xs text-white block mb-1">Our side</span>
+            <span className="text-xs text-white block mb-1">Side</span>
             <div className="flex gap-2">
               <button
                 type="button"
@@ -512,27 +559,31 @@ function GameForm({
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <label>
-              <span className="text-xs text-[var(--text-muted)]">Our team</span>
+              <span className="text-xs text-[var(--text-muted)]">
+                {our_side === "home" ? "Home" : "Away"}
+              </span>
               <input
                 type="text"
                 value={our_team}
                 onChange={(e) => setOurTeam(e.target.value)}
                 className="input-tech mt-1 block w-full px-3 py-2"
-                placeholder="Your team name"
+                placeholder="Team name"
                 required
               />
             </label>
             <label className="block">
-              <span className="text-xs text-[var(--text-muted)]">Opponent</span>
+              <span className="text-xs text-[var(--text-muted)]">
+                {our_side === "home" ? "Away" : "Home"}
+              </span>
               {useOpponentSelect ? (
                 <select
                   value={opponent}
                   onChange={(e) => setOpponent(e.target.value)}
                   className="input-tech mt-1 block w-full px-3 py-2"
                   required
-                  aria-label="Opponent team"
+                  aria-label="Other team name"
                 >
-                  <option value="">Select opponent…</option>
+                  <option value="">Select team…</option>
                   {trackedSorted.map((name) => (
                     <option key={name} value={name}>
                       {name}
@@ -545,9 +596,9 @@ function GameForm({
                   value={opponent}
                   onChange={(e) => setOpponent(e.target.value)}
                   className="input-tech mt-1 block w-full px-3 py-2"
-                  placeholder="Opposing team"
+                  placeholder="Team name"
                   required
-                  aria-label="Opponent team"
+                  aria-label="Other team name"
                 />
               )}
             </label>
@@ -603,7 +654,7 @@ function GameForm({
         </div>
       </div>
 
-      {/* Lineup (left) + Opponent lineup (right) when adding a game */}
+      {/* Two lineup columns when adding a game */}
       <div
         className={`mt-6 grid items-start gap-6 ${!isEditing ? "lg:grid-cols-2" : ""}`}
       >
@@ -618,7 +669,7 @@ function GameForm({
               disabled={ourModalOpening}
               className="w-full rounded-lg border border-[var(--accent)]/50 bg-[var(--bg-elevated)] px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm transition hover:border-[var(--accent)] hover:bg-[var(--bg-card)] disabled:opacity-60"
             >
-              {ourModalOpening ? "Opening…" : `View ${our_team.trim() || "your team"} lineup`}
+              {ourModalOpening ? "Opening…" : `View ${our_team.trim() || (our_side === "home" ? "Home" : "Away")} lineup`}
             </button>
             {ourOrderedSlots.length > 0 ? (
               <span className="block text-sm text-[var(--text-muted)]">{ourOrderedSlots.length} in lineup</span>
@@ -659,7 +710,7 @@ function GameForm({
         {!isEditing && (
           <div>
             <span className="text-xs font-medium uppercase tracking-wider text-white block">
-              Opponent lineup
+              {our_side === "home" ? "Away" : "Home"} lineup
             </span>
             <div className="mt-2 space-y-2">
               <button
@@ -667,7 +718,7 @@ function GameForm({
                 onClick={() => setOpponentModalOpen(true)}
                 className="w-full rounded-lg border border-[var(--accent)]/50 bg-[var(--bg-elevated)] px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm transition hover:border-[var(--accent)] hover:bg-[var(--bg-card)]"
               >
-                View {opponent.trim() || "opponent"} lineup
+                View {opponent.trim() || (our_side === "home" ? "Away" : "Home")} lineup
               </button>
               {opponentOrderedSlots.length > 0 ? (
                 <span className="block text-sm text-[var(--text-muted)]">

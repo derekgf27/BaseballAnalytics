@@ -65,7 +65,7 @@ export function CoachLineupTable({ lineup }: CoachLineupTableProps) {
               }`}
             >
               <td className="w-12 border-r border-[var(--border)] px-3 py-2 text-center">
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded bg-[var(--neo-accent)] text-sm font-bold text-[var(--bg-base)] shadow-[0_0_18px_rgba(102,224,255,0.7)]">
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded bg-[var(--neo-accent)] text-sm font-bold text-[var(--bg-base)] shadow-[0_0_18px_rgba(214,186,72,0.6)]">
                   {slot.order}
                 </span>
               </td>

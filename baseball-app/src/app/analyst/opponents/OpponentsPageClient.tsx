@@ -104,7 +104,7 @@ export function OpponentsPageClient({
         <div className="card-tech rounded-lg border border-dashed border-[var(--border)] p-8 text-center">
           <p className="font-medium text-[var(--text)]">No opponents yet</p>
           <p className="mt-2 text-sm text-[var(--text-muted)]">
-            Add a name above, or add games in Analyst → Games so opponents appear from your matchups.
+            Add a name above, or add games in Analyst → Games so opponents appear from scheduled games.
           </p>
           <Link href="/analyst/games" className="mt-4 inline-block text-sm text-[var(--accent)] hover:underline">
             Go to Games →
@@ -227,7 +227,7 @@ export function OpponentsPageClient({
         open={modalOpen && deleteConfirmOpen}
         onClose={() => !deleting && setDeleteConfirmOpen(false)}
         title="Delete opponent?"
-        description="This removes the saved name from your list. If you have games against this team, they can still show up from your schedule."
+        description="This removes the saved name from the list. If you have games against this team, they can still show up from the schedule."
         confirmLabel="Delete opponent"
         pendingLabel="Deleting…"
         onConfirm={confirmDeleteOpponent}

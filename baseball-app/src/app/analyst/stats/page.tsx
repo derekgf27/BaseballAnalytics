@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import {
   getPlayers,
   getBattingStatsWithSplitsForPlayers,
@@ -6,13 +7,21 @@ import {
   getClubPitchingMatchupPayload,
 } from "@/lib/db/queries";
 import { isClubRosterPlayer, isPitcherPlayer } from "@/lib/opponentUtils";
+import { buildStatsUrlStateFromNextSearchParams } from "./statsUrlState";
 import { StatsPageClient } from "./StatsPageClient";
 
 /** Always fetch fresh stats so recorded PAs (including SB, R, RBI, etc.) show up immediately. */
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function StatsPage() {
+export default async function StatsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const statsUrlState = buildStatsUrlStateFromNextSearchParams(sp);
+
   const allPlayers = await getPlayers();
   const club = allPlayers.filter(isClubRosterPlayer);
   /** Club roster — pitchers (position P) excluded from batting sheet only. */
@@ -28,14 +37,17 @@ export default async function StatsPage() {
   ]);
   const playerIdToName = Object.fromEntries(allPlayers.map((p) => [p.id, p.name]));
   return (
-    <StatsPageClient
-      initialBatters={batters}
-      initialPitchers={pitchers}
-      initialBattingStatsWithSplits={battingStatsWithSplits}
-      initialPitchingStatsWithSplits={pitchingStats}
-      battingMatchupPayload={battingMatchupPayload}
-      pitchingMatchupPayload={pitchingMatchupPayload}
-      playerIdToName={playerIdToName}
-    />
+    <Suspense fallback={<div className="p-6 text-sm text-[var(--text-muted)]">Loading stats…</div>}>
+      <StatsPageClient
+        statsUrlState={statsUrlState}
+        initialBatters={batters}
+        initialPitchers={pitchers}
+        initialBattingStatsWithSplits={battingStatsWithSplits}
+        initialPitchingStatsWithSplits={pitchingStats}
+        battingMatchupPayload={battingMatchupPayload}
+        pitchingMatchupPayload={pitchingMatchupPayload}
+        playerIdToName={playerIdToName}
+      />
+    </Suspense>
   );
 }

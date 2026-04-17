@@ -45,9 +45,9 @@ export function BoxScoreLine({ game, pas, liveInning, liveInningHalf }: BoxScore
   const rHome = totalRunsBottom(pas);
   const hAway = countHitsTop(pas);
   const hHome = countHitsBottom(pas);
-  /** Away row: E = errors committed by home defense while away bats (top). Home row: E = errors by away defense. */
-  const eAway = totalErrorsChargedToHome(pas);
-  const eHome = totalErrorsChargedToAway(pas);
+  /** Show each team's own defensive errors in its row (standard linescore E column). */
+  const eAway = totalErrorsChargedToAway(pas);
+  const eHome = totalErrorsChargedToHome(pas);
 
   return (
     <div className="min-w-0">
@@ -75,7 +75,9 @@ export function BoxScoreLine({ game, pas, liveInning, liveInningHalf }: BoxScore
           {innings.map((inn) => (
             <div
               key={`h-${inn}`}
-              className="border-b border-[var(--border)]/60 py-1.5 text-center font-semibold tabular-nums text-white"
+              className={`border-b border-[var(--border)]/60 py-1.5 text-center font-semibold tabular-nums ${
+                inn === liveInning ? "text-[var(--accent)]" : "text-white"
+              }`}
               role="columnheader"
             >
               {inn}
@@ -110,7 +112,9 @@ export function BoxScoreLine({ game, pas, liveInning, liveInningHalf }: BoxScore
           {innings.map((inn) => (
             <div
               key={`a-${inn}`}
-              className="border-b border-[var(--border)]/40 py-2 text-center font-mono"
+              className={`border-b border-[var(--border)]/40 py-2 text-center font-mono ${
+                inn === liveInning && effHalf === "top" ? "text-[var(--accent)]" : ""
+              }`}
               role="cell"
             >
               <Cell value={awayInningCell(pas, inn, liveInning)} />
@@ -140,7 +144,13 @@ export function BoxScoreLine({ game, pas, liveInning, liveInningHalf }: BoxScore
             <span className="truncate">{homeName}</span>
           </div>
           {innings.map((inn) => (
-            <div key={`h2-${inn}`} className="py-2 text-center font-mono" role="cell">
+            <div
+              key={`h2-${inn}`}
+              className={`py-2 text-center font-mono ${
+                inn === liveInning && effHalf === "bottom" ? "text-[var(--accent)]" : ""
+              }`}
+              role="cell"
+            >
               <Cell value={homeInningCell(pas, inn, liveInning, effHalf)} />
             </div>
           ))}

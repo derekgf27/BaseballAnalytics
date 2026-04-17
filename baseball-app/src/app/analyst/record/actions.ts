@@ -1,18 +1,38 @@
 "use server";
 
-import type { BaserunningEvent, BaserunningEventInsert, PlateAppearance } from "@/lib/types";
+import type {
+  BaserunningEvent,
+  BaserunningEventInsert,
+  LineupSide,
+  PitchEvent,
+  PitchEventDraft,
+  PlateAppearance,
+} from "@/lib/types";
 import {
   getPlateAppearancesByGame,
   getGameLineup,
   insertPlateAppearance,
+  insertPlateAppearanceWithPitchLog,
+  getPitchEventsForGame,
   deletePlateAppearance as deletePlateAppearanceQuery,
   getBaserunningEventsForGame,
   insertBaserunningEvent,
   deleteBaserunningEvent,
+  replaceGameLineup,
+  updateGame,
+  linkPitchTrackerGroupToPlateAppearance,
 } from "@/lib/db/queries";
+import { isDemoId } from "@/lib/db/mockData";
 
-export async function fetchPAsForGame(gameId: string): Promise<PlateAppearance[]> {
-  return getPlateAppearancesByGame(gameId);
+export async function fetchPAsForGame(gameId: string): Promise<{
+  pas: PlateAppearance[];
+  pitchEvents: PitchEvent[];
+}> {
+  const [pas, pitchEvents] = await Promise.all([
+    getPlateAppearancesByGame(gameId),
+    getPitchEventsForGame(gameId),
+  ]);
+  return { pas, pitchEvents };
 }
 
 function lineupSlotsToOrder(
@@ -40,14 +60,36 @@ export async function fetchGameLineupOrder(gameId: string): Promise<{
 }
 
 export async function savePlateAppearance(
-  pa: Omit<PlateAppearance, "id" | "created_at">
-): Promise<{ ok: boolean; error?: string }> {
+  pa: Omit<PlateAppearance, "id" | "created_at">,
+  pitchLog?: PitchEventDraft[]
+): Promise<{ ok: boolean; error?: string; pa?: PlateAppearance }> {
   try {
-    const inserted = await insertPlateAppearance(pa);
-    return { ok: !!inserted };
+    const log = pitchLog?.filter(Boolean) ?? [];
+    const inserted =
+      log.length > 0
+        ? await insertPlateAppearanceWithPitchLog(pa, log)
+        : await insertPlateAppearance(pa);
+    return { ok: !!inserted, pa: inserted ?? undefined };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     return { ok: false, error: message || "Failed to save" };
+  }
+}
+
+/** Attach live pitch-tracker rows to a saved plate appearance. */
+export async function linkPitchTrackerGroupToPaAction(
+  trackerGroupId: string,
+  paId: string
+): Promise<{ ok: boolean; error?: string }> {
+  if (!trackerGroupId?.trim() || !paId?.trim()) {
+    return { ok: false, error: "Missing tracker group or PA id" };
+  }
+  if (isDemoId(paId)) return { ok: true };
+  try {
+    await linkPitchTrackerGroupToPlateAppearance(trackerGroupId, paId);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to link pitches" };
   }
 }
 
@@ -84,5 +126,38 @@ export async function deleteBaserunningEventAction(id: string): Promise<{ ok: bo
     return { ok };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to delete" };
+  }
+}
+
+/** Replace one side's lineup while recording PAs (pinch subs, defensive switches). */
+export async function saveRecordGameLineupAction(
+  gameId: string,
+  side: LineupSide,
+  slots: { player_id: string; position?: string | null }[]
+): Promise<{ ok: boolean; error?: string }> {
+  if (isDemoId(gameId)) return { ok: false, error: "Cannot edit demo game." };
+  try {
+    await replaceGameLineup(gameId, side, slots);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to save lineup" };
+  }
+}
+
+/** Set final score snapshot for a game ("Finalize game"). */
+export async function finalizeGameScoreAction(
+  gameId: string,
+  finalHome: number,
+  finalAway: number
+): Promise<{ ok: boolean; error?: string }> {
+  if (isDemoId(gameId)) return { ok: false, error: "Cannot finalize demo game." };
+  try {
+    await updateGame(gameId, {
+      final_score_home: Math.max(0, finalHome),
+      final_score_away: Math.max(0, finalAway),
+    });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to finalize game" };
   }
 }

@@ -9,13 +9,15 @@ export type BreadcrumbItem = { label: string; href: string | null };
 
 const STATIC_LABELS: Record<string, string> = {
   games: "Games",
-  players: "Players",
+  reports: "Reports",
+  roster: "Roster",
+  "compare-players": "Compare players",
   stats: "Stats",
   opponents: "Opponents",
   lineup: "Lineup Construction",
   charts: "Charts",
   "run-expectancy": "Run Expectancy",
-  record: "Record PAs",
+  record: "Record",
   log: "Log",
   review: "Review",
 };
@@ -30,7 +32,7 @@ function isGameIdSegment(parent: string | undefined, segment: string): boolean {
 }
 
 function isPlayerIdSegment(parent: string | undefined, segment: string): boolean {
-  return parent === "players" && (looksLikeUuid(segment) || segment.startsWith("demo-"));
+  return parent === "roster" && (looksLikeUuid(segment) || segment.startsWith("demo-"));
 }
 
 function isGameIdParam(id: string): boolean {
@@ -63,7 +65,7 @@ function buildCrumbs(pathname: string, searchParams: URLSearchParams): Breadcrum
   }
 
   // Opponent roster: sidebar Opponents › Team › Roster
-  if (pathname === "/analyst/players" && opponentTeam) {
+  if (pathname === "/analyst/roster" && opponentTeam) {
     const slug = encodeURIComponent(opponentTeam);
     return [
       { label: "Opponents", href: "/analyst/opponents" },
@@ -73,20 +75,12 @@ function buildCrumbs(pathname: string, searchParams: URLSearchParams): Breadcrum
   }
 
   const gameId = searchParams.get("gameId");
-  // Record with game: Games › Game › Record PAs (typical flow from Games)
+  // Record with game: Games › Game (log hub) › Record
   if (pathname === "/analyst/record" && gameId && isGameIdParam(gameId)) {
     return [
       { label: "Games", href: "/analyst/games" },
       { label: "Game", href: `/analyst/games/${gameId}/log` },
-      { label: "Record PAs", href: null },
-    ];
-  }
-
-  // Record without game — not a dedicated sidebar item; anchor from Dashboard
-  if (pathname === "/analyst/record") {
-    return [
-      { label: "Dashboard", href: "/analyst" },
-      { label: "Record PAs", href: null },
+      { label: "Record", href: null },
     ];
   }
 

@@ -9,7 +9,7 @@ import {
 import { BenchPanel } from "@/components/coach/BenchPanel";
 import { LineupInsightsCard } from "./LineupInsightsCard";
 import { LineupTrendsCard } from "./LineupTrendsCard";
-import type { PlateAppearance } from "@/lib/types";
+import type { PitchEvent, PlateAppearance, Player } from "@/lib/types";
 import type { Confidence } from "@/data/mock";
 import type { PlayerTagType } from "@/data/mock";
 
@@ -70,6 +70,10 @@ interface CoachTodayClientProps {
   starterCompare: StarterComparePayload | null;
   /** Plate appearances for current game (linescore); refreshed on client. */
   initialGamePas: PlateAppearance[];
+  /** Pitch log rows for those PAs (same as Record PA pitch data). */
+  initialGamePitchEvents: PitchEvent[];
+  /** Starters + lineup + anyone who has pitched in this game (for pitch-mix names). */
+  coachPitchPlayers: Player[];
 }
 
 /**
@@ -81,6 +85,8 @@ export function CoachTodayClient({
   recommendedLineup,
   starterCompare,
   initialGamePas,
+  initialGamePitchEvents,
+  coachPitchPlayers,
 }: CoachTodayClientProps) {
   const orderedLineup = [...recommendedLineup].sort((a, b) => a.order - b.order);
 
@@ -112,6 +118,8 @@ export function CoachTodayClient({
               <StartingPitchersCompareCard
                 gameId={game.id}
                 initialGamePas={initialGamePas}
+                initialGamePitchEvents={initialGamePitchEvents}
+                coachPitchPlayers={coachPitchPlayers}
                 club={starterCompare.club}
                 opponent={starterCompare.opponent}
               />

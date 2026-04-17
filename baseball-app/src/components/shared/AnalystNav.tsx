@@ -7,13 +7,6 @@ import { ANALYST_NAV_LINKS } from "@/lib/analystNavLinks";
 
 const STORAGE_KEY = "analyst-sidebar-collapsed";
 
-const ICONS = ["📊", "👤", "📋", "📅", "🆚", "📝", "📈", "🏃"] as const;
-
-const LINKS = ANALYST_NAV_LINKS.map((l, i) => ({
-  ...l,
-  icon: ICONS[i] ?? "•",
-}));
-
 export function AnalystNav() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -61,14 +54,14 @@ export function AnalystNav() {
       <div className="border-b border-[var(--border)] p-2">
         <Link
           href="/analyst"
-          className="font-display flex items-center gap-2 py-2 pl-2 text-sm font-semibold tracking-tight text-[var(--text)]"
+          className="font-orbitron flex items-center gap-2 py-2 pl-2 text-sm font-semibold tracking-tight text-[var(--text)]"
         >
-          <span className="sidebar-icon shrink-0 opacity-90">📊</span>
+          <span className="sidebar-icon shrink-0 opacity-90">{ANALYST_NAV_LINKS[0].icon}</span>
           <span className="sidebar-label truncate text-[var(--accent)]">Analyst</span>
         </Link>
       </div>
       <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto py-3">
-        {LINKS.map(({ href, label, icon }) => {
+        {ANALYST_NAV_LINKS.map(({ href, label, icon }) => {
           const active =
             href === "/analyst"
               ? pathname === "/analyst"
@@ -80,7 +73,9 @@ export function AnalystNav() {
               className={`sidebar-link sidebar-link-analyst ${active ? "[data-active=true]" : ""}`}
               data-active={active ? "true" : undefined}
             >
-              <span className="sidebar-icon" aria-hidden>{icon}</span>
+              <span className="sidebar-icon" aria-hidden>
+                {icon}
+              </span>
               <span className="sidebar-label">{label}</span>
             </Link>
           );
@@ -91,7 +86,9 @@ export function AnalystNav() {
             className="sidebar-link sidebar-link-analyst opacity-70"
             title="Exit to home"
           >
-            <span className="sidebar-icon" aria-hidden>←</span>
+            <span className="sidebar-icon" aria-hidden>
+              &larr;
+            </span>
             <span className="sidebar-label">Exit</span>
           </Link>
         </div>

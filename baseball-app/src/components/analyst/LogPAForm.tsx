@@ -71,6 +71,7 @@ export function LogPAForm({
         contact_quality: null,
         chase: null,
         hit_direction: hitDirection,
+        batted_ball_type: null,
         pitches_seen: pitchesSeen as number,
         strikes_thrown: null,
         first_pitch_strike: null,
@@ -127,7 +128,7 @@ export function LogPAForm({
       </div>
 
       <div>
-        <span className="text-xs text-[var(--text-muted)]">Score diff (we're ahead by)</span>
+        <span className="text-xs text-[var(--text-muted)]">Score diff (leading team ahead by)</span>
         <input
           type="number"
           value={scoreDiff}

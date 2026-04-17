@@ -131,7 +131,7 @@ export function SituationPageClient({ players }: SituationPageClientProps) {
             <button
               type="button"
               onClick={runSituation}
-              className="mt-6 w-full rounded-lg bg-[var(--accent-coach)] py-3 text-sm font-semibold text-[var(--bg-base)] shadow-[0_0_18px_rgba(102,224,255,0.5)] hover:opacity-90 transition"
+              className="mt-6 w-full rounded-lg bg-[var(--accent-coach)] py-3 text-sm font-semibold text-[var(--bg-base)] shadow-[0_0_18px_rgba(214,186,72,0.45)] hover:opacity-90 transition"
             >
               Get recommendation
             </button>

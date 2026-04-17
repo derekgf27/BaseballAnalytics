@@ -1,6 +1,6 @@
 "use client";
 
-import { totalErrorsChargedToAway, totalErrorsChargedToHome } from "@/lib/compute/boxScore";
+import { runsOnPaForLinescore, totalErrorsChargedToAway, totalErrorsChargedToHome } from "@/lib/compute/boxScore";
 import { REGULATION_INNINGS } from "@/lib/leagueConfig";
 import type { Game, PlateAppearance } from "@/lib/types";
 
@@ -12,7 +12,7 @@ function computeBoxScoreFromPAs(pas: PlateAppearance[]) {
   let hits = 0;
   for (const pa of pas) {
     const inn = pa.inning;
-    runsByInning[inn] = (runsByInning[inn] ?? 0) + (pa.runs_scored_player_ids?.length ?? 0);
+    runsByInning[inn] = (runsByInning[inn] ?? 0) + runsOnPaForLinescore(pa);
     if (HIT_RESULTS.includes(pa.result as (typeof HIT_RESULTS)[number])) hits += 1;
   }
   return { runsByInning, hits };
@@ -29,12 +29,13 @@ export function BoxScore({ game, pas }: BoxScoreProps) {
   const pasHome = pas.filter((p) => p.inning_half === "bottom");
   const awayStats = computeBoxScoreFromPAs(pasAway);
   const homeStats = computeBoxScoreFromPAs(pasHome);
-  /** Away row E = home defense errors (top); home row E = away defense errors (bottom). Counts `reached_on_error` PAs. */
-  const awayE = totalErrorsChargedToHome(pas);
-  const homeE = totalErrorsChargedToAway(pas);
+  /** Show each team's own defensive errors in its row (standard linescore E column). */
+  const awayE = totalErrorsChargedToAway(pas);
+  const homeE = totalErrorsChargedToHome(pas);
 
-  const awayR = game.final_score_away ?? 0;
-  const homeR = game.final_score_home ?? 0;
+  // Use recorded PA scoring for linescore/game review so values always match logged events.
+  const awayR = Object.values(awayStats.runsByInning).reduce((s, n) => s + n, 0);
+  const homeR = Object.values(homeStats.runsByInning).reduce((s, n) => s + n, 0);
 
   return (
     <section className="overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--bg-card)]">

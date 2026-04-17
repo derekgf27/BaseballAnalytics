@@ -2,11 +2,20 @@
 
 import { useState, useMemo, useEffect, type ReactNode } from "react";
 import Link from "next/link";
+import { analystPlayerProfileHref } from "@/lib/analystRoutes";
 import { comparePlayersByLastNameThenFull } from "@/lib/playerSort";
 import { formatPPa } from "@/lib/format";
 import { REGULATION_INNINGS } from "@/lib/leagueConfig";
 import { PITCHING_STAT_HEADER_TOOLTIPS } from "@/lib/statHeaderTooltips";
-import type { PitchingStats, PitchingStatsWithSplits, Player } from "@/lib/types";
+import type {
+  BattingFinalCountBucketKey,
+  PitchingStats,
+  PitchingStatsWithSplits,
+  Player,
+  StatsRunnersFilterKey,
+} from "@/lib/types";
+import { FINAL_COUNT_BUCKET_OPTIONS } from "@/components/analyst/battingStatsSheetModel";
+import { aggregatePitchingTeamLine } from "@/lib/compute/pitchingStats";
 
 const THROWS_LABEL: Record<string, string> = { L: "L", R: "R" };
 
@@ -19,7 +28,10 @@ type PitchSortKey =
   | "gs"
   | "ip"
   | "h"
+  | "baa"
   | "r"
+  | "ir"
+  | "irs"
   | "er"
   | "hr"
   | "so"
@@ -36,9 +48,18 @@ type PitchSortKey =
   | "bbPct"
   | "strikePct"
   | "fpsPct"
-  | "pPa";
+  | "pPa"
+  | "bf"
+  | "swingPct"
+  | "whiffPct"
+  | "foulPct"
+  | "gbPct"
+  | "ldPct"
+  | "fbPct"
+  | "iffPct"
+  | "e";
 
-type ColFormat = "name" | "int" | "era" | "ip" | "rate7" | "pct" | "pPa";
+type ColFormat = "name" | "int" | "era" | "ip" | "rate7" | "pct" | "pPa" | "avgAgainst";
 
 const RI = REGULATION_INNINGS;
 
@@ -55,7 +76,10 @@ const COLUMNS: {
   { key: "gs", label: "GS", align: "right", format: "int", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.gs },
   { key: "ip", label: "IP", align: "right", format: "ip", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.ip },
   { key: "h", label: "H", align: "right", format: "int", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.h, borderLeft: true },
+  { key: "baa", label: "BAA", align: "right", format: "avgAgainst", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.baa },
   { key: "r", label: "R", align: "right", format: "int", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.r },
+  { key: "ir", label: "IR", align: "right", format: "int", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.ir },
+  { key: "irs", label: "IRS", align: "right", format: "int", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.irs },
   { key: "er", label: "ER", align: "right", format: "int", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.er },
   { key: "hr", label: "HR", align: "right", format: "int", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.hr },
   { key: "so", label: "SO", align: "right", format: "int", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.so, borderLeft: true },
@@ -73,6 +97,74 @@ const COLUMNS: {
   { key: "strikePct", label: "Strike%", align: "right", format: "pct", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.strikePctPitch, borderLeft: true },
   { key: "fpsPct", label: "FPS%", align: "right", format: "pct", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.fpsPctPitch },
   { key: "pPa", label: "P/PA", align: "right", format: "pPa", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.pPaPitch },
+  { key: "e", label: "E", align: "right", format: "int", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.e, borderLeft: true },
+];
+
+const CONTACT_PITCH_COLUMNS: (typeof COLUMNS)[number][] = [
+  COLUMNS[0]!,
+  COLUMNS[1]!,
+  COLUMNS[2]!,
+  COLUMNS[3]!,
+  {
+    key: "bf",
+    label: "PA",
+    align: "right",
+    format: "int",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.paPitchContact,
+  },
+  COLUMNS.find((c) => c.key === "pPa")!,
+  COLUMNS.find((c) => c.key === "fpsPct")!,
+  COLUMNS.find((c) => c.key === "strikePct")!,
+  {
+    key: "swingPct",
+    label: "Sw%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.swingPctPitchContact,
+  },
+  {
+    key: "whiffPct",
+    label: "Whiff%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.whiffPctPitchContact,
+  },
+  {
+    key: "foulPct",
+    label: "Foul%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.foulPctPitchContact,
+  },
+  {
+    key: "gbPct",
+    label: "GB%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.gbPctPitchContact,
+  },
+  {
+    key: "ldPct",
+    label: "LD%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.ldPctPitchContact,
+  },
+  {
+    key: "fbPct",
+    label: "FB%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.fbPctPitchContact,
+  },
+  {
+    key: "iffPct",
+    label: "IFF%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.iffPctPitchContact,
+  },
+  COLUMNS.find((c) => c.key === "e")!,
 ];
 
 const LOWER_BETTER = new Set<PitchSortKey>([
@@ -81,18 +173,27 @@ const LOWER_BETTER = new Set<PitchSortKey>([
   "whip",
   "h",
   "r",
+  "irs",
   "er",
   "hr",
   "bb",
   "hbp",
+  "baa",
   "bb7",
   "h7",
   "hr7",
   "bbPct",
   "pPa",
+  "e",
 ]);
 
-const HIGHER_BETTER = new Set<PitchSortKey>(["so", "k7", "kPct"]);
+const HIGHER_BETTER = new Set<PitchSortKey>(["so", "k7", "kPct", "whiffPct"]);
+
+type PitchColumnMode = "standard" | "contact";
+
+function contactPitchBorderLeft(key: PitchSortKey): boolean {
+  return key === "pPa" || key === "swingPct" || key === "gbPct";
+}
 
 const OVERALL_PER7: PitchSortKey[] = ["k7", "bb7", "h7", "hr7"];
 
@@ -105,6 +206,14 @@ const STICKY_LEAD = {
 } as const;
 
 const SCROLL_CELL_Z = "relative !z-0";
+
+/** Full-width rule above team totals (`border-separate` tables don’t paint `<tr>` borders reliably). */
+const TEAM_FOOTER_TOP_RULE =
+  "border-t-[3px] border-[color-mix(in_srgb,var(--accent)_85%,var(--border)_15%)]";
+
+/** Stat-group dividers on the team row (plain `--border` reads too dim next to accent totals). */
+const TEAM_FOOTER_GROUP_LEFT =
+  "border-l-2 border-[color-mix(in_srgb,var(--accent)_58%,var(--border)_42%)]";
 
 function stickyLeadRowBg(selected: boolean, index: number): string {
   const isEven = index % 2 === 0;
@@ -126,16 +235,46 @@ function formatEraLike(value: number): string {
   return value.toFixed(2);
 }
 
-function getPitchingStatsForSplit(
+/** Opponent AVG — three decimals, batting-style (drop leading 0). */
+function formatOppBattingAvg(stats: PitchingStats): string {
+  if (stats.abAgainst < 1) return "—";
+  const v = stats.h / stats.abAgainst;
+  const s = v.toFixed(3);
+  return s.startsWith("0.") ? s.slice(1) : s;
+}
+
+function getPitchingLineForSheet(
   splits: Record<string, PitchingStatsWithSplits>,
   playerId: string,
-  split: PitchingSplitView
+  platoon: PitchingSplitView,
+  runners: StatsRunnersFilterKey
 ): PitchingStats | undefined {
   const s = splits[playerId];
   if (!s) return undefined;
-  if (split === "overall") return s.overall;
-  if (split === "vsLHB") return s.vsLHB ?? undefined;
-  return s.vsRHB ?? undefined;
+  if (runners === "all") {
+    if (platoon === "overall") return s.overall;
+    if (platoon === "vsLHB") return s.vsLHB ?? undefined;
+    return s.vsRHB ?? undefined;
+  }
+  const triple = s.runnerSituations?.[runners];
+  if (!triple) return undefined;
+  if (platoon === "overall") return triple.combined ?? undefined;
+  if (platoon === "vsLHB") return triple.vsLHB ?? undefined;
+  return triple.vsRHB ?? undefined;
+}
+
+function getPitchingFinalCountMapForSplit(
+  splits: Record<string, PitchingStatsWithSplits>,
+  playerId: string,
+  split: PitchingSplitView,
+  runners: StatsRunnersFilterKey
+): Partial<Record<BattingFinalCountBucketKey, PitchingStats | null>> | undefined {
+  if (runners !== "all") return undefined;
+  const sfc = splits[playerId]?.statsByFinalCount;
+  if (!sfc) return undefined;
+  if (split === "overall") return sfc.overall;
+  if (split === "vsLHB") return sfc.vsLHB;
+  return sfc.vsRHB;
 }
 
 function getPitchingStatValue(stats: PitchingStats | undefined, key: PitchSortKey): number | undefined {
@@ -149,8 +288,14 @@ function getPitchingStatValue(stats: PitchingStats | undefined, key: PitchSortKe
       return stats.ip;
     case "h":
       return stats.h;
+    case "baa":
+      return stats.abAgainst >= 1 ? stats.h / stats.abAgainst : undefined;
     case "r":
       return stats.r;
+    case "ir":
+      return stats.ir;
+    case "irs":
+      return stats.irs;
     case "era":
       return stats.era;
     case "er":
@@ -163,6 +308,8 @@ function getPitchingStatValue(stats: PitchingStats | undefined, key: PitchSortKe
       return stats.bb;
     case "hbp":
       return stats.hbp;
+    case "e":
+      return stats.e ?? 0;
     case "fip":
       return stats.fip;
     case "whip":
@@ -185,6 +332,22 @@ function getPitchingStatValue(stats: PitchingStats | undefined, key: PitchSortKe
       return stats.rates.fpsPct ?? undefined;
     case "pPa":
       return stats.rates.pPa ?? undefined;
+    case "bf":
+      return stats.rates.pa;
+    case "swingPct":
+      return stats.rates.swingPct ?? undefined;
+    case "whiffPct":
+      return stats.rates.whiffPct ?? undefined;
+    case "foulPct":
+      return stats.rates.foulPct ?? undefined;
+    case "gbPct":
+      return stats.rates.gbPct ?? undefined;
+    case "ldPct":
+      return stats.rates.ldPct ?? undefined;
+    case "fbPct":
+      return stats.rates.fbPct ?? undefined;
+    case "iffPct":
+      return stats.rates.iffPct ?? undefined;
     default:
       return undefined;
   }
@@ -224,6 +387,9 @@ function displayCell(stats: PitchingStats | undefined, key: PitchSortKey, format
     if (p == null || Number.isNaN(p)) return "—";
     return formatPPa(p);
   }
+  if (format === "avgAgainst") {
+    return formatOppBattingAvg(stats);
+  }
   const n = getPitchingStatValue(stats, key);
   if (n === undefined) return "—";
   return String(n);
@@ -247,6 +413,8 @@ export interface PitchingMatchupToolbarConfig {
   batterId: string;
   onOpponentChange: (opponentKey: string) => void;
   onBatterChange: (batterId: string) => void;
+  /** When set, the Opponent dropdown is hidden and this flat list is used (e.g. your batters vs this opponent). */
+  battersFlat?: { id: string; name: string }[];
 }
 
 export interface PitchingStatsSheetProps {
@@ -255,9 +423,16 @@ export interface PitchingStatsSheetProps {
   heading?: string;
   subheading?: string;
   toolbarEnd?: ReactNode;
+  /** Shown beside the search field on the same row (e.g. reset URL filters). */
+  sampleToolbarEnd?: ReactNode;
   matchupToolbar?: PitchingMatchupToolbarConfig;
   /** When true (e.g. specific batter selected), platoon split resets to Overall and is disabled. */
   splitDisabled?: boolean;
+  finalCountBucket?: BattingFinalCountBucketKey | null;
+  onFinalCountBucketChange?: (v: BattingFinalCountBucketKey | null) => void;
+  runnersFilter?: StatsRunnersFilterKey;
+  onRunnersFilterChange?: (v: StatsRunnersFilterKey) => void;
+  toolbarVariant?: "default" | "grouped";
 }
 
 export function PitchingStatsSheet({
@@ -266,27 +441,76 @@ export function PitchingStatsSheet({
   heading,
   subheading,
   toolbarEnd,
+  sampleToolbarEnd,
   matchupToolbar,
   splitDisabled = false,
+  finalCountBucket: finalCountBucketProp,
+  onFinalCountBucketChange,
+  runnersFilter: runnersFilterProp,
+  onRunnersFilterChange,
+  toolbarVariant = "default",
 }: PitchingStatsSheetProps) {
   const [search, setSearch] = useState("");
   const [splitView, setSplitView] = useState<PitchingSplitView>("overall");
+  const [runnersFilterInternal, setRunnersFilterInternal] = useState<StatsRunnersFilterKey>("all");
+  const runnersControlled = onRunnersFilterChange != null;
+  const runnersFilter = runnersControlled ? (runnersFilterProp ?? "all") : runnersFilterInternal;
+  const setRunnersFilter = (v: StatsRunnersFilterKey) => {
+    if (runnersControlled) onRunnersFilterChange(v);
+    else setRunnersFilterInternal(v);
+  };
+  const [columnMode, setColumnMode] = useState<PitchColumnMode>("standard");
+  const [finalCountBucketInternal, setFinalCountBucketInternal] = useState<BattingFinalCountBucketKey | null>(null);
+  const finalCountControlled = onFinalCountBucketChange != null;
+  const finalCountBucket = finalCountControlled ? (finalCountBucketProp ?? null) : finalCountBucketInternal;
+  const setFinalCountBucket = (v: BattingFinalCountBucketKey | null) => {
+    if (finalCountControlled) onFinalCountBucketChange(v);
+    else setFinalCountBucketInternal(v);
+  };
 
   useEffect(() => {
     if (splitDisabled && splitView !== "overall") setSplitView("overall");
   }, [splitDisabled, splitView]);
+
+  useEffect(() => {
+    if (runnersFilter === "all") return;
+    if (finalCountControlled) {
+      if (finalCountBucket != null) onFinalCountBucketChange?.(null);
+    } else {
+      setFinalCountBucketInternal((prev) => (prev == null ? prev : null));
+    }
+  }, [runnersFilter, finalCountControlled, finalCountBucket, onFinalCountBucketChange]);
+
   const [sortKey, setSortKey] = useState<PitchSortKey>("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
 
+  const displayColumns = columnMode === "contact" ? CONTACT_PITCH_COLUMNS : COLUMNS;
+
+  useEffect(() => {
+    setSortKey("name");
+    setSortDir("asc");
+  }, [columnMode]);
+
   const initialPitchingStats = useMemo(() => {
     const out: Record<string, PitchingStats> = {};
     for (const p of players) {
-      const s = getPitchingStatsForSplit(pitchingStatsWithSplits, p.id, splitView);
+      let s: PitchingStats | undefined;
+      if (finalCountBucket != null) {
+        const map = getPitchingFinalCountMapForSplit(
+          pitchingStatsWithSplits,
+          p.id,
+          splitView,
+          runnersFilter
+        );
+        s = map?.[finalCountBucket] ?? undefined;
+      } else {
+        s = getPitchingLineForSheet(pitchingStatsWithSplits, p.id, splitView, runnersFilter);
+      }
       if (s) out[p.id] = s;
     }
     return out;
-  }, [players, pitchingStatsWithSplits, splitView]);
+  }, [players, pitchingStatsWithSplits, splitView, finalCountBucket, runnersFilter]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -312,9 +536,10 @@ export function PitchingStatsSheet({
   }, [filtered, initialPitchingStats, sortKey, sortDir]);
 
   const teamColumnBest = useMemo(() => {
-    const keys = COLUMNS.filter((c) => c.key !== "name").map((c) => c.key);
+    const keys = displayColumns.filter((c) => c.key !== "name").map((c) => c.key);
     const best: Partial<Record<PitchSortKey, number>> = {};
     for (const key of keys) {
+      if (key === "ir") continue;
       const vals: number[] = [];
       for (const p of filtered) {
         const s = initialPitchingStats[p.id];
@@ -322,6 +547,7 @@ export function PitchingStatsSheet({
         if (n === undefined || Number.isNaN(n)) continue;
         if ((key === "era" || key === "fip" || key === "whip") && s && s.ip <= 0) continue;
         if (OVERALL_PER7.includes(key) && s && s.ip <= 0) continue;
+        if (key === "baa" && s && s.abAgainst < 1) continue;
         vals.push(n);
       }
       if (vals.length === 0) continue;
@@ -334,6 +560,13 @@ export function PitchingStatsSheet({
       }
     }
     return best;
+  }, [filtered, initialPitchingStats, displayColumns]);
+
+  const pitchingTeamLine = useMemo(() => {
+    const lines = filtered
+      .map((p) => initialPitchingStats[p.id])
+      .filter((s): s is PitchingStats => s != null);
+    return aggregatePitchingTeamLine(lines);
   }, [filtered, initialPitchingStats]);
 
   const handleSort = (key: PitchSortKey) => {
@@ -352,12 +585,13 @@ export function PitchingStatsSheet({
   };
 
   const isL = (key: PitchSortKey, s: PitchingStats | undefined) => {
-    if (key === "name") return false;
+    if (key === "name" || key === "ir") return false;
     const val = getPitchingStatValue(s, key);
     const b = teamColumnBest[key];
     if (val === undefined || b === undefined) return false;
     if ((key === "era" || key === "fip" || key === "whip") && s && s.ip <= 0) return false;
     if (OVERALL_PER7.includes(key) && s && s.ip <= 0) return false;
+    if (key === "baa" && s && s.abAgainst < 1) return false;
     return isLeaderMatch(key, val, b);
   };
 
@@ -372,81 +606,347 @@ export function PitchingStatsSheet({
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-          <label className="flex min-w-0 items-center gap-2 text-sm text-white">
-            <span className="shrink-0">Split</span>
-            <select
-              value={splitView}
-              onChange={(e) => setSplitView(e.target.value as PitchingSplitView)}
-              disabled={splitDisabled}
-              title={
-                splitDisabled
-                  ? "Platoon split is off while a specific batter is selected."
-                  : undefined
-              }
-              className="max-w-[11rem] rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-1.5 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-              aria-label="Pitching split view"
+      {toolbarVariant === "grouped" ? (
+        <div className="flex flex-col gap-3">
+          <div className="min-w-0 rounded-lg border border-[var(--border)]/55 bg-[var(--bg-elevated)]/30 px-4 py-3">
+            <div className="mb-3">
+              <p className="font-display text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                Filters
+              </p>
+            </div>
+            <div
+              className={`grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3 ${
+                matchupToolbar
+                  ? "xl:grid-cols-4 2xl:grid-cols-5 min-[1800px]:grid-cols-6"
+                  : "xl:grid-cols-4 2xl:grid-cols-5"
+              }`}
             >
-              <option value="overall">Overall</option>
-              <option value="vsLHB">vs LHB</option>
-              <option value="vsRHB">vs RHB</option>
-            </select>
-          </label>
-          {matchupToolbar ? (
-            <>
-              <label className="flex min-w-0 max-w-full items-center gap-2 text-sm text-white">
-                <span className="shrink-0">Opponent</span>
-                <select
-                  value={matchupToolbar.opponentKey}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    matchupToolbar.onOpponentChange(v);
-                    matchupToolbar.onBatterChange("");
-                  }}
-                  className="min-w-0 max-w-[14rem] rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-1.5 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none"
-                  aria-label="Filter by opponent"
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                    Split
+                  </span>
+                  <select
+                    value={splitView}
+                    onChange={(e) => setSplitView(e.target.value as PitchingSplitView)}
+                    disabled={splitDisabled}
+                    title={
+                      splitDisabled
+                        ? "Platoon split is off while a specific batter is selected."
+                        : undefined
+                    }
+                    className="w-full min-w-0 rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-2 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label="Pitching split view"
+                  >
+                    <option value="overall">Overall</option>
+                    <option value="vsLHB">vs LHB</option>
+                    <option value="vsRHB">vs RHB</option>
+                  </select>
+                </div>
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                    Runners
+                  </span>
+                  <select
+                    value={runnersFilter}
+                    onChange={(e) => setRunnersFilter(e.target.value as StatsRunnersFilterKey)}
+                    className="w-full min-w-0 rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-2 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none"
+                    aria-label="Filter by base state before the plate appearance"
+                    title="Uses offensive base state at the start of each PA."
+                  >
+                    <option value="all">All situations</option>
+                    <option value="basesEmpty">Bases empty</option>
+                    <option value="runnersOn">Runners on</option>
+                    <option value="risp">RISP</option>
+                    <option value="basesLoaded">Bases loaded</option>
+                  </select>
+                </div>
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                    Final count
+                  </span>
+                  <select
+                    value={finalCountBucket ?? ""}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setFinalCountBucket(v === "" ? null : (v as BattingFinalCountBucketKey));
+                    }}
+                    disabled={runnersFilter !== "all"}
+                    className="w-full min-w-0 rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-2 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label="Filter stats to plate appearances ending at this ball–strike count"
+                    title={
+                      runnersFilter !== "all"
+                        ? "Clear Runners filter to use Final count."
+                        : "Optional. When set, table uses only PAs whose saved final count matches. Works with Standard or Discipline columns."
+                    }
+                  >
+                    <option value="">All PAs</option>
+                    {FINAL_COUNT_BUCKET_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {matchupToolbar ? (
+                  <>
+                    {matchupToolbar.battersFlat === undefined ? (
+                      <div className="flex min-w-0 flex-col gap-1.5">
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                          Opponent
+                        </span>
+                        <select
+                          value={matchupToolbar.opponentKey}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            matchupToolbar.onOpponentChange(v);
+                            matchupToolbar.onBatterChange("");
+                          }}
+                          className="w-full min-w-0 rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-2 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none"
+                          aria-label="Filter by opponent"
+                        >
+                          <option value="">All opponents</option>
+                          {matchupToolbar.opponents.map((o) => (
+                            <option key={o.key} value={o.key}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
+                    <div className="flex min-w-0 flex-col gap-1.5">
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                        Batter
+                      </span>
+                      <select
+                        value={matchupToolbar.batterId}
+                        onChange={(e) => matchupToolbar.onBatterChange(e.target.value)}
+                        disabled={matchupToolbar.battersFlat === undefined ? !matchupToolbar.opponentKey : false}
+                        className="w-full min-w-0 rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-2 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                        aria-label={
+                          matchupToolbar.battersFlat !== undefined
+                            ? "Filter by batter (lineup side)"
+                            : "Filter by opposing batter"
+                        }
+                      >
+                        <option value="">
+                          {matchupToolbar.battersFlat !== undefined
+                            ? "All batters"
+                            : matchupToolbar.opponentKey
+                              ? "All batters"
+                              : "Choose opponent first"}
+                        </option>
+                        {(matchupToolbar.battersFlat ??
+                          matchupToolbar.battersByOpponent[matchupToolbar.opponentKey] ??
+                          []
+                        ).map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                ) : null}
+              <div
+                className={`col-span-full grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3 ${
+                  matchupToolbar
+                    ? "xl:grid-cols-4 2xl:grid-cols-5 min-[1800px]:grid-cols-6"
+                    : "xl:grid-cols-4 2xl:grid-cols-5"
+                }`}
+              >
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                    Columns
+                  </span>
+                  <select
+                    value={columnMode}
+                    onChange={(e) => setColumnMode(e.target.value as PitchColumnMode)}
+                    className="w-full min-w-0 rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-2 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none"
+                    aria-label="Pitching stat column set"
+                  >
+                    <option value="standard">Standard</option>
+                    <option value="contact">Discipline &amp; BIP</option>
+                  </select>
+                </div>
+                <div
+                  className={`flex min-w-0 flex-col gap-1.5 ${
+                    matchupToolbar
+                      ? "sm:col-span-1 lg:col-span-2 xl:col-span-3 2xl:col-span-4 min-[1800px]:col-span-5"
+                      : "sm:col-span-1 lg:col-span-2 xl:col-span-3 2xl:col-span-4"
+                  }`}
                 >
-                  <option value="">All opponents</option>
-                  {matchupToolbar.opponents.map((o) => (
-                    <option key={o.key} value={o.key}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex min-w-0 max-w-full items-center gap-2 text-sm text-white">
-                <span className="shrink-0">Batter</span>
-                <select
-                  value={matchupToolbar.batterId}
-                  onChange={(e) => matchupToolbar.onBatterChange(e.target.value)}
-                  disabled={!matchupToolbar.opponentKey}
-                  className="min-w-0 max-w-[14rem] rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-1.5 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-                  aria-label="Filter by opposing batter"
-                >
-                  <option value="">{matchupToolbar.opponentKey ? "All batters" : "Select opponent"}</option>
-                  {(matchupToolbar.battersByOpponent[matchupToolbar.opponentKey] ?? []).map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </>
-          ) : null}
-          <label className="flex min-w-0 items-center gap-2 text-sm text-white">
-            <span className="shrink-0">Search</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                    Search
+                  </span>
+                  <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end sm:gap-3 sm:justify-start">
+                    <input
+                      type="search"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Player name…"
+                      className="w-full max-w-[16rem] rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] focus:border-[var(--accent)] focus:outline-none"
+                    />
+                    {sampleToolbarEnd ? <div className="shrink-0">{sampleToolbarEnd}</div> : null}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          {toolbarEnd ? <div className="flex shrink-0 justify-end">{toolbarEnd}</div> : null}
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+            <label className="flex min-w-0 items-center gap-2 text-sm text-white">
+              <span className="shrink-0">Split</span>
+              <select
+                value={splitView}
+                onChange={(e) => setSplitView(e.target.value as PitchingSplitView)}
+                disabled={splitDisabled}
+                title={
+                  splitDisabled
+                    ? "Platoon split is off while a specific batter is selected."
+                    : undefined
+                }
+                className="max-w-[11rem] rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-1.5 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Pitching split view"
+              >
+                <option value="overall">Overall</option>
+                <option value="vsLHB">vs LHB</option>
+                <option value="vsRHB">vs RHB</option>
+              </select>
+            </label>
+            <label className="flex min-w-0 items-center gap-2 text-sm text-white">
+              <span className="shrink-0">Runners</span>
+              <select
+                value={runnersFilter}
+                onChange={(e) => setRunnersFilter(e.target.value as StatsRunnersFilterKey)}
+                className="max-w-[12rem] rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-1.5 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none"
+                aria-label="Filter by base state before the plate appearance"
+                title="Uses offensive base state at the start of each PA."
+              >
+                <option value="all">All situations</option>
+                <option value="basesEmpty">Bases empty</option>
+                <option value="runnersOn">Runners on</option>
+                <option value="risp">RISP</option>
+                <option value="basesLoaded">Bases loaded</option>
+              </select>
+            </label>
+            <label className="flex min-w-0 items-center gap-2 text-sm text-white">
+              <span className="shrink-0">Columns</span>
+              <select
+                value={columnMode}
+                onChange={(e) => setColumnMode(e.target.value as PitchColumnMode)}
+                className="max-w-[12rem] rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-1.5 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none"
+                aria-label="Pitching stat column set"
+              >
+                <option value="standard">Standard</option>
+                <option value="contact">Discipline &amp; BIP</option>
+              </select>
+            </label>
+            <label className="flex min-w-0 items-center gap-2 text-sm text-white">
+              <span className="shrink-0">Final count</span>
+              <select
+                value={finalCountBucket ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setFinalCountBucket(v === "" ? null : (v as BattingFinalCountBucketKey));
+                }}
+                disabled={runnersFilter !== "all"}
+                className="max-w-[7.5rem] rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-1.5 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Filter stats to plate appearances ending at this ball–strike count"
+                title={
+                  runnersFilter !== "all"
+                    ? "Clear Runners filter to use Final count."
+                    : "Optional. When set, table uses only PAs whose saved final count matches. Works with Standard or Discipline columns."
+                }
+              >
+                <option value="">All PAs</option>
+                {FINAL_COUNT_BUCKET_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {matchupToolbar ? (
+              <>
+                {matchupToolbar.battersFlat === undefined ? (
+                  <label className="flex min-w-0 max-w-full items-center gap-2 text-sm text-white">
+                    <span className="shrink-0">Opponent</span>
+                    <select
+                      value={matchupToolbar.opponentKey}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        matchupToolbar.onOpponentChange(v);
+                        matchupToolbar.onBatterChange("");
+                      }}
+                      className="min-w-0 max-w-[14rem] rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-1.5 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none"
+                      aria-label="Filter by opponent"
+                    >
+                      <option value="">All opponents</option>
+                      {matchupToolbar.opponents.map((o) => (
+                        <option key={o.key} value={o.key}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                <label className="flex min-w-0 max-w-full items-center gap-2 text-sm text-white">
+                  <span className="shrink-0">Batter</span>
+                  <select
+                    value={matchupToolbar.batterId}
+                    onChange={(e) => matchupToolbar.onBatterChange(e.target.value)}
+                    disabled={matchupToolbar.battersFlat === undefined ? !matchupToolbar.opponentKey : false}
+                    className="min-w-0 max-w-[14rem] rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-1.5 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label={
+                      matchupToolbar.battersFlat !== undefined
+                        ? "Filter by batter (lineup side)"
+                        : "Filter by opposing batter"
+                    }
+                  >
+                        <option value="">
+                          {matchupToolbar.battersFlat !== undefined
+                            ? "All batters"
+                            : matchupToolbar.opponentKey
+                              ? "All batters"
+                              : "Choose opponent first"}
+                        </option>
+                    {(matchupToolbar.battersFlat ??
+                      matchupToolbar.battersByOpponent[matchupToolbar.opponentKey] ??
+                      []
+                    ).map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            ) : null}
+            <label className="flex min-w-0 items-center gap-2 text-sm text-white">
+              <span className="shrink-0">Search</span>
             <input
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Player name…"
-              className="min-w-[8rem] max-w-[16rem] rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-1.5 text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] focus:border-[var(--accent)] focus:outline-none"
+                className="min-w-[8rem] max-w-[16rem] rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-1.5 text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] focus:border-[var(--accent)] focus:outline-none"
             />
           </label>
         </div>
         {toolbarEnd ? <div className="flex shrink-0 items-center">{toolbarEnd}</div> : null}
       </div>
+      )}
+      {finalCountBucket != null && (
+        <p className="text-xs leading-snug text-[var(--text-muted)]">
+          Showing stats for PAs whose{" "}
+          <strong className="font-medium text-[var(--text)]">saved final count</strong> is{" "}
+          <strong className="font-medium text-[var(--text)]">{finalCountBucket}</strong> (after Split). Clear Final count
+          to return to all PAs.
+        </p>
+      )}
 
       <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
         <table className="stats-sheet-table w-full border-separate border-spacing-0 text-left text-sm">
@@ -460,7 +960,7 @@ export function PitchingStatsSheet({
               </th>
               <th
                 title={COLUMNS[0].tooltip}
-                className={`font-display border-b border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] ${STICKY_LEAD.player} ${COLUMNS[0].align === "right" ? "text-right" : "text-left"} cursor-pointer select-none hover:text-[var(--text)] ${sortKey === COLUMNS[0].key ? "text-[var(--accent)]" : ""}`}
+                className={`font-display border-b border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[var(--accent)] ${STICKY_LEAD.player} ${COLUMNS[0].align === "right" ? "text-right" : "text-left"} cursor-pointer select-none hover:opacity-85 ${sortKey === COLUMNS[0].key ? "font-bold" : ""}`}
                 onClick={() => handleSort(COLUMNS[0].key)}
               >
                 {COLUMNS[0].label}
@@ -476,20 +976,20 @@ export function PitchingStatsSheet({
               >
                 T
               </th>
-              {COLUMNS.slice(1).map(({ key, label, align, tooltip, borderLeft }, idx) => (
+              {displayColumns.slice(1).map(({ key, label, align, tooltip, borderLeft }, idx) => (
                 <th
-                  key={key}
-                  title={tooltip}
-                  className={`border-b border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] ${SCROLL_CELL_Z} ${borderLeft ? "border-l border-[var(--border)]" : idx === 0 ? "border-l border-[var(--border)]" : ""} ${align === "right" ? "text-right" : "text-left"} cursor-pointer select-none hover:text-[var(--text)] ${sortKey === key ? "text-[var(--accent)]" : ""}`}
-                  onClick={() => handleSort(key)}
-                >
-                  {label}
-                  {sortKey === key && (
-                    <span className="ml-1 text-[var(--accent)]" aria-hidden>
-                      {sortDir === "asc" ? "↑" : "↓"}
-                    </span>
-                  )}
-                </th>
+                  key={`${key}-${idx}`}
+                    title={tooltip}
+                  className={`border-b border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[var(--accent)] ${SCROLL_CELL_Z} ${contactPitchBorderLeft(key) || borderLeft ? "border-l border-[var(--border)]" : idx === 0 ? "border-l border-[var(--border)]" : ""} ${align === "right" ? "text-right" : "text-left"} cursor-pointer select-none hover:opacity-85 ${sortKey === key ? "font-bold" : ""}`}
+                    onClick={() => handleSort(key)}
+                  >
+                    {label}
+                    {sortKey === key && (
+                      <span className="ml-1 text-[var(--accent)]" aria-hidden>
+                        {sortDir === "asc" ? "↑" : "↓"}
+                      </span>
+                    )}
+                  </th>
               ))}
             </tr>
           </thead>
@@ -526,7 +1026,7 @@ export function PitchingStatsSheet({
                     className={`min-w-0 px-3 py-2 font-medium text-[var(--text)] ${STICKY_LEAD.player} ${stickyLeadRowBg(selectedPlayerId === player.id, index)}`}
                   >
                     <Link
-                      href={`/analyst/players/${player.id}`}
+                      href={analystPlayerProfileHref(player.id)}
                       onClick={(e) => e.stopPropagation()}
                       className="block truncate text-[var(--accent)] hover:underline"
                       title={player.name}
@@ -542,10 +1042,10 @@ export function PitchingStatsSheet({
                   >
                     {player.throws != null ? THROWS_LABEL[player.throws] ?? player.throws : "—"}
                   </td>
-                  {COLUMNS.slice(1).map((col, idx) => (
+                  {displayColumns.slice(1).map((col, idx) => (
                     <td
-                      key={col.key}
-                      className={`${SCROLL_CELL_Z} px-3 py-2 text-right tabular-nums text-[var(--text)] ${col.borderLeft ? "border-l border-[var(--border)]" : idx === 0 ? "border-l border-[var(--border)]" : ""}`}
+                      key={`${col.key}-${idx}`}
+                      className={`${SCROLL_CELL_Z} px-3 py-2 text-right tabular-nums text-[var(--text)] ${contactPitchBorderLeft(col.key) || col.borderLeft ? "border-l border-[var(--border)]" : idx === 0 ? "border-l border-[var(--border)]" : ""}`}
                     >
                       <LeaderStat show={isL(col.key, s)}>{displayCell(s, col.key, col.format)}</LeaderStat>
                     </td>
@@ -554,6 +1054,42 @@ export function PitchingStatsSheet({
               );
             })}
           </tbody>
+          {sorted.length > 0 && pitchingTeamLine ? (
+            <tfoot>
+              <tr className="font-semibold text-[var(--text)] [&_td]:py-2.5">
+                <td
+                  className={`${TEAM_FOOTER_TOP_RULE} bg-[var(--bg-elevated)] px-3 py-2 text-center text-[var(--text-muted)] tabular-nums ${STICKY_LEAD.rank}`}
+                >
+                  —
+                </td>
+                <td
+                  className={`${TEAM_FOOTER_TOP_RULE} min-w-0 bg-[var(--bg-elevated)] px-3 py-2 font-display font-semibold text-[var(--text)] ${STICKY_LEAD.player}`}
+                >
+                  Team
+                </td>
+                <td
+                  className={`${TEAM_FOOTER_TOP_RULE} ${STICKY_LEAD.throws} bg-[var(--bg-elevated)] px-2 py-2 text-center text-[var(--text-muted)]`}
+                >
+                  —
+                </td>
+                {displayColumns.slice(1).map((col, idx) => (
+                  <td
+                    key={`team-total-${col.key}-${idx}`}
+                    className={`${TEAM_FOOTER_TOP_RULE} ${SCROLL_CELL_Z} bg-[var(--bg-elevated)] px-3 py-2 text-right tabular-nums font-semibold text-[var(--accent)] ${contactPitchBorderLeft(col.key) || col.borderLeft ? TEAM_FOOTER_GROUP_LEFT : idx === 0 ? TEAM_FOOTER_GROUP_LEFT : ""}`}
+                    title={
+                      col.key === "g" || col.key === "gs"
+                        ? "Team total not shown: summing each pitcher’s games does not equal team games played."
+                        : undefined
+                    }
+                  >
+                    {col.key === "g" || col.key === "gs"
+                      ? "—"
+                      : displayCell(pitchingTeamLine, col.key, col.format)}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          ) : null}
         </table>
       </div>
 

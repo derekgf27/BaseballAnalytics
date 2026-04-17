@@ -2,7 +2,7 @@
  * League rules for this deployment. All games use regulation length below;
  * extra innings extend linescores and inning pickers as needed.
  */
-export const REGULATION_INNINGS = 7;
+export const REGULATION_INNINGS = 9;
 
 /** Upper bound for inning dropdowns (regulation + extra innings). */
 export const MAX_SELECTABLE_INNING = 20;

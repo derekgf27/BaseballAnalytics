@@ -1,10 +1,12 @@
 import {
   getGame,
   getGameLineup,
+  getPitchEventsForGame,
   getPlateAppearancesByGame,
   getPlayersByIds,
   getBaserunningTotalsForGame,
 } from "@/lib/db/queries";
+import { hasSupabase } from "@/lib/db/client";
 import { GameReviewClient } from "./GameReviewClient";
 import { notFound } from "next/navigation";
 import type { GameLineupSlot } from "@/lib/types";
@@ -28,11 +30,12 @@ export default async function GameReviewPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [game, pas, lineupSlots, baserunningByPlayerId] = await Promise.all([
+  const [game, pas, lineupSlots, baserunningByPlayerId, pitchEvents] = await Promise.all([
     getGame(id),
     getPlateAppearancesByGame(id),
     getGameLineup(id),
     getBaserunningTotalsForGame(id),
+    getPitchEventsForGame(id),
   ]);
   if (!game) notFound();
 
@@ -53,6 +56,7 @@ export default async function GameReviewPage({
   return (
     <GameReviewClient
       game={game}
+      canEdit={hasSupabase()}
       pasAll={pas}
       pasAway={pasAway}
       pasHome={pasHome}
@@ -62,6 +66,7 @@ export default async function GameReviewPage({
       awayLineupPositionByPlayerId={awayLineup.positionByPlayerId}
       homeLineupPositionByPlayerId={homeLineup.positionByPlayerId}
       baserunningByPlayerId={baserunningByPlayerId}
+      pitchEvents={pitchEvents}
     />
   );
 }

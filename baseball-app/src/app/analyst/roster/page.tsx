@@ -1,9 +1,9 @@
 import { getPlayers } from "@/lib/db/queries";
 import { hasSupabase } from "@/lib/db/client";
 import { isClubRosterPlayer, opponentNameKey } from "@/lib/opponentUtils";
-import { PlayersPageClient } from "./PlayersPageClient";
+import { RosterPageClient } from "./RosterPageClient";
 
-export default async function PlayersListPage({
+export default async function RosterListPage({
   searchParams,
 }: {
   searchParams: Promise<{ opponentTeam?: string | string[] }>;
@@ -31,7 +31,7 @@ export default async function PlayersListPage({
       : allPlayers.filter(isClubRosterPlayer);
   const canEdit = hasSupabase();
   return (
-    <PlayersPageClient
+    <RosterPageClient
       initialPlayers={players}
       canEdit={canEdit}
       defaultOpponentTeam={defaultOpponentTeam}

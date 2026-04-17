@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { analystPlayerProfileHref } from "@/lib/analystRoutes";
 import type { PlayersToWatchRow } from "@/lib/playersToWatch";
 
 function CategoryIcon({ category }: { category: PlayersToWatchRow["category"] }) {
@@ -44,7 +45,7 @@ function parseTrendPair(formatted: string): { left: string; right: string; a: nu
   return { left, right, a, b };
 }
 
-/** Lower value = danger, higher = accent (cyan); equal = neutral. */
+/** Lower value = red, higher = green; equal = neutral. */
 function TrendPair({ formatted }: { formatted: string }) {
   const p = parseTrendPair(formatted);
   if (!p) {
@@ -55,7 +56,7 @@ function TrendPair({ formatted }: { formatted: string }) {
   const cls = (n: number) => {
     if (p.a === p.b) return "font-semibold text-white";
     if (n === low) return "font-semibold text-[var(--danger)]";
-    return "font-semibold text-[var(--accent)]";
+    return "font-semibold text-[var(--success)]";
   };
   return (
     <span className="inline-flex flex-wrap items-baseline justify-end gap-x-1">
@@ -103,7 +104,7 @@ export function PlayersToWatchCard({
         <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">Season → last 10 PA</p>
         {isPreview && (
           <p className="mt-2 rounded border border-amber-500/25 bg-amber-500/10 px-2 py-1.5 text-[11px] leading-snug text-amber-200/90">
-            Preview — sample stats using your roster so you can see the layout. Real rows appear when a player’s
+            Preview — sample stats so you can see the layout. Real rows appear when a player’s
             last 10 PA diverges by more than 100 points in any slash line.
           </p>
         )}
@@ -119,7 +120,7 @@ export function PlayersToWatchCard({
             {rows.map((row) => (
               <li key={row.id}>
                 <Link
-                  href={`/analyst/players/${row.id}`}
+                  href={analystPlayerProfileHref(row.id)}
                   className="flex items-start gap-3 px-4 py-3 transition hover:bg-[var(--accent-dim)]/40"
                 >
                   <CategoryIcon category={row.category} />

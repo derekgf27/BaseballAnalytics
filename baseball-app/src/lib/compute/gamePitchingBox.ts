@@ -85,7 +85,9 @@ export function computeGamePitchingBox(
 
   for (const pid of order) {
     const pitcherPas = forSide.filter((p) => p.pitcher_id === pid);
-    const stats = pitchingStatsFromPAs(pitcherPas, new Set(), new Map())?.overall;
+    const stats = pitchingStatsFromPAs(pitcherPas, new Set(), new Map(), new Map(), {
+      allPasForRunCharges: forSide,
+    })?.overall;
     if (!stats) continue;
     const name = playerById.get(pid)?.name ?? "Unknown player";
     rows.push({

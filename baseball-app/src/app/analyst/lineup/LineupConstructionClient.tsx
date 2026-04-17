@@ -17,6 +17,7 @@ import Link from "next/link";
 import type { BattingStats, BattingStatsWithSplits, Player, SavedLineup } from "@/lib/types";
 import { lineupAggregateFromBattingStats } from "@/lib/compute/battingStats";
 import { formatPPa } from "@/lib/format";
+import { formatBattingTripleSlash } from "@/lib/format/battingSlash";
 import { comparePlayersByLastNameThenFull } from "@/lib/playerSort";
 
 export type LineupSplitView = "overall" | "vsL" | "vsR" | "risp";
@@ -37,14 +38,15 @@ const LINEUP_POSITIONS = [
 
 type LineupSlotState = { player: Player | null; position: string };
 
-const BATTING_STAT_LABELS: { key: keyof BattingStats; label: string; format: "avg" | "int" | "pct" }[] = [
-  { key: "avg", label: "AVG", format: "avg" },
-  { key: "obp", label: "OBP", format: "avg" },
-  { key: "slg", label: "SLG", format: "avg" },
-  { key: "ops", label: "OPS", format: "avg" },
+const BATTING_TAIL_LABELS: { key: keyof BattingStats; label: string; format: "avg" | "int" | "pct" }[] = [
   { key: "kPct", label: "K%", format: "pct" },
   { key: "pPa", label: "P/PA", format: "avg" },
 ];
+
+function formatSlashCell(s: BattingStats | undefined): string {
+  if (!s) return "—";
+  return formatBattingTripleSlash(s.avg, s.obp, s.slg);
+}
 
 function formatLineupBattingCell(s: BattingStats | undefined, key: keyof BattingStats, format: "avg" | "int" | "pct"): string {
   if (!s) return "—";
@@ -80,7 +82,10 @@ function poolCardStatLine(
   poolSortBy: PoolSortKey,
   stats: BattingStats | undefined
 ): { label: string; value: string } | null {
-  if (poolSortBy === "name") return null;
+  if (poolSortBy === "name") {
+    if (!stats) return null;
+    return { label: "AVG/OBP/SLG", value: formatBattingTripleSlash(stats.avg, stats.obp, stats.slg) };
+  }
   const label = poolSortBy === "avg" ? "AVG" : poolSortBy === "ops" ? "OPS" : "OBP";
   const key = poolSortBy as keyof BattingStats;
   return { label, value: formatLineupBattingCell(stats, key, "avg") };
@@ -257,7 +262,7 @@ function LineupTableRow({
       }`}
     >
       <td className="w-12 border-r border-[var(--neo-border)] px-3 py-2 text-center">
-        <span className="inline-flex h-7 w-7 items-center justify-center rounded bg-[var(--neo-accent)] text-sm font-bold text-[var(--bg-base)] shadow-[0_0_16px_rgba(102,224,255,0.6)]">
+        <span className="inline-flex h-7 w-7 items-center justify-center rounded bg-[var(--neo-accent)] text-sm font-bold text-[var(--bg-base)] shadow-[0_0_16px_rgba(214,186,72,0.55)]">
           {slotIndex + 1}
         </span>
       </td>
@@ -330,7 +335,13 @@ function PlayerStatsTable({
               <th className="font-display py-1.5 pr-2 text-center text-xs font-semibold uppercase">#</th>
             )}
             <th className="font-display py-1.5 pr-2 text-xs font-semibold uppercase">Player</th>
-            {BATTING_STAT_LABELS.map(({ key, label }) => (
+            <th
+              className="font-display py-1.5 px-2 text-center text-xs font-semibold uppercase"
+              title="AVG / OBP / SLG"
+            >
+              AVG/OBP/SLG
+            </th>
+            {BATTING_TAIL_LABELS.map(({ key, label }) => (
               <th key={key} className="font-display py-1.5 px-2 text-center text-xs font-semibold uppercase">
                 {label}
               </th>
@@ -353,7 +364,8 @@ function PlayerStatsTable({
                     <span className="ml-1 text-[var(--text-muted)]">#{player.jersey}</span>
                   )}
                 </td>
-                {BATTING_STAT_LABELS.map(({ key, format }) => (
+                <td className="py-1.5 px-2 text-center text-[var(--text)] tabular-nums">{formatSlashCell(s)}</td>
+                {BATTING_TAIL_LABELS.map(({ key, format }) => (
                   <td key={key} className="py-1.5 px-2 text-center text-[var(--text)] tabular-nums">
                     {formatLineupBattingCell(s, key, format)}
                   </td>
@@ -564,80 +576,10 @@ export default function LineupConstructionClient({
         </p>
       </header>
 
-      {/* Lineup optimization + templates — single card; optimization left, templates right on large screens */}
+      {/* Lineup optimization + templates — single card; templates left, optimization right on large screens */}
       <section className="neo-card p-4">
         <div className="grid gap-6 lg:grid-cols-2 lg:items-start lg:gap-8">
           <div className="min-w-0">
-            <div className="section-label">Lineup optimization</div>
-            <div className="mt-3 flex flex-col gap-3">
-              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                <button
-                  type="button"
-                  onClick={() => handleSuggestBy("obp")}
-                  disabled={initialPlayers.length === 0}
-                  className="rounded-lg border border-[var(--neo-accent)]/50 bg-[var(--neo-accent-dim)] px-3 py-1.5 text-sm font-medium text-[var(--neo-accent)] transition hover:bg-[var(--neo-accent)]/20 disabled:opacity-50 disabled:pointer-events-none"
-                >
-                  Suggest by OBP
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSuggestBy("avg")}
-                  disabled={initialPlayers.length === 0}
-                  className="rounded-lg border border-[var(--neo-accent)]/50 bg-[var(--neo-accent-dim)] px-3 py-1.5 text-sm font-medium text-[var(--neo-accent)] transition hover:bg-[var(--neo-accent)]/20 disabled:opacity-50 disabled:pointer-events-none"
-                >
-                  Suggest by AVG
-                </button>
-              </div>
-              {lineupQuality != null && (
-                <p className="text-sm leading-relaxed text-[var(--neo-text)]">
-                  <span className="mr-1 font-display text-xs font-semibold uppercase tracking-wider text-white">
-                    Combined lineup
-                  </span>
-                  <span className="inline-flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <span>
-                      AVG{" "}
-                      <strong className="tabular-nums text-[var(--neo-text)]">{formatStat(lineupQuality.avg, "avg")}</strong>
-                    </span>
-                    <span className="text-[var(--neo-border)]">·</span>
-                    <span>
-                      OBP{" "}
-                      <strong className="tabular-nums text-[var(--neo-text)]">{formatStat(lineupQuality.obp, "avg")}</strong>
-                    </span>
-                    <span className="text-[var(--neo-border)]">·</span>
-                    <span>
-                      SLG{" "}
-                      <strong className="tabular-nums text-[var(--neo-text)]">{formatStat(lineupQuality.slg, "avg")}</strong>
-                    </span>
-                    <span className="text-[var(--neo-border)]">·</span>
-                    <span>
-                      OPS{" "}
-                      <strong className="tabular-nums text-[var(--neo-text)]">{formatStat(lineupQuality.ops, "avg")}</strong>
-                    </span>
-                    <span className="text-[var(--neo-border)]">·</span>
-                    <span>
-                      K%{" "}
-                      <strong className="tabular-nums text-[var(--neo-text)]">
-                        {lineupQuality.kPct != null && !Number.isNaN(lineupQuality.kPct)
-                          ? `${(lineupQuality.kPct * 100).toFixed(1)}%`
-                          : "—"}
-                      </strong>
-                    </span>
-                    {lineupQuality.pPa != null && (
-                      <>
-                        <span className="text-[var(--neo-border)]">·</span>
-                        <span>
-                          P/PA{" "}
-                          <strong className="tabular-nums text-[var(--neo-text)]">{formatPPa(lineupQuality.pPa)}</strong>
-                        </span>
-                      </>
-                    )}
-                  </span>
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="min-w-0 lg:border-l lg:border-[var(--neo-border)] lg:pl-8">
             <div className="section-label">Lineup templates</div>
             {initialSavedLineups.length > 0 && (
               <div className="mt-3">
@@ -672,6 +614,76 @@ export default function LineupConstructionClient({
                 </ul>
               </div>
             )}
+          </div>
+
+          <div className="min-w-0 lg:border-l lg:border-[var(--neo-border)] lg:pl-8">
+            <div className="section-label">Lineup optimization</div>
+            <div className="mt-3 flex flex-col gap-3">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleSuggestBy("obp")}
+                  disabled={initialPlayers.length === 0}
+                  className="rounded-lg border border-[var(--neo-accent)]/50 bg-[var(--neo-accent-dim)] px-3 py-1.5 text-sm font-medium text-[var(--neo-accent)] transition hover:bg-[var(--neo-accent)]/20 disabled:opacity-50 disabled:pointer-events-none"
+                >
+                  Suggest by OBP
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSuggestBy("avg")}
+                  disabled={initialPlayers.length === 0}
+                  className="rounded-lg border border-[var(--neo-accent)]/50 bg-[var(--neo-accent-dim)] px-3 py-1.5 text-sm font-medium text-[var(--neo-accent)] transition hover:bg-[var(--neo-accent)]/20 disabled:opacity-50 disabled:pointer-events-none"
+                >
+                  Suggest by AVG
+                </button>
+              </div>
+              {lineupQuality != null && (
+                <p className="text-sm leading-relaxed text-[var(--neo-text)]">
+                  <span className="mr-1 font-display text-xs font-semibold uppercase tracking-wider text-white">
+                    Combined lineup:
+                  </span>
+                  <span className="inline-flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span>
+                      AVG{" "}
+                      <strong className="tabular-nums text-[var(--neo-accent)]">{formatStat(lineupQuality.avg, "avg")}</strong>
+                    </span>
+                    <span className="text-[var(--neo-border)]">·</span>
+                    <span>
+                      OBP{" "}
+                      <strong className="tabular-nums text-[var(--neo-accent)]">{formatStat(lineupQuality.obp, "avg")}</strong>
+                    </span>
+                    <span className="text-[var(--neo-border)]">·</span>
+                    <span>
+                      SLG{" "}
+                      <strong className="tabular-nums text-[var(--neo-accent)]">{formatStat(lineupQuality.slg, "avg")}</strong>
+                    </span>
+                    <span className="text-[var(--neo-border)]">·</span>
+                    <span>
+                      OPS{" "}
+                      <strong className="tabular-nums text-[var(--neo-accent)]">{formatStat(lineupQuality.ops, "avg")}</strong>
+                    </span>
+                    <span className="text-[var(--neo-border)]">·</span>
+                    <span>
+                      K%{" "}
+                      <strong className="tabular-nums text-[var(--neo-accent)]">
+                        {lineupQuality.kPct != null && !Number.isNaN(lineupQuality.kPct)
+                          ? `${(lineupQuality.kPct * 100).toFixed(1)}%`
+                          : "—"}
+                      </strong>
+                    </span>
+                    {lineupQuality.pPa != null && (
+                      <>
+                        <span className="text-[var(--neo-border)]">·</span>
+                        <span>
+                          P/PA{" "}
+                          <strong className="tabular-nums text-[var(--neo-accent)]">{formatPPa(lineupQuality.pPa)}</strong>
+                        </span>
+                      </>
+                    )}
+                  </span>
+                </p>
+              )}
+            </div>
           </div>
         </div>
       </section>
@@ -725,7 +737,7 @@ export default function LineupConstructionClient({
                 {sortedAvailablePlayers.length === 0 ? (
                   <li className="rounded-lg border border-dashed border-[var(--neo-border)] py-6 text-center text-sm text-[var(--neo-text-muted)]">
                     All players are in the lineup or no players yet.{" "}
-                    <Link href="/analyst/players" className="text-[var(--accent)] hover:underline">
+                    <Link href="/analyst/roster" className="text-[var(--accent)] hover:underline">
                       Add players
                     </Link>
                   </li>

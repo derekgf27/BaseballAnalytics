@@ -3,14 +3,31 @@
  * No mock data — uses only Supabase.
  */
 
-import { battingStatsFromPAs, isRisp } from "@/lib/compute/battingStats";
 import {
+  battingStatsFromPAs,
+  isBasesEmpty,
+  isBasesLoaded,
+  isRisp,
+  isRunnersOn,
+} from "@/lib/compute/battingStats";
+import {
+  buildBattingRunnerSituationSplit,
+  buildStatsByFinalCountForSplits,
   mergeBaserunningIntoBattingStats,
   distinctGameCount,
   gamesStartedInSplit,
 } from "@/lib/compute/battingStatsWithSplitsFromPas";
-import { pitchingStatsFromPAs } from "@/lib/compute/pitchingStats";
+import { groupPitchEventsByPaId, mergeContactProfileIntoBattingStats } from "@/lib/compute/contactProfileFromPas";
+import {
+  buildPitchingRunnerSituationsForPitcher,
+  buildPitchingStatsByFinalCountForSplits,
+  inheritedRunnersBequeathedTeamTotal,
+  inheritedRunnersScoredInPasList,
+  pitchingStatsFromPAs,
+  platoonPitchingPasSplits,
+} from "@/lib/compute/pitchingStats";
 import { kPctToKRate, type PlayerStatsForWatch } from "@/lib/playersToWatch";
+import { isSprayChartBipResult } from "@/lib/sprayChartFilters";
 import { isClubRosterPlayer, isPitcherPlayer } from "@/lib/opponentUtils";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isDemoId } from "./mockData";
@@ -20,6 +37,7 @@ import type {
   Bats,
   PitchingRateLine,
   PitchingStats,
+  PitchingRunnerSituationSplit,
   PitchingStatsWithSplits,
   BaserunningEvent,
   BaserunningEventInsert,
@@ -27,6 +45,7 @@ import type {
   Player,
   Game,
   PlayerRating,
+  PlayerDeletionPreview,
   DefensiveEvent,
   GameLineupSlot,
   LineupSide,
@@ -34,10 +53,46 @@ import type {
   SavedLineupWithSlots,
   ClubBattingMatchupPayload,
   ClubPitchingMatchupPayload,
+  PitchEvent,
+  PitchEventDraft,
 } from "@/lib/types";
+
+export async function linkPitchTrackerGroupToPlateAppearance(
+  trackerGroupId: string,
+  paId: string
+): Promise<void> {
+  const supabase = await getSupabase();
+  if (!supabase) throw new Error("Database unavailable");
+  const { error } = await supabase
+    .from("pitches")
+    .update({ at_bat_id: paId })
+    .eq("tracker_group_id", trackerGroupId)
+    .is("at_bat_id", null);
+  if (error) throw new Error(error.message);
+}
 
 async function getSupabase() {
   return createSupabaseServerClient();
+}
+
+/** Defensive errors charged per player (any PA with `error_fielder_id`). */
+async function fetchFieldingErrorCountsForPlayers(
+  supabase: NonNullable<Awaited<ReturnType<typeof getSupabase>>>,
+  playerIds: string[]
+): Promise<Record<string, number>> {
+  const clean = [...new Set(playerIds.filter((id) => !isDemoId(id)))];
+  if (clean.length === 0) return {};
+  const { data } = await supabase
+    .from("plate_appearances")
+    .select("error_fielder_id")
+    .in("error_fielder_id", clean)
+    .not("error_fielder_id", "is", null);
+  const counts: Record<string, number> = {};
+  for (const row of data ?? []) {
+    const id = (row as { error_fielder_id: string }).error_fielder_id;
+    counts[id] = (counts[id] ?? 0) + 1;
+  }
+  return counts;
 }
 
 /** SB/CS counts per player from baserunning_events (all games). */
@@ -145,9 +200,26 @@ export async function getGames(): Promise<Game[]> {
   return (data ?? []) as Game[];
 }
 
+/** Coach dashboard: prefer the game row most recently created (matches “just added this game”). */
+export async function getGamesForCoachDashboard(): Promise<Game[]> {
+  const supabase = await getSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("games")
+    .select("*")
+    .order("created_at", { ascending: false });
+  return (data ?? []) as Game[];
+}
+
 export async function getClubBattingMatchupPayload(playerIds: string[]): Promise<ClubBattingMatchupPayload> {
   const supabase = await getSupabase();
-  const empty: ClubBattingMatchupPayload = { pas: [], games: [], baserunningByPlayerId: {}, startedGameIdsByPlayer: {} };
+  const empty: ClubBattingMatchupPayload = {
+    pas: [],
+    games: [],
+    baserunningByPlayerId: {},
+    startedGameIdsByPlayer: {},
+    pitchEvents: [],
+  };
   if (!supabase || playerIds.length === 0) return empty;
 
   const cleanIds = playerIds.filter((id) => !isDemoId(id));
@@ -175,12 +247,21 @@ export async function getClubBattingMatchupPayload(playerIds: string[]): Promise
     startedGameIdsByPlayer[pid] = [...set];
   }
 
-  return { pas, games, baserunningByPlayerId: brTotals, startedGameIdsByPlayer };
+  const paIds = pas.map((p) => p.id).filter(Boolean) as string[];
+  const pitchEvents = paIds.length > 0 ? await getPitchEventsForPaIds(paIds) : [];
+
+  return { pas, games, baserunningByPlayerId: brTotals, startedGameIdsByPlayer, pitchEvents };
 }
 
 export async function getClubPitchingMatchupPayload(pitcherIds: string[]): Promise<ClubPitchingMatchupPayload> {
   const supabase = await getSupabase();
-  const empty: ClubPitchingMatchupPayload = { pas: [], games: [], starterGameIdsByPlayer: {}, batterBatsById: {} };
+  const empty: ClubPitchingMatchupPayload = {
+    pas: [],
+    games: [],
+    starterGameIdsByPlayer: {},
+    batterBatsById: {},
+    pitchEvents: [],
+  };
   if (!supabase || pitcherIds.length === 0) return empty;
 
   const clean = pitcherIds.filter((id) => !isDemoId(id));
@@ -224,7 +305,10 @@ export async function getClubPitchingMatchupPayload(pitcherIds: string[]): Promi
     }
   }
 
-  return { pas, games, starterGameIdsByPlayer, batterBatsById };
+  const paIds = pas.map((p) => p.id).filter(Boolean) as string[];
+  const pitchEvents = paIds.length > 0 ? await getPitchEventsForPaIds(paIds) : [];
+
+  return { pas, games, starterGameIdsByPlayer, batterBatsById, pitchEvents };
 }
 
 export interface TrackedOpponentRow {
@@ -471,11 +555,12 @@ export async function getBaserunningEventsForGames(gameIds: string[]): Promise<B
   });
 }
 
-/** Spray-chart rows for games (includes inning_half for filtering to one team's PAs). */
+/** Spray-chart rows for games (includes inning_half for filtering to one team's PAs; pitcher_id for opponent pitching spray). */
 export async function getSprayChartRowsForGames(gameIds: string[]): Promise<
   {
     game_id: string;
     batter_id: string;
+    pitcher_id: string | null;
     hit_direction: string;
     result: string;
     pitcher_hand: "L" | "R" | null;
@@ -486,14 +571,14 @@ export async function getSprayChartRowsForGames(gameIds: string[]): Promise<
   if (!supabase || gameIds.length === 0) return [];
   const clean = gameIds.filter((id) => !isDemoId(id));
   if (clean.length === 0) return [];
-  const BASE_HIT_RESULTS = new Set(["single", "double", "triple", "hr"]);
   const { data } = await supabase
     .from("plate_appearances")
-    .select("game_id, batter_id, hit_direction, result, pitcher_hand, inning_half")
+    .select("game_id, batter_id, pitcher_id, hit_direction, result, pitcher_hand, inning_half")
     .in("game_id", clean);
   const rows = (data ?? []) as {
     game_id: string;
     batter_id: string;
+    pitcher_id: string | null;
     hit_direction: string | null;
     result: string;
     pitcher_hand: string | null;
@@ -503,7 +588,51 @@ export async function getSprayChartRowsForGames(gameIds: string[]): Promise<
     .filter(
       (r) =>
         !isDemoId(r.game_id) &&
-        BASE_HIT_RESULTS.has(r.result) &&
+        r.hit_direction != null &&
+        r.hit_direction !== "" &&
+        r.batter_id &&
+        !isDemoId(r.batter_id)
+    )
+    .map((r) => ({
+      game_id: r.game_id,
+      batter_id: r.batter_id,
+      pitcher_id: r.pitcher_id && !isDemoId(r.pitcher_id) ? r.pitcher_id : null,
+      hit_direction: r.hit_direction!,
+      result: r.result,
+      pitcher_hand: r.pitcher_hand === "L" || r.pitcher_hand === "R" ? r.pitcher_hand : null,
+      inning_half: r.inning_half,
+    }));
+}
+
+/** Base-hit PAs with hit_direction when a club pitcher is on the mound — team pitching spray (vs LHB / vs RHB). */
+export async function getTeamPlateAppearancesForPitchingSpray(): Promise<
+  { game_id: string; batter_id: string; hit_direction: string; result: string; pitcher_hand: "L" | "R" | null }[]
+> {
+  const supabase = await getSupabase();
+  if (!supabase) return [];
+  const roster = await getPlayers();
+  const clubPitcherIds = new Set(
+    roster.filter((p) => !isDemoId(p.id) && isClubRosterPlayer(p) && isPitcherPlayer(p)).map((p) => p.id)
+  );
+  if (clubPitcherIds.size === 0) return [];
+  const { data } = await supabase
+    .from("plate_appearances")
+    .select("game_id, batter_id, pitcher_id, hit_direction, result, pitcher_hand");
+  const rows = (data ?? []) as {
+    game_id: string;
+    batter_id: string;
+    pitcher_id: string | null;
+    hit_direction: string | null;
+    result: string;
+    pitcher_hand: string | null;
+  }[];
+  return rows
+    .filter(
+      (r) =>
+        !isDemoId(r.game_id) &&
+        r.pitcher_id &&
+        clubPitcherIds.has(r.pitcher_id) &&
+        isSprayChartBipResult(r.result) &&
         r.hit_direction != null &&
         r.hit_direction !== "" &&
         r.batter_id &&
@@ -515,7 +644,6 @@ export async function getSprayChartRowsForGames(gameIds: string[]): Promise<
       hit_direction: r.hit_direction!,
       result: r.result,
       pitcher_hand: r.pitcher_hand === "L" || r.pitcher_hand === "R" ? r.pitcher_hand : null,
-      inning_half: r.inning_half,
     }));
 }
 
@@ -525,18 +653,36 @@ export async function getAllPlateAppearancesForRunExpectancy(): Promise<
 > {
   const supabase = await getSupabase();
   if (!supabase) return [];
+  const clubBatterIds = new Set(
+    (await getPlayers())
+      .filter((p) => isClubRosterPlayer(p))
+      .map((p) => p.id)
+      .filter((id) => !isDemoId(id))
+  );
+  if (clubBatterIds.size === 0) return [];
   const { data } = await supabase
     .from("plate_appearances")
-    .select("game_id, inning, inning_half, base_state, outs, rbi, created_at")
+    .select("game_id, batter_id, inning, inning_half, base_state, outs, rbi, created_at")
     .order("game_id")
     .order("inning")
     .order("created_at");
-  const rows = (data ?? []) as Pick<PlateAppearance, "game_id" | "inning" | "inning_half" | "base_state" | "outs" | "rbi" | "created_at">[];
-  return rows.filter((r) => !isDemoId(r.game_id));
+  const rows = (data ?? []) as Array<
+    Pick<PlateAppearance, "game_id" | "batter_id" | "inning" | "inning_half" | "base_state" | "outs" | "rbi" | "created_at">
+  >;
+  return rows
+    .filter((r) => !isDemoId(r.game_id) && !!r.batter_id && clubBatterIds.has(r.batter_id))
+    .map(({ game_id, inning, inning_half, base_state, outs, rbi, created_at }) => ({
+      game_id,
+      inning,
+      inning_half,
+      base_state,
+      outs,
+      rbi,
+      created_at,
+    }));
 }
 
-/** Base-hit PAs with hit_direction for team spray chart. Excludes demo games.
- *  Only returns rows with hit_direction set.
+/** PAs with hit_direction for team spray chart (hits and BIP outs). Excludes demo games.
  *  Includes batter_id and pitcher_hand for RHB/LHB split (switch hitters inferred: vs LHP → R, vs RHP → L).
  */
 export async function getTeamPlateAppearancesForSpray(): Promise<
@@ -544,7 +690,6 @@ export async function getTeamPlateAppearancesForSpray(): Promise<
 > {
   const supabase = await getSupabase();
   if (!supabase) return [];
-  const BASE_HIT_RESULTS = new Set(["single", "double", "triple", "hr"]);
   const { data } = await supabase
     .from("plate_appearances")
     .select("game_id, batter_id, hit_direction, result, pitcher_hand");
@@ -552,7 +697,7 @@ export async function getTeamPlateAppearancesForSpray(): Promise<
   return rows.filter(
     (r) =>
       !isDemoId(r.game_id) &&
-      BASE_HIT_RESULTS.has(r.result) &&
+      isSprayChartBipResult(r.result) &&
       r.hit_direction != null &&
       r.hit_direction !== "" &&
       r.batter_id &&
@@ -567,6 +712,17 @@ export async function getPlateAppearancesByBatter(batterId: string): Promise<Pla
     .from("plate_appearances")
     .select("*")
     .eq("batter_id", batterId)
+    .order("created_at", { ascending: false });
+  return (data ?? []) as PlateAppearance[];
+}
+
+export async function getPlateAppearancesByPitcher(pitcherId: string): Promise<PlateAppearance[]> {
+  const supabase = await getSupabase();
+  if (!supabase || isDemoId(pitcherId)) return [];
+  const { data } = await supabase
+    .from("plate_appearances")
+    .select("*")
+    .eq("pitcher_id", pitcherId)
     .order("created_at", { ascending: false });
   return (data ?? []) as PlateAppearance[];
 }
@@ -669,6 +825,7 @@ export async function getBattingStatsForPlayers(
   const brTotals = await getBaserunningTotalsForPlayerIds(playerIds);
 
   const cleanIds = playerIds.filter((id) => !isDemoId(id));
+  const eCounts = await fetchFieldingErrorCountsForPlayers(supabase, cleanIds);
   const { data: lineupRows } = await supabase
     .from("game_lineups")
     .select("game_id, player_id")
@@ -694,6 +851,7 @@ export async function getBattingStatsForPlayers(
     r: runsByPlayer[playerId] ?? 0,
     gp: 0,
     gs: startedGames.size,
+    e: eCounts[playerId] ?? 0,
   });
 
   const result: Record<string, BattingStats> = {};
@@ -709,6 +867,7 @@ export async function getBattingStatsForPlayers(
       if (br.sb > 0 || br.cs > 0) mergeBaserunningIntoBattingStats(stats, br);
       stats.gp = distinctGameCount(pas);
       stats.gs = startedGames.size;
+      stats.e = eCounts[playerId] ?? 0;
       result[playerId] = stats;
     }
   }
@@ -735,7 +894,10 @@ const EMPTY_PITCHING_STATS = (): PitchingStats => ({
   ip: 0,
   ipDisplay: "0",
   h: 0,
+  abAgainst: 0,
   r: 0,
+  ir: 0,
+  irs: 0,
   er: 0,
   era: 0,
   hr: 0,
@@ -744,13 +906,26 @@ const EMPTY_PITCHING_STATS = (): PitchingStats => ({
   hbp: 0,
   fip: 0,
   whip: 0,
+  e: 0,
   rates: EMPTY_RATE_LINE(),
+});
+
+const EMPTY_PITCHING_RUNNER_SPLIT = (): PitchingRunnerSituationSplit => ({
+  combined: null,
+  vsLHB: null,
+  vsRHB: null,
 });
 
 const EMPTY_PITCHING_STATS_WITH_SPLITS = (): PitchingStatsWithSplits => ({
   overall: EMPTY_PITCHING_STATS(),
   vsLHB: null,
   vsRHB: null,
+  runnerSituations: {
+    basesEmpty: EMPTY_PITCHING_RUNNER_SPLIT(),
+    runnersOn: EMPTY_PITCHING_RUNNER_SPLIT(),
+    risp: EMPTY_PITCHING_RUNNER_SPLIT(),
+    basesLoaded: EMPTY_PITCHING_RUNNER_SPLIT(),
+  },
 });
 
 /** Pitching stats: PAs where `pitcher_id` matches; GS = listed SP on `games` only when ≥1 PA exists for that game. */
@@ -776,6 +951,22 @@ export async function getPitchingStatsForPlayers(
     list.push(p);
     byPitcher.set(p.pitcher_id, list);
     if (p.batter_id) batterIds.add(p.batter_id);
+  }
+
+  const gameIds = [
+    ...new Set(
+      (pasRows ?? [])
+        .map((row) => (row as PlateAppearance).game_id)
+        .filter((gid): gid is string => typeof gid === "string" && gid.length > 0)
+    ),
+  ];
+  let allPasForGames: PlateAppearance[] = (pasRows ?? []) as PlateAppearance[];
+  if (gameIds.length > 0) {
+    const { data: gamePas } = await supabase.from("plate_appearances").select("*").in("game_id", gameIds);
+    allPasForGames = (gamePas ?? []) as PlateAppearance[];
+  }
+  if (excludeGid) {
+    allPasForGames = allPasForGames.filter((p) => p.game_id !== excludeGid);
   }
 
   const batterBatsById = new Map<string, Bats | null>();
@@ -808,13 +999,111 @@ export async function getPitchingStatsForPlayers(
   }
 
   const result: Record<string, PitchingStatsWithSplits> = {};
+  const paPitchIds = (pasRows ?? [])
+    .map((row) => (row as PlateAppearance).id)
+    .filter(Boolean) as string[];
+  const pitchEventsPitching =
+    paPitchIds.length > 0 ? await getPitchEventsForPaIds(paPitchIds) : [];
+  const eventsByPaIdPitching = groupPitchEventsByPaId(pitchEventsPitching);
+  const eCountsPitch = await fetchFieldingErrorCountsForPlayers(supabase, clean);
+
   for (const playerId of clean) {
     const pas = byPitcher.get(playerId) ?? [];
     const starters = starterGames.get(playerId) ?? new Set<string>();
-    const stats = pitchingStatsFromPAs(pas, starters, batterBatsById);
-    result[playerId] = stats ?? EMPTY_PITCHING_STATS_WITH_SPLITS();
+    const { pasL, pasR } = platoonPitchingPasSplits(pas, batterBatsById);
+    const stats = pitchingStatsFromPAs(pas, starters, batterBatsById, eventsByPaIdPitching, {
+      allPasForRunCharges: allPasForGames,
+    });
+    const base = stats ?? EMPTY_PITCHING_STATS_WITH_SPLITS();
+    const eN = eCountsPitch[playerId] ?? 0;
+    base.overall.e = eN;
+    if (base.vsLHB) base.vsLHB.e = eN;
+    if (base.vsRHB) base.vsRHB.e = eN;
+    result[playerId] = {
+      ...base,
+      runnerSituations: buildPitchingRunnerSituationsForPitcher(
+        pas,
+        starters,
+        batterBatsById,
+        eventsByPaIdPitching,
+        playerId,
+        allPasForGames
+      ),
+      statsByFinalCount: buildPitchingStatsByFinalCountForSplits(
+        pas,
+        pasL,
+        pasR,
+        starters,
+        batterBatsById,
+        eventsByPaIdPitching,
+        { allPasForRunCharges: allPasForGames }
+      ),
+    };
   }
   return result;
+}
+
+/**
+ * Most recent game strictly before `beforeDate` (YYYY-MM-DD) where the pitcher has ≥1 PA on the mound.
+ * Line is built only from that game’s PAs for this pitcher.
+ */
+export async function getPitcherLastOutingBefore(
+  pitcherId: string,
+  beforeDate: string,
+  excludeGameId?: string | null
+): Promise<{ game: Game; overall: PitchingStats } | null> {
+  const supabase = await getSupabase();
+  if (!supabase || !pitcherId?.trim() || isDemoId(pitcherId)) return null;
+
+  const { data: rows } = await supabase.from("plate_appearances").select("game_id").eq("pitcher_id", pitcherId);
+  const gameIds = [
+    ...new Set(
+      (rows ?? [])
+        .map((r) => (r as { game_id: string }).game_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0 && !isDemoId(id))
+    ),
+  ];
+  if (gameIds.length === 0) return null;
+
+  const { data: gameRows } = await supabase.from("games").select("*").in("id", gameIds);
+  let candidates = (gameRows ?? []) as Game[];
+  candidates = candidates.filter(
+    (g) =>
+      !isDemoId(g.id) &&
+      g.date < beforeDate &&
+      (!excludeGameId || g.id !== excludeGameId)
+  );
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const g = candidates[0]!;
+
+  const allPas = await getPlateAppearancesByGame(g.id);
+  const pasP = allPas.filter((p) => p.pitcher_id === pitcherId);
+  if (pasP.length === 0) return null;
+
+  const batterIds = [...new Set(pasP.map((p) => p.batter_id).filter(Boolean))];
+  const batterBatsById = new Map<string, Bats | null>();
+  if (batterIds.length > 0) {
+    const { data: batterRows } = await supabase.from("players").select("id, bats").in("id", batterIds);
+    for (const row of batterRows ?? []) {
+      const r = row as { id: string; bats: string | null };
+      batterBatsById.set(r.id, (r.bats as Bats | null) ?? null);
+    }
+  }
+
+  const started = new Set<string>();
+  if (g.starting_pitcher_home_id === pitcherId || g.starting_pitcher_away_id === pitcherId) started.add(g.id);
+
+  const paIds = pasP.map((p) => p.id).filter(Boolean) as string[];
+  const pitchEvents = paIds.length > 0 ? await getPitchEventsForPaIds(paIds) : [];
+  const eventsByPaId = groupPitchEventsByPaId(pitchEvents);
+
+  const merged = pitchingStatsFromPAs(pasP, started, batterBatsById, eventsByPaId, {
+    pitcherIdForRunCharge: pitcherId,
+    allPasForRunCharges: allPas,
+  });
+  if (!merged?.overall) return null;
+  return { game: g, overall: merged.overall };
 }
 
 /** Team-level batting stats: all PAs for the given roster, single aggregate (AVG, OBP, SLG, OPS, HR, RBI, R, etc.). */
@@ -838,6 +1127,9 @@ export async function getTeamBattingStats(
     teamCs += brTotals[id]?.cs ?? 0;
   }
 
+  const eCountsTeam = await fetchFieldingErrorCountsForPlayers(supabase, ids);
+  const teamFieldingE = ids.reduce((s, id) => s + (eCountsTeam[id] ?? 0), 0);
+
   if (allPAs.length === 0) {
     if (teamSb === 0 && teamCs === 0) return null;
     const shell: BattingStats = {
@@ -850,6 +1142,7 @@ export async function getTeamBattingStats(
       pa: 0,
       ab: 0,
       r: 0,
+      e: teamFieldingE,
     };
     mergeBaserunningIntoBattingStats(shell, { sb: teamSb, cs: teamCs });
     return shell;
@@ -862,6 +1155,7 @@ export async function getTeamBattingStats(
   const stats = battingStatsFromPAs(allPAs);
   if (!stats) return null;
   stats.r = teamRuns;
+  stats.e = teamFieldingE;
   if (teamSb > 0 || teamCs > 0) mergeBaserunningIntoBattingStats(stats, { sb: teamSb, cs: teamCs });
   return stats;
 }
@@ -907,6 +1201,13 @@ export async function getTeamPitchingStats(
   const pas = (data ?? []) as PlateAppearance[];
   if (pas.length === 0) return null;
 
+  const gameIds = [...new Set(pas.map((p) => p.game_id).filter((g): g is string => Boolean(g)))];
+  let allPasForGames: PlateAppearance[] = pas;
+  if (gameIds.length > 0) {
+    const { data: gamePas } = await supabase.from("plate_appearances").select("*").in("game_id", gameIds);
+    allPasForGames = (gamePas ?? []) as PlateAppearance[];
+  }
+
   const batterIds = new Set<string>();
   for (const pa of pas) {
     if (pa.batter_id) batterIds.add(pa.batter_id);
@@ -920,15 +1221,32 @@ export async function getTeamPitchingStats(
     }
   }
 
-  const merged = pitchingStatsFromPAs(pas, new Set(), batterBatsById);
+  const paTeamPitchIds = pas.map((p) => p.id).filter(Boolean) as string[];
+  const pitchEventsTeam =
+    paTeamPitchIds.length > 0 ? await getPitchEventsForPaIds(paTeamPitchIds) : [];
+  const eventsByPaIdTeam = groupPitchEventsByPaId(pitchEventsTeam);
+
+  const merged = pitchingStatsFromPAs(pas, new Set(), batterBatsById, eventsByPaIdTeam, {
+    pitcherIdForRunCharge: null,
+  });
   if (!merged?.overall) return null;
+
+  const eTeamPitch = await fetchFieldingErrorCountsForPlayers(supabase, ids);
+  const teamE = ids.reduce((s, id) => s + (eTeamPitch[id] ?? 0), 0);
 
   const pitchesTotal = pas.reduce((sum, p) => {
     const v = p.pitches_seen;
     return sum + (v != null && !Number.isNaN(v) ? v : 0);
   }, 0);
 
-  return { ...merged.overall, pitchesTotal };
+  const overall = {
+    ...merged.overall,
+    ir: inheritedRunnersBequeathedTeamTotal(ids, allPasForGames),
+    irs: inheritedRunnersScoredInPasList(pas),
+    e: teamE,
+  };
+
+  return { ...overall, pitchesTotal };
 }
 
 /** Same as getBattingStatsForPlayers but also returns vs LHP / vs RHP splits (by pitcher_hand on PAs). */
@@ -995,9 +1313,16 @@ export async function getBattingStatsWithSplitsForPlayers(
     startedByPlayer.set(r.player_id, set);
   }
 
+  const eCountsSplits = await fetchFieldingErrorCountsForPlayers(supabase, cleanIds);
+
+  const paStatIds = allPAs.map((p) => p.id).filter(Boolean) as string[];
+  const pitchEventsAll = paStatIds.length > 0 ? await getPitchEventsForPaIds(paStatIds) : [];
+  const eventsByPaId = groupPitchEventsByPaId(pitchEventsAll);
+
   const result: Record<string, BattingStatsWithSplits> = {};
   for (const playerId of playerIds) {
     if (isDemoId(playerId)) continue;
+    const eN = eCountsSplits[playerId] ?? 0;
     const pas = byBatter.get(playerId) ?? [];
     const pasVsL = pas.filter((pa) => pa.pitcher_hand === "L");
     const pasVsR = pas.filter((pa) => pa.pitcher_hand === "R");
@@ -1020,6 +1345,7 @@ export async function getBattingStatsWithSplitsForPlayers(
         r: runsByPlayer[playerId] ?? 0,
         gp: 0,
         gs: startedGames.size,
+        e: eN,
       };
     }
     if (!overall) continue;
@@ -1028,12 +1354,16 @@ export async function getBattingStatsWithSplitsForPlayers(
 
     overall.gp = distinctGameCount(pas);
     overall.gs = startedGames.size;
+    mergeContactProfileIntoBattingStats(overall, pas, eventsByPaId);
+    overall.e = eN;
 
     const vsLStats = pasVsL.length > 0 ? battingStatsFromPAs(pasVsL) : null;
     if (vsLStats) {
       vsLStats.r = runsVsL[playerId] ?? 0;
       vsLStats.gp = distinctGameCount(pasVsL);
       vsLStats.gs = gamesStartedInSplit(startedGames, pasVsL);
+      mergeContactProfileIntoBattingStats(vsLStats, pasVsL, eventsByPaId);
+      vsLStats.e = eN;
     }
 
     const vsRStats = pasVsR.length > 0 ? battingStatsFromPAs(pasVsR) : null;
@@ -1041,20 +1371,62 @@ export async function getBattingStatsWithSplitsForPlayers(
       vsRStats.r = runsVsR[playerId] ?? 0;
       vsRStats.gp = distinctGameCount(pasVsR);
       vsRStats.gs = gamesStartedInSplit(startedGames, pasVsR);
+      mergeContactProfileIntoBattingStats(vsRStats, pasVsR, eventsByPaId);
+      vsRStats.e = eN;
     }
 
-    const rispStats = pasRisp.length > 0 ? battingStatsFromPAs(pasRisp) : null;
-    if (rispStats) {
-      let runsRisp = 0;
-      for (const pa of pasRisp) {
-        runsRisp += (pa.runs_scored_player_ids ?? []).filter((id) => id === playerId).length;
-      }
-      rispStats.r = runsRisp;
-      rispStats.gp = distinctGameCount(pasRisp);
-      rispStats.gs = gamesStartedInSplit(startedGames, pasRisp);
-    }
+    const runnerSituations = {
+      basesEmpty: buildBattingRunnerSituationSplit(
+        pas,
+        (pa) => isBasesEmpty(pa.base_state),
+        playerId,
+        startedGames,
+        eventsByPaId,
+        eN
+      ),
+      runnersOn: buildBattingRunnerSituationSplit(
+        pas,
+        (pa) => isRunnersOn(pa.base_state),
+        playerId,
+        startedGames,
+        eventsByPaId,
+        eN
+      ),
+      risp: buildBattingRunnerSituationSplit(
+        pas,
+        (pa) => isRisp(pa.base_state),
+        playerId,
+        startedGames,
+        eventsByPaId,
+        eN
+      ),
+      basesLoaded: buildBattingRunnerSituationSplit(
+        pas,
+        (pa) => isBasesLoaded(pa.base_state),
+        playerId,
+        startedGames,
+        eventsByPaId,
+        eN
+      ),
+    };
+    const rispStats = runnerSituations.risp.combined;
 
-    result[playerId] = { overall, vsL: vsLStats, vsR: vsRStats, risp: rispStats };
+    result[playerId] = {
+      overall,
+      vsL: vsLStats,
+      vsR: vsRStats,
+      risp: rispStats,
+      runnerSituations,
+      statsByFinalCount: buildStatsByFinalCountForSplits(
+        pas,
+        pasVsL,
+        pasVsR,
+        pasRisp,
+        playerId,
+        startedGames,
+        eventsByPaId
+      ),
+    };
   }
   return result;
 }
@@ -1089,11 +1461,121 @@ export async function insertPlateAppearance(
   return data as PlateAppearance | null;
 }
 
+const PITCH_EVENTS_PA_ID_CHUNK = 200;
+
+/** All pitch log rows for the given plate appearance ids (chunked for large rosters). */
+export async function getPitchEventsForPaIds(paIds: string[]): Promise<PitchEvent[]> {
+  const supabase = await getSupabase();
+  if (!supabase || paIds.length === 0) return [];
+  const clean = [...new Set(paIds.filter(Boolean))];
+  const out: PitchEvent[] = [];
+  for (let i = 0; i < clean.length; i += PITCH_EVENTS_PA_ID_CHUNK) {
+    const chunk = clean.slice(i, i + PITCH_EVENTS_PA_ID_CHUNK);
+    const { data, error } = await supabase.from("pitch_events").select("*").in("pa_id", chunk);
+    if (error) throw new Error(error.message);
+    out.push(...((data ?? []) as PitchEvent[]));
+  }
+  out.sort((a, b) => {
+    const cmp = a.pa_id.localeCompare(b.pa_id);
+    if (cmp !== 0) return cmp;
+    return a.pitch_index - b.pitch_index;
+  });
+  return out;
+}
+
+/** Pitch log rows for all PAs in a game (same PA order as {@link getPlateAppearancesByGame}, then pitch_index). */
+export async function getPitchEventsForGame(gameId: string): Promise<PitchEvent[]> {
+  const pasOrdered = await getPlateAppearancesByGame(gameId);
+  if (pasOrdered.length === 0) return [];
+  const supabase = await getSupabase();
+  if (!supabase || isDemoId(gameId)) return [];
+  const paIds = pasOrdered.map((p) => p.id);
+  const paOrder = new Map<string, number>();
+  pasOrdered.forEach((p, i) => paOrder.set(p.id, i));
+  const { data: events, error } = await supabase.from("pitch_events").select("*").in("pa_id", paIds);
+  if (error) throw new Error(error.message);
+  const rows = (events ?? []) as PitchEvent[];
+  rows.sort((a, b) => {
+    const oa = paOrder.get(a.pa_id) ?? 0;
+    const ob = paOrder.get(b.pa_id) ?? 0;
+    if (oa !== ob) return oa - ob;
+    return a.pitch_index - b.pitch_index;
+  });
+  return rows;
+}
+
+export async function insertPitchEventsForPa(paId: string, rows: PitchEventDraft[]): Promise<void> {
+  if (rows.length === 0) return;
+  const supabase = await getSupabase();
+  if (!supabase || isDemoId(paId)) return;
+  const payload = rows.map((r) => ({
+    pa_id: paId,
+    pitch_index: r.pitch_index,
+    balls_before: r.balls_before,
+    strikes_before: r.strikes_before,
+    outcome: r.outcome,
+    pitch_type: r.pitch_type ?? null,
+  }));
+  const { error } = await supabase.from("pitch_events").insert(payload);
+  if (error) throw new Error(error.message);
+}
+
+/** Insert PA then optional pitch log (same transaction not guaranteed; pitch rows deleted if second insert fails — rare). */
+export async function insertPlateAppearanceWithPitchLog(
+  pa: Omit<PlateAppearance, "id" | "created_at">,
+  pitchLog: PitchEventDraft[]
+): Promise<PlateAppearance | null> {
+  const inserted = await insertPlateAppearance(pa);
+  if (!inserted?.id) return inserted;
+  try {
+    await insertPitchEventsForPa(inserted.id, pitchLog);
+  } catch (e) {
+    await supabaseDeletePaById(inserted.id);
+    throw e;
+  }
+  return inserted;
+}
+
+async function supabaseDeletePaById(paId: string): Promise<void> {
+  const supabase = await getSupabase();
+  if (!supabase) return;
+  await supabase.from("plate_appearances").delete().eq("id", paId);
+}
+
 export async function deletePlateAppearance(paId: string): Promise<boolean> {
   const supabase = await getSupabase();
   if (!supabase || !paId) return false;
   const { error } = await supabase.from("plate_appearances").delete().eq("id", paId);
   return !error;
+}
+
+export async function getPlateAppearanceById(paId: string): Promise<PlateAppearance | null> {
+  const supabase = await getSupabase();
+  if (!supabase || !paId || isDemoId(paId)) return null;
+  const { data, error } = await supabase.from("plate_appearances").select("*").eq("id", paId).maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data ?? null) as PlateAppearance | null;
+}
+
+export async function updatePlateAppearanceRow(
+  paId: string,
+  updates: Partial<
+    Pick<
+      PlateAppearance,
+      "result" | "batted_ball_type" | "hit_direction" | "error_fielder_id" | "base_state"
+    >
+  >
+): Promise<PlateAppearance | null> {
+  const supabase = await getSupabase();
+  if (!supabase || !paId || isDemoId(paId)) return null;
+  const { data, error } = await supabase
+    .from("plate_appearances")
+    .update(updates)
+    .eq("id", paId)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data as PlateAppearance | null;
 }
 
 /** Delete all plate appearances for a single game. Returns number deleted. */
@@ -1131,13 +1613,13 @@ export async function getGame(id: string): Promise<Game | null> {
   return data as Game | null;
 }
 
-export async function insertGame(
-  game: Omit<Game, "id" | "created_at">
-): Promise<Game | null> {
+export async function insertGame(game: Omit<Game, "id" | "created_at">): Promise<Game> {
   const supabase = await getSupabase();
-  if (!supabase) return null;
-  const { data } = await supabase.from("games").insert(game).select().single();
-  return data as Game | null;
+  if (!supabase) throw new Error("Database unavailable");
+  const { data, error } = await supabase.from("games").insert(game).select().single();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Insert returned no row");
+  return data as Game;
 }
 
 /** Create a game and assign our lineup; optionally assign opponent lineup (same transaction of inserts). */
@@ -1147,9 +1629,8 @@ export async function createGameWithLineup(
   opponentSlots?: { player_id: string; position?: string | null }[] | null,
   /** When set (e.g. from the lineup modal), overrides saved template / default. */
   ourSlotsOverride?: { player_id: string; position?: string | null }[] | null
-): Promise<Game | null> {
+): Promise<Game> {
   const created = await insertGame(game);
-  if (!created) return null;
   let slots: { player_id: string; position?: string | null }[] = [];
   const ourOverride = ourSlotsOverride?.filter((s) => s.player_id && !isDemoId(s.player_id)) ?? [];
   if (ourOverride.length > 0) {
@@ -1226,6 +1707,54 @@ export async function updatePlayer(
   const { data, error } = await supabase.from("players").update(updates).eq("id", id).select().single();
   if (error) throw new Error(error.message);
   return data as Player | null;
+}
+
+export async function getPlayerDeletionPreview(playerId: string): Promise<PlayerDeletionPreview | null> {
+  const supabase = await getSupabase();
+  if (!supabase || isDemoId(playerId)) return null;
+  const [pa, gl, sl] = await Promise.all([
+    supabase.from("plate_appearances").select("id", { count: "exact", head: true }).eq("batter_id", playerId),
+    supabase.from("game_lineups").select("id", { count: "exact", head: true }).eq("player_id", playerId),
+    supabase.from("saved_lineup_slots").select("id", { count: "exact", head: true }).eq("player_id", playerId),
+  ]);
+  return {
+    batterPlateAppearances: pa.count ?? 0,
+    gameLineups: gl.count ?? 0,
+    savedLineupSlots: sl.count ?? 0,
+  };
+}
+
+/**
+ * Deletes a player when they have no plate appearances as batter.
+ * Clears `game_lineups` and `saved_lineup_slots` rows for this player first.
+ * Pitching-only PAs (`pitcher_id`) null out automatically; baserunning as runner cascades.
+ */
+export async function deletePlayer(playerId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const supabase = await getSupabase();
+  if (!supabase || isDemoId(playerId)) return { ok: false, error: "Cannot delete this player." };
+
+  const preview = await getPlayerDeletionPreview(playerId);
+  if (!preview) return { ok: false, error: "Could not verify player data." };
+
+  if (preview.batterPlateAppearances > 0) {
+    return {
+      ok: false,
+      error: `This player has ${preview.batterPlateAppearances} plate appearance(s) as batter. Remove or change those PAs in game logs before deleting.`,
+    };
+  }
+
+  if (preview.gameLineups > 0) {
+    const { error: e1 } = await supabase.from("game_lineups").delete().eq("player_id", playerId);
+    if (e1) return { ok: false, error: e1.message };
+  }
+  if (preview.savedLineupSlots > 0) {
+    const { error: e2 } = await supabase.from("saved_lineup_slots").delete().eq("player_id", playerId);
+    if (e2) return { ok: false, error: e2.message };
+  }
+
+  const { error } = await supabase.from("players").delete().eq("id", playerId);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
 }
 
 /** Roster batting + last 10 PAs (by `created_at`) for the Players to Watch dashboard card. */

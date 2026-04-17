@@ -84,7 +84,7 @@ export function RunExpectancyClient({
           Run expectancy
         </h1>
         <p className="mt-1 text-sm text-[var(--text-muted)]">
-          Expected runs from each base/out state, built from your team&apos;s plate appearances.
+          Expected runs from each base/out state, built from logged plate appearances.
           Updates automatically when new game data is added. Use for in-game decisions and
           post-game analysis.
         </p>

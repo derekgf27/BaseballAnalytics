@@ -63,16 +63,16 @@ export function getOpponentRosterTag(
   if (!o) {
     return {
       kind: "club_only",
-      shortLabel: "Your club",
+      shortLabel: "Roster",
       title:
-        "This player is on your club roster with no opponent tag. They appear here from game lineups or plate appearances. Edit the player to set Opponent team, or fix the opponent lineup in the game if they were assigned by mistake.",
+        "This player is on the main roster with no opponent tag. They appear here from game lineups or plate appearances. Edit the player to set Opponent team, or fix the lineup in the game if they were assigned by mistake.",
     };
   }
   if (opponentNameKey(o) === opponentNameKey(opponentDisplayName)) {
     return {
       kind: "tagged",
-      shortLabel: "Opponent",
-      title: "Tagged as a player for this opponent team.",
+      shortLabel: "Scouting",
+      title: "Tagged as a player for this opponent organization.",
     };
   }
   return {

@@ -7,11 +7,12 @@ import { usePathname } from "next/navigation";
 const STORAGE_KEY = "coach-sidebar-collapsed";
 
 const LINKS = [
-  { href: "/coach", label: "Today", icon: "📋", exact: true },
-  { href: "/coach/lineup", label: "Lineup", icon: "📝", exact: false },
-  { href: "/coach/players", label: "Players", icon: "👤", exact: false },
-  { href: "/coach/green-light", label: "Green light", icon: "🟢", exact: false },
-  { href: "/coach/situation", label: "Situation", icon: "⚾", exact: false },
+  { href: "/coach", label: "Today", icon: "\u{1F4CB}", exact: true },
+  { href: "/coach/pitch-tracker", label: "Pitch tracker", icon: "\u{1F3AF}", exact: false },
+  { href: "/coach/players", label: "Players", icon: "\u{1F464}", exact: false },
+  { href: "/coach/lineup", label: "Lineup", icon: "\u{1F4DD}", exact: false },
+  { href: "/coach/green-light", label: "Green light", icon: "\u{1F7E2}", exact: false },
+  { href: "/coach/situation", label: "Situation", icon: "\u{26BE}", exact: false },
 ] as const;
 
 export function CoachNav() {
@@ -61,9 +62,9 @@ export function CoachNav() {
       <div className="border-b border-[var(--border)] p-2">
         <Link
           href="/coach"
-          className="font-display flex items-center gap-2 py-2 pl-2 text-sm font-semibold tracking-tight text-[var(--text)]"
+          className="font-orbitron flex items-center gap-2 py-2 pl-2 text-sm font-semibold tracking-tight text-[var(--text)]"
         >
-          <span className="sidebar-icon shrink-0 opacity-90">👟</span>
+          <span className="sidebar-icon shrink-0 opacity-90">{"\u{1F45F}"}</span>
           <span className="sidebar-label truncate text-[var(--accent-coach)]">Coach</span>
         </Link>
       </div>
@@ -71,9 +72,7 @@ export function CoachNav() {
         {LINKS.map((link) => {
           const { href, label, icon } = link;
           const exact = "exact" in link && link.exact;
-          const active = exact
-            ? pathname === href
-            : pathname.startsWith(href);
+          const active = exact ? pathname === href : pathname.startsWith(href);
           return (
             <Link
               key={href}
@@ -81,7 +80,9 @@ export function CoachNav() {
               className={`sidebar-link sidebar-link-coach ${active ? "[data-active=true]" : ""}`}
               data-active={active ? "true" : undefined}
             >
-              <span className="sidebar-icon" aria-hidden>{icon}</span>
+              <span className="sidebar-icon" aria-hidden>
+                {icon}
+              </span>
               <span className="sidebar-label">{label}</span>
             </Link>
           );
@@ -92,7 +93,9 @@ export function CoachNav() {
             className="sidebar-link sidebar-link-coach opacity-70"
             title="Exit to home"
           >
-            <span className="sidebar-icon" aria-hidden>←</span>
+            <span className="sidebar-icon" aria-hidden>
+              &larr;
+            </span>
             <span className="sidebar-label">Exit</span>
           </Link>
         </div>

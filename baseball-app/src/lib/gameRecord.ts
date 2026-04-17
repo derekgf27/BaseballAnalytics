@@ -1,11 +1,30 @@
 import type { Game } from "@/lib/types";
 
+/** Both final scores set on the game row — recording UI is locked; use Log for row edits or clear scores to reopen Record. */
+export function isGameFinalized(game: Game): boolean {
+  const h = game.final_score_home;
+  const a = game.final_score_away;
+  return h != null && a != null && !Number.isNaN(Number(h)) && !Number.isNaN(Number(a));
+}
+
 export interface TeamGameRecord {
   wins: number;
   losses: number;
   ties: number;
   /** Games with both final scores set (W+L+T). */
   decided: number;
+}
+
+/** Outcome for your club when both final scores are set; null if missing or invalid. */
+export function ourTeamOutcomeFromFinalScore(game: Game): "W" | "L" | "T" | null {
+  const h = game.final_score_home;
+  const a = game.final_score_away;
+  if (h == null || a == null || Number.isNaN(h) || Number.isNaN(a)) return null;
+  const ours = game.our_side === "home" ? h : a;
+  const theirs = game.our_side === "home" ? a : h;
+  if (ours > theirs) return "W";
+  if (ours < theirs) return "L";
+  return "T";
 }
 
 /** Win–loss from completed games (`final_score_*` set). Ties when scores are equal. */

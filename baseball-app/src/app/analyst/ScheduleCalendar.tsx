@@ -2,7 +2,13 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
+import { ourTeamOutcomeFromFinalScore } from "@/lib/gameRecord";
 import type { Game } from "@/lib/types";
+import {
+  analystGameLogHref,
+  analystGameReviewHref,
+  analystOpponentDetailHref,
+} from "@/lib/analystRoutes";
 
 const DAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"] as const;
 const MONTHS = [
@@ -19,6 +25,12 @@ function getOpponentLabel(game: Game): string {
 /** Opponent club name for links to Analyst → Opponents. */
 function getOpponentTeamName(game: Game): string {
   return (game.our_side === "home" ? game.away_team : game.home_team).trim();
+}
+
+function hasFinalScore(game: Game): boolean {
+  const h = game.final_score_home;
+  const a = game.final_score_away;
+  return h != null && a != null && !Number.isNaN(h) && !Number.isNaN(a);
 }
 
 function getCalendarGrid(year: number, month: number): (number | null)[][] {
@@ -196,19 +208,67 @@ export function ScheduleCalendar({ games }: ScheduleCalendarProps) {
                           <div className="mt-0.5 flex flex-1 flex-col gap-px overflow-hidden">
                             {dayGames.slice(0, 2).map((game) => {
                               const isHome = game.our_side === "home";
+                              const finalized = hasFinalScore(game);
+                              const outcome = finalized ? ourTeamOutcomeFromFinalScore(game) : null;
+                              const scoreTitle = finalized
+                                ? `${outcome ?? ""} ${game.final_score_away}-${game.final_score_home}`.trim()
+                                : "";
+                              const opponentName = getOpponentTeamName(game);
                               return (
-                                <Link
+                                <div
                                   key={game.id}
-                                  href={`/analyst/opponents/${encodeURIComponent(getOpponentTeamName(game))}`}
-                                  className={`rounded px-0.5 py-px text-left text-[10px] font-medium leading-tight transition break-words line-clamp-2 sm:text-[11px] ${
+                                  className={`flex flex-col gap-0.5 rounded px-0.5 py-px text-left text-[10px] font-medium leading-tight break-words sm:text-[11px] ${
                                     isHome
-                                      ? "text-[var(--accent)] hover:bg-[var(--accent)]/25"
-                                      : "text-[var(--danger)] hover:bg-[var(--danger)]/25"
+                                      ? "text-[var(--accent)]"
+                                      : "text-[var(--danger)]"
                                   }`}
-                                  title={`${getOpponentLabel(game)} — opponent roster & stats`}
                                 >
-                                  {getOpponentLabel(game)}
-                                </Link>
+                                  <Link
+                                    href={analystGameLogHref(game.id)}
+                                    className={`line-clamp-2 rounded px-0.5 py-px transition ${
+                                      isHome ? "hover:bg-[var(--accent)]/25" : "hover:bg-[var(--danger)]/25"
+                                    }`}
+                                    title={
+                                      finalized
+                                        ? `${getOpponentLabel(game)} — ${scoreTitle} — game log`
+                                        : `${getOpponentLabel(game)} — game log`
+                                    }
+                                  >
+                                    {getOpponentLabel(game)}
+                                    {finalized && outcome != null && (
+                                      <span className="mt-0.5 flex flex-wrap items-baseline gap-1 font-semibold tabular-nums leading-none">
+                                        <span
+                                          className={
+                                            outcome === "W"
+                                              ? "text-[var(--success)]"
+                                              : outcome === "L"
+                                                ? "text-[var(--danger)]"
+                                                : "text-[var(--text-muted)]"
+                                          }
+                                        >
+                                          {outcome}
+                                        </span>
+                                        <span className="text-[9px] font-medium text-[var(--text-muted)] sm:text-[10px]">
+                                          ({game.final_score_away}-{game.final_score_home})
+                                        </span>
+                                      </span>
+                                    )}
+                                  </Link>
+                                  <span className="flex flex-wrap gap-x-1.5 gap-y-px text-[9px] font-normal normal-case sm:text-[10px]">
+                                    <Link
+                                      href={analystGameReviewHref(game.id)}
+                                      className="text-[var(--text-muted)] underline-offset-2 hover:text-[var(--accent)] hover:underline"
+                                    >
+                                      Review
+                                    </Link>
+                                    <Link
+                                      href={analystOpponentDetailHref(opponentName)}
+                                      className="text-[var(--text-muted)] underline-offset-2 hover:text-[var(--accent)] hover:underline"
+                                    >
+                                      Opponent
+                                    </Link>
+                                  </span>
+                                </div>
                               );
                             })}
                             {dayGames.length > 2 && (

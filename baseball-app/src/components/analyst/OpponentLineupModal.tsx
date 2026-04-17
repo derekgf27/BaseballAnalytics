@@ -17,7 +17,8 @@ import { isClubRosterPlayer, isPitcherPlayer } from "@/lib/opponentUtils";
 import type { Player } from "@/lib/types";
 import { comparePlayersByLastNameThenFull } from "@/lib/playerSort";
 
-const LINEUP_POSITIONS = ["P", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"] as const;
+/** Field positions only — pitchers are set on the game, not in this batting-order modal. */
+const LINEUP_POSITIONS = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"] as const;
 
 /** Unassigned — frees the slot so another row can take that position. */
 const POSITION_UNASSIGNED = "";
@@ -388,12 +389,12 @@ export function OpponentLineupModal({
         <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
           <div>
             <h2 id="opp-lineup-title" className="font-display text-sm font-semibold uppercase tracking-wider text-white">
-              {isOur ? (lineupTitle?.trim() || "Your lineup") : "Opponent lineup"}
+              {isOur ? (lineupTitle?.trim() || "Lineup") : opponentName.trim() ? `Lineup — ${opponentName.trim()}` : "Lineup"}
             </h2>
             <p className="mt-1 text-xs text-[var(--text-muted)]">
               {isOur
-                ? "Drag players into batting order. Available players are your club roster (pitchers excluded — set them on the game). Use “—” in Pos to clear a spot while swapping positions."
-                : `Drag players into batting order. Pool shows opponent roster hitters (pitchers excluded). Use “—” in Pos to clear a spot while swapping positions.`}
+                ? "Drag players into batting order. Available players are the main roster (pitchers excluded — set them on the game). Use “—” in Pos to clear a spot while swapping positions."
+                : `Drag players into batting order. Pool shows hitters tagged for this opponent (pitchers excluded). Use “—” in Pos to clear a spot while swapping positions.`}
             </p>
           </div>
           <button
@@ -418,13 +419,13 @@ export function OpponentLineupModal({
           )}
           {!nameOk && (
             <p className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--warning)]">
-              Enter the opponent name in the form first.
+              Enter the other team name in the form first.
             </p>
           )}
           {nameOk && poolEmpty && isOur && (
             <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-3 text-sm text-[var(--text-muted)]">
               <p>No club roster players yet (or all are tagged as opponents).</p>
-              <Link href="/analyst/players" className="mt-2 inline-block text-[var(--accent)] hover:underline">
+              <Link href="/analyst/roster" className="mt-2 inline-block text-[var(--accent)] hover:underline">
                 Add players in Analyst → Players
               </Link>
             </div>
@@ -433,7 +434,7 @@ export function OpponentLineupModal({
             <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-3 text-sm text-[var(--text-muted)]">
               <p>No players tagged for this opponent yet.</p>
               <Link
-                href={`/analyst/players?opponentTeam=${encodeURIComponent(opponentName.trim())}`}
+                href={`/analyst/roster?opponentTeam=${encodeURIComponent(opponentName.trim())}`}
                 className="mt-2 inline-block text-[var(--accent)] hover:underline"
               >
                 Add opponent players in Analyst → Players
