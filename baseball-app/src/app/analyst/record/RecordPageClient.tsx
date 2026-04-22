@@ -2017,7 +2017,7 @@ export default function RecordPageClient({
     const prev = prevResultForBipDefaultRef.current;
     prevResultForBipDefaultRef.current = result;
     if (!result || !RESULT_ALLOWS_HIT_DIRECTION.has(result) || battedBallType != null) return;
-    const pref = readWorkflowDefaults().lastBattedBallType;
+    const pref = parsePersistedBattedBallType(readWorkflowDefaults().lastBattedBallType);
     if (!pref) return;
     if (prev == null || !RESULT_ALLOWS_HIT_DIRECTION.has(prev)) {
       setBattedBallType(pref);
@@ -3904,7 +3904,7 @@ export default function RecordPageClient({
 
             {/* Outcome */}
             <section
-              className="rounded border border-[var(--border)] bg-[var(--bg-elevated)] p-2 sm:p-3 lg:sticky lg:top-2 lg:z-10 lg:max-h-[calc(100dvh-5rem)] lg:overflow-y-auto lg:overscroll-contain"
+              className="rounded border border-[var(--border)] bg-[var(--bg-elevated)] p-2 sm:p-3 lg:sticky lg:top-2 lg:z-20 lg:max-h-[calc(100dvh-5rem)] lg:overflow-y-auto lg:overscroll-contain"
               aria-labelledby="record-h-outcome"
             >
               <h4
@@ -4097,7 +4097,7 @@ export default function RecordPageClient({
                             type="button"
                             title={title}
                             onClick={() =>
-                              setBattedBallType((t) => (t === value ? null : t))
+                              setBattedBallType((t) => (t === value ? null : value))
                             }
                             className={`min-h-[42px] w-full cursor-pointer rounded-lg border-2 px-2 py-2 text-center text-xs font-semibold transition duration-200 touch-manipulation sm:min-h-[44px] sm:px-2.5 sm:text-sm ${
                               battedBallType === value

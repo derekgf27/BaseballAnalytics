@@ -66,6 +66,10 @@ create table if not exists public.plate_appearances (
   runs_scored_charged_pitcher_by_scorer jsonb not null default '{}'::jsonb,
   stolen_bases int default 0 check (stolen_bases is null or (stolen_bases >= 0 and stolen_bases <= 10)),
   hit_direction text check (hit_direction is null or hit_direction in ('pulled', 'up_the_middle', 'opposite_field')),
+  batted_ball_type text check (
+    batted_ball_type is null
+    or batted_ball_type in ('ground_ball', 'line_drive', 'fly_ball', 'infield_fly')
+  ),
   pitcher_hand text check (pitcher_hand is null or pitcher_hand in ('L', 'R')),
   pitcher_id uuid references public.players(id) on delete set null,
   error_fielder_id uuid references public.players(id) on delete set null,
