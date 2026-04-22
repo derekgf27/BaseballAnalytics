@@ -52,6 +52,8 @@ export interface Game {
   pitch_tracker_group_id?: string | null;
   /** Current PA batter on Record — coach pad follows this. */
   pitch_tracker_batter_id?: string | null;
+  /** Batting-order slot (1–9) for that batter; synced from Record lineup. */
+  pitch_tracker_batter_slot?: number | null;
   /** Outs (0–2) on Record — coach pad follows this. */
   pitch_tracker_outs?: number | null;
   /** Defensive pitcher on Record — coach pad follows this. */
@@ -170,7 +172,15 @@ export type PitchEventInsert = Omit<PitchEvent, "id" | "created_at">;
 export type PitchEventDraft = Omit<PitchEventInsert, "pa_id">;
 
 /** Coach pitch-tracker pitch categories (stored lowercase). */
-export type PitchTrackerPitchType = "fastball" | "slider" | "curveball" | "changeup";
+export type PitchTrackerPitchType =
+  | "fastball"
+  | "sinker"
+  | "cutter"
+  | "slider"
+  | "sweeper"
+  | "curveball"
+  | "changeup"
+  | "splitter";
 
 /** Analyst-assigned pitch result on `pitches` rows (nullable until set). */
 export type PitchTrackerLogResult =
@@ -187,7 +197,8 @@ export interface PitchTrackerPitch {
   at_bat_id: string | null;
   tracker_group_id: string;
   pitch_number: number;
-  pitch_type: PitchTrackerPitchType;
+  /** Null until coach logs a type; outcome can still be set from Record pitch log. */
+  pitch_type: PitchTrackerPitchType | null;
   result: PitchTrackerLogResult | null;
   batter_id: string;
   pitcher_id: string | null;
@@ -388,6 +399,58 @@ export interface PitchingRateLine {
   ldPct?: number;
   fbPct?: number;
   iffPct?: number;
+  /** Pitches in the log with a non-null `pitch_type` (pitcher: thrown). */
+  plTyped?: number;
+  /** Mix / swing / whiff by coach pitch category (denominators: typed total; pitches of type; swings at type). */
+  plMixFB?: number;
+  plMixSI?: number;
+  plMixFC?: number;
+  plMixSL?: number;
+  plMixSW?: number;
+  plMixCB?: number;
+  plMixCH?: number;
+  plMixSP?: number;
+  plMixOT?: number;
+  plSwFB?: number;
+  plSwSI?: number;
+  plSwFC?: number;
+  plSwSL?: number;
+  plSwSW?: number;
+  plSwCB?: number;
+  plSwCH?: number;
+  plSwSP?: number;
+  plSwOT?: number;
+  plWhiffFB?: number;
+  plWhiffSI?: number;
+  plWhiffFC?: number;
+  plWhiffSL?: number;
+  plWhiffSW?: number;
+  plWhiffCB?: number;
+  plWhiffCH?: number;
+  plWhiffSP?: number;
+  plWhiffOT?: number;
+  /**
+   * Opponent AB / hits attributed by **final logged pitch** type (PA must count as AB).
+   * Used for per–pitch-type BAA; PAs with no pitch log or untyped final pitch are excluded.
+   */
+  plTxAbFB?: number;
+  plTxHFB?: number;
+  plTxAbSI?: number;
+  plTxHSI?: number;
+  plTxAbFC?: number;
+  plTxHFC?: number;
+  plTxAbSL?: number;
+  plTxHSL?: number;
+  plTxAbSW?: number;
+  plTxHSW?: number;
+  plTxAbCB?: number;
+  plTxHCB?: number;
+  plTxAbCH?: number;
+  plTxHCH?: number;
+  plTxAbSP?: number;
+  plTxHSP?: number;
+  plTxAbOT?: number;
+  plTxHOT?: number;
 }
 
 /** Pitching stats derived from PAs where this player is `pitcher_id` (not stored). */

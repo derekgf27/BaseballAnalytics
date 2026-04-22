@@ -8,11 +8,17 @@ import {
   type PitchMixExtrasAgg,
   type TwoStrikePitchAgg,
 } from "@/lib/compute/contactProfileFromPas";
+import { COACH_LIVE_AB_PA_ID } from "@/lib/compute/pitchTrackerCount";
 import {
   pitchMixFromPlateAppearancesOrPitchLog,
   type PitchMixRates,
 } from "@/lib/compute/battingStats";
+import {
+  pitchTypeDistributionFromPitchLog,
+  type PitchTypeDistributionResult,
+} from "@/lib/compute/pitchTypeDistributionFromPitchLog";
 import { formatBatterGameStatLine } from "@/lib/format/batterGameLine";
+import { pitchTrackerAbbrev, pitchTrackerTypeLabel } from "@/lib/pitchTrackerUi";
 import type { PitchEvent, PlateAppearance, Player } from "@/lib/types";
 
 const RESULT_ADDS_ONE_OUT = new Set<PlateAppearance["result"]>([
@@ -43,6 +49,25 @@ function pitcherIdsInOrder(pas: PlateAppearance[]): string[] {
     ids.push(pa.pitcher_id);
   }
   return ids;
+}
+
+/** Shared shell for the Record batter / pitcher pitch-data pair (equal padding, stretch in grid). */
+function pitchDataPairCardShellClass(compact: boolean): string {
+  const pad = compact ? "px-2 py-1.5" : "px-2.5 py-2";
+  return `batting-pitch-mix-card-root rounded-lg border border-[var(--border)] bg-[var(--bg-card)] ${pad} flex h-full min-h-0 min-w-0 flex-col`;
+}
+
+function pitchDataCardNameClass(compact: boolean): string {
+  return (
+    "truncate font-display font-semibold text-[var(--accent)] " +
+    (compact ? "text-sm sm:text-base" : "text-base sm:text-lg")
+  );
+}
+
+function pitchDataCardHeaderStatClass(compact: boolean): string {
+  return `min-w-0 flex-1 text-right font-semibold tabular-nums leading-tight text-[var(--text)] ${
+    compact ? "text-sm sm:text-base" : "text-base sm:text-lg"
+  }`;
 }
 
 function formatPct(rate: number | null): string {
@@ -116,6 +141,58 @@ const pitchMixMiniGridClass = (compact: boolean) =>
     ? "grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs leading-tight sm:text-sm"
     : "grid grid-cols-2 gap-x-4 gap-y-2 text-base leading-tight";
 
+/** Pitch-type mix strip: three columns to avoid a wide empty gap between two sparse columns. */
+const pitchMixDistributionGridClass = (compact: boolean) =>
+  compact
+    ? "grid grid-cols-3 gap-x-2 gap-y-1.5 text-xs leading-tight sm:gap-x-3 sm:text-sm"
+    : "grid grid-cols-3 gap-x-3 gap-y-2 text-base leading-tight";
+
+function PitchMixDistributionBlock({
+  dist,
+  compact,
+}: {
+  dist: PitchTypeDistributionResult;
+  compact: boolean;
+}) {
+  const valClass = "tabular-nums font-semibold text-[var(--accent)]";
+  if (dist.typedTotal <= 0 || dist.entries.length === 0) {
+    return (
+      <p
+        className={`leading-snug text-[var(--text-muted)] ${compact ? "text-xs" : "text-sm"}`}
+      >
+        No typed pitches in log yet
+      </p>
+    );
+  }
+  return (
+    <div
+      className={pitchMixDistributionGridClass(compact)}
+      role="group"
+      aria-label="Pitch type mix among logged pitches with a type"
+    >
+      {dist.entries.map((e) => {
+        const full = pitchTrackerTypeLabel(e.type);
+        return (
+          <span
+            key={e.type}
+            className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1"
+          >
+            <span
+              className="min-w-0 font-semibold text-white"
+              title={`${pitchTrackerAbbrev(e.type)} — ${full}`}
+            >
+              {full}:
+            </span>
+            <span className={valClass}>
+              {formatPct(e.pct)} ({e.count})
+            </span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 function PitchMixExtrasBlock({
   agg,
   compact,
@@ -123,7 +200,7 @@ function PitchMixExtrasBlock({
   agg: PitchMixExtrasAgg | undefined;
   compact: boolean;
 }) {
-  if (agg == null) return null;
+  const eff = agg ?? EMPTY_EXTRAS;
 
   const lab = (label: string, full: string) => (
     <span className="shrink-0 font-semibold text-white" title={compact ? undefined : full}>
@@ -134,17 +211,16 @@ function PitchMixExtrasBlock({
   const valClass = "tabular-nums font-semibold text-[var(--accent)]";
   const missingClass = "tabular-nums font-medium text-[var(--text-muted)]";
 
-  const pl = agg.pitchesLogged;
-  const bip = agg.bipTyped;
-  if (pl === 0 && bip === 0) return null;
+  const pl = eff.pitchesLogged;
+  const bip = eff.bipTyped;
 
-  const swingPct = pl > 0 ? agg.swings / pl : null;
-  const whiffPct = agg.swings > 0 ? agg.whiffs / agg.swings : null;
-  const foulPct = pl > 0 ? agg.fouls / pl : null;
-  const gbPct = bip > 0 ? agg.gb / bip : null;
-  const ldPct = bip > 0 ? agg.ld / bip : null;
-  const fbPct = bip > 0 ? agg.fb / bip : null;
-  const iffPct = bip > 0 ? agg.iff / bip : null;
+  const swingPct = pl > 0 ? eff.swings / pl : null;
+  const whiffPct = eff.swings > 0 ? eff.whiffs / eff.swings : null;
+  const foulPct = pl > 0 ? eff.fouls / pl : null;
+  const gbPct = bip > 0 ? eff.gb / bip : null;
+  const ldPct = bip > 0 ? eff.ld / bip : null;
+  const fbPct = bip > 0 ? eff.fb / bip : null;
+  const iffPct = bip > 0 ? eff.iff / bip : null;
 
   const cell = (label: string, title: string, value: ReactNode) => (
     <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
@@ -174,38 +250,14 @@ function PitchMixExtrasBlock({
       role="group"
       aria-label="Pitch log rates and batted ball mix"
     >
-      {pl > 0 && bip > 0 ? (
-        <>
-          {bipGb}
-          {swingSw}
-          {bipLd}
-          {swingFoul}
-          {bipFb}
-          {swingWhiff}
-          {bipIff}
-          {emptyCell}
-        </>
-      ) : null}
-      {pl > 0 && bip === 0 ? (
-        <>
-          {swingSw}
-          {swingWhiff}
-          {swingFoul}
-          {emptyCell}
-        </>
-      ) : null}
-      {pl === 0 && bip > 0 ? (
-        <>
-          {bipGb}
-          {emptyCell}
-          {bipLd}
-          {emptyCell}
-          {bipFb}
-          {emptyCell}
-          {bipIff}
-          {emptyCell}
-        </>
-      ) : null}
+      {bipGb}
+      {swingSw}
+      {bipLd}
+      {swingFoul}
+      {bipFb}
+      {swingWhiff}
+      {bipIff}
+      {emptyCell}
     </div>
   );
 }
@@ -254,7 +306,7 @@ function PitchMixRatesLine({
   const valClass = "tabular-nums font-semibold text-[var(--accent)]";
   const missingClass = "tabular-nums font-medium text-[var(--text-muted)]";
 
-  const showPitchLogCols = showLob && extras != null && extras.pitchesLogged > 0;
+  const pitchLog = extras != null && extras.pitchesLogged > 0;
   const emptyCell = <span className="min-h-[1em]" aria-hidden />;
 
   const fpsBlock = (
@@ -279,18 +331,22 @@ function PitchMixRatesLine({
       <span className={mix.strikePct != null ? valClass : missingClass}>{formatPct(mix.strikePct)}</span>
     </span>
   );
-  const ballsBlock = showPitchLogCols ? (
+  const ballsBlock = (
     <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
       {lab("Balls:", "Balls thrown (pitch log)")}
-      <span className={valClass}>{extras!.balls}</span>
+      <span className={pitchLog ? valClass : missingClass}>
+        {pitchLog ? extras!.balls : "—"}
+      </span>
     </span>
-  ) : null;
-  const strikesBlock = showPitchLogCols ? (
+  );
+  const strikesBlock = (
     <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
       {lab("Strikes:", "Strikes thrown (pitch log; fouls and BIP count +1 each)")}
-      <span className={valClass}>{extras!.strikesThrown}</span>
+      <span className={pitchLog ? valClass : missingClass}>
+        {pitchLog ? extras!.strikesThrown : "—"}
+      </span>
     </span>
-  ) : null;
+  );
   const pitchesBlock = (
     <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
       {lab("Pitches:", "Pitches thrown")}
@@ -316,12 +372,8 @@ function PitchMixRatesLine({
     <div className={pitchMixMiniGridClass(compact)} role="group" aria-label={ariaLabel}>
       {fpsBlock}
       {strikePctBlock}
-      {showPitchLogCols ? (
-        <>
-          {ballsBlock}
-          {strikesBlock}
-        </>
-      ) : null}
+      {ballsBlock}
+      {strikesBlock}
       {pitchesBlock}
       {ppaBlock}
       {showLob ? (
@@ -361,7 +413,7 @@ function TwoStrikePitchMetricsRow({
     agg.swingsAtTwoStrikes > 0 ? agg.whiffsAtTwoStrikes / agg.swingsAtTwoStrikes : null;
   const foulPct = p > 0 ? agg.foulsAtTwoStrikes / p : null;
 
-  const countLabel = perspective === "pitcher" ? "Thrown:" : "Pitches seen:";
+  const countLabel = perspective === "pitcher" ? "Pitches thrown:" : "Pitches seen:";
   const countTitle =
     perspective === "pitcher"
       ? "Pitches this pitcher threw with the batter already at 2 strikes"
@@ -374,68 +426,38 @@ function TwoStrikePitchMetricsRow({
 
   const gridClass = pitchMixMiniGridClass(compact);
 
-  const inner =
-    p === 0 ? (
-      <div
-        className={`${gridClass} items-center`}
-        role="group"
-        aria-label={aria}
-      >
-        {embedded ? null : (
-          <span
-            className="col-span-2 shrink-0 font-semibold uppercase tracking-wide text-white/90"
-            title={
-              perspective === "pitcher"
-                ? "Rates on pitches thrown when the hitter already had 2 strikes"
-                : "Rates on pitches when this batter already had 2 strikes"
-            }
-          >
-            2 strikes
-          </span>
-        )}
+  const inner = (
+    <div className={gridClass} role="group" aria-label={aria}>
+      {embedded ? null : (
         <span
-          className={`col-span-2 text-center ${missingClass}`}
+          className="col-span-2 shrink-0 font-semibold uppercase tracking-wide text-white/90"
           title={
             perspective === "pitcher"
-              ? "No logged pitch yet with the batter at 2 strikes"
-              : "No pitch in this game’s log was thrown with 2 strikes yet"
+              ? "Rates on pitches thrown when the hitter already had 2 strikes"
+              : "Rates on pitches when this batter already had 2 strikes"
           }
         >
-          —
+          2 strikes
         </span>
-      </div>
-    ) : (
-      <div className={gridClass} role="group" aria-label={aria}>
-        {embedded ? null : (
-          <span
-            className="col-span-2 shrink-0 font-semibold uppercase tracking-wide text-white/90"
-            title={
-              perspective === "pitcher"
-                ? "Rates on pitches thrown when the hitter already had 2 strikes"
-                : "Rates on pitches when this batter already had 2 strikes"
-            }
-          >
-            2 strikes
-          </span>
-        )}
-        <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
-          {lab("Sw%:", "Swings ÷ pitches at 2 strikes")}
-          <span className={swingPct != null ? valClass : missingClass}>{formatPct(swingPct)}</span>
-        </span>
-        <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
-          {lab("Whiff%:", "Swinging strikes ÷ swings at 2 strikes")}
-          <span className={whiffPct != null ? valClass : missingClass}>{formatPct(whiffPct)}</span>
-        </span>
-        <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
-          {lab("Foul%:", "Fouls ÷ pitches at 2 strikes (spoiling / fighting pitches off)")}
-          <span className={foulPct != null ? valClass : missingClass}>{formatPct(foulPct)}</span>
-        </span>
-        <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
-          {lab(countLabel, countTitle)}
-          <span className={valClass}>{p}</span>
-        </span>
-      </div>
-    );
+      )}
+      <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
+        {lab("Sw%:", "Swings ÷ pitches at 2 strikes")}
+        <span className={swingPct != null ? valClass : missingClass}>{formatPct(swingPct)}</span>
+      </span>
+      <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
+        {lab("Whiff%:", "Swinging strikes ÷ swings at 2 strikes")}
+        <span className={whiffPct != null ? valClass : missingClass}>{formatPct(whiffPct)}</span>
+      </span>
+      <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
+        {lab("Foul%:", "Fouls ÷ pitches at 2 strikes (spoiling / fighting pitches off)")}
+        <span className={foulPct != null ? valClass : missingClass}>{formatPct(foulPct)}</span>
+      </span>
+      <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
+        {lab(countLabel, countTitle)}
+        <span className={valClass}>{p}</span>
+      </span>
+    </div>
+  );
 
   if (embedded) return inner;
 
@@ -462,6 +484,8 @@ function PitchMixRow({
   showExtras = true,
   flush = false,
   omitName = false,
+  layout = "grid",
+  stripTypeDistribution = null,
 }: {
   name: string;
   mix: PitchMixLine;
@@ -483,6 +507,10 @@ function PitchMixRow({
   omitName?: boolean;
   /** `batter` for Current batter card; `pitcher` for mound pitch data. */
   twoStrikePerspective?: "batter" | "pitcher";
+  /** `strip`: horizontal Rates / Contact / 2-strike band (e.g. coach pitch pad header). */
+  layout?: "grid" | "strip";
+  /** When set, adds a full-width “Mix” row below the grid or as the second row in strip layout. */
+  stripTypeDistribution?: PitchTypeDistributionResult | null;
 }) {
   /** Keep name + stat mini-cards on one printed page (PDF / print dialog). */
   const breakKeepClass = "break-inside-avoid";
@@ -497,10 +525,51 @@ function PitchMixRow({
   const perspective = twoStrikePerspective ?? (showLob ? "pitcher" : "batter");
 
   const aggEff = extras ?? EMPTY_EXTRAS;
-  const contactHasSample = aggEff.pitchesLogged > 0 || aggEff.bipTyped > 0;
   const twoStrikeData = twoStrikeAgg ?? EMPTY_TWO_STRIKE_AGG;
   const ratesAria =
     variant === "team" ? "Team pitch data totals" : `Pitch mix for ${name}`;
+
+  const stripWrap = (child: ReactNode) =>
+    layout === "strip" ? (
+      <div className="min-w-0 flex-1 basis-[min(100%,11rem)] sm:basis-[10.5rem]">{child}</div>
+    ) : (
+      child
+    );
+
+  const gridClass = `pitch-mix-pdf-grid grid grid-cols-1 gap-2 lg:items-stretch ${
+    showExtras ? "lg:grid-cols-3" : "lg:grid-cols-2"
+  }`;
+
+  const stripTopRowClass =
+    "flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch";
+
+  const ratesMini = (
+    <PitchMixMiniCard title="Rates" compact={compact}>
+      <PitchMixRatesLine
+        mix={mix}
+        lob={lob}
+        compact={compact}
+        ariaLabel={ratesAria}
+        extras={extras}
+        showLob={showLob}
+      />
+    </PitchMixMiniCard>
+  );
+  const contactMini = (
+    <PitchMixMiniCard title="Contact" compact={compact}>
+      <PitchMixExtrasBlock agg={aggEff} compact={compact} />
+    </PitchMixMiniCard>
+  );
+  const twoStrikeMini = (
+    <PitchMixMiniCard title="2 strikes" compact={compact}>
+      <TwoStrikePitchMetricsRow
+        agg={twoStrikeData}
+        compact={compact}
+        perspective={perspective}
+        embedded
+      />
+    </PitchMixMiniCard>
+  );
 
   return (
     <Tag className={outerClass}>
@@ -509,48 +578,102 @@ function PitchMixRow({
           {name}
         </p>
       ) : null}
-      <div
-        className={`pitch-mix-pdf-grid grid grid-cols-1 gap-2 lg:items-stretch ${
-          showExtras ? "lg:grid-cols-3" : "lg:grid-cols-2"
-        }`}
-      >
-        <PitchMixMiniCard title="Rates" compact={compact}>
-          <PitchMixRatesLine
-            mix={mix}
-            lob={lob}
-            compact={compact}
-            ariaLabel={ratesAria}
-            extras={extras}
-            showLob={showLob}
-          />
-        </PitchMixMiniCard>
-        {showExtras ? (
-          <PitchMixMiniCard title="Contact" compact={compact}>
-            {contactHasSample ? (
-              <PitchMixExtrasBlock agg={aggEff} compact={compact} />
-            ) : (
-              <div
-                className={`${pitchMixMiniGridClass(compact)} min-h-[2.75rem] items-center`}
-                role="group"
-                aria-label="Contact rates — no pitch log in sample"
-              >
-                <span className="col-span-2 text-center font-medium tabular-nums text-[var(--text-muted)]">
-                  —
-                </span>
-              </div>
-            )}
-          </PitchMixMiniCard>
-        ) : null}
-        <PitchMixMiniCard title="2 strikes" compact={compact}>
-          <TwoStrikePitchMetricsRow
-            agg={twoStrikeData}
-            compact={compact}
-            perspective={perspective}
-            embedded
-          />
-        </PitchMixMiniCard>
-      </div>
+      {layout === "strip" ? (
+        <div className="flex min-w-0 flex-col gap-2">
+          <div className={stripTopRowClass}>
+            {stripWrap(ratesMini)}
+            {showExtras ? stripWrap(contactMini) : null}
+            {stripWrap(twoStrikeMini)}
+          </div>
+          {stripTypeDistribution != null ? (
+            <div className="min-w-0 w-full">
+              <PitchMixMiniCard title="Mix" compact={compact}>
+                <PitchMixDistributionBlock dist={stripTypeDistribution} compact={compact} />
+              </PitchMixMiniCard>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <>
+          <div className={gridClass}>
+            {stripWrap(ratesMini)}
+            {showExtras ? stripWrap(contactMini) : null}
+            {stripWrap(twoStrikeMini)}
+          </div>
+          {stripTypeDistribution != null ? (
+            <div className="mt-2 min-w-0 w-full">
+              <PitchMixMiniCard title="Mix" compact={compact}>
+                <PitchMixDistributionBlock dist={stripTypeDistribution} compact={compact} />
+              </PitchMixMiniCard>
+            </div>
+          ) : null}
+        </>
+      )}
     </Tag>
+  );
+}
+
+/**
+ * Horizontal Rates / Contact / 2-strike metrics for the current batter vs `currentPitcherId`
+ * in `pas` (e.g. coach pitch pad header).
+ */
+export function MatchupPitchMixStrip({
+  pas,
+  pitchEvents = [],
+  /** When set (e.g. coach pad), used only for the “Mix” block so typed pitches count before Record sets `result`. */
+  distributionPitchEvents,
+  currentPitcherId,
+  compact = true,
+}: {
+  pas: PlateAppearance[];
+  pitchEvents?: PitchEvent[];
+  distributionPitchEvents?: PitchEvent[];
+  currentPitcherId: string | null;
+  compact?: boolean;
+}) {
+  const eventsByPaId = useMemo(() => groupPitchEventsByPaId(pitchEvents), [pitchEvents]);
+  const eventsByPaIdForDistribution = useMemo(
+    () => groupPitchEventsByPaId(distributionPitchEvents ?? pitchEvents),
+    [distributionPitchEvents, pitchEvents]
+  );
+
+  const row = useMemo(() => {
+    if (typeof currentPitcherId !== "string" || currentPitcherId.length === 0) return null;
+    const pitcherPas = pas.filter((p) => p.pitcher_id === currentPitcherId);
+    const lobByPitcher = lobByPitcherFromPas(pas);
+    const mix = pitchMixFromPlateAppearancesOrPitchLog(pitcherPas, eventsByPaId);
+    const extras = aggregatePitchMixExtrasFromPas(pitcherPas, eventsByPaId);
+    const twoStrikeAgg = aggregateTwoStrikePitchAggFromPas(pitcherPas, eventsByPaId);
+    const lob = lobByPitcher.get(currentPitcherId) ?? 0;
+    const stripTypeDistribution = pitchTypeDistributionFromPitchLog(
+      pitcherPas,
+      eventsByPaIdForDistribution
+    );
+    return { mix, lob, extras, twoStrikeAgg, stripTypeDistribution };
+  }, [currentPitcherId, pas, eventsByPaId, eventsByPaIdForDistribution]);
+
+  if (!row) return null;
+
+  const nameClass =
+    "truncate font-display font-semibold text-[var(--accent)] " + (compact ? "text-xs" : "text-sm");
+
+  return (
+    <PitchMixRow
+      name="Matchup pitch data"
+      mix={row.mix}
+      lob={row.lob}
+      extras={row.extras}
+      twoStrikeAgg={row.twoStrikeAgg}
+      twoStrikePerspective="pitcher"
+      nameClass={nameClass}
+      compact={compact}
+      multi={false}
+      as="div"
+      flush
+      omitName
+      layout="strip"
+      stripTypeDistribution={row.stripTypeDistribution}
+    />
   );
 }
 
@@ -583,9 +706,10 @@ export function BattingPitchMixCard({
       const mix = pitchMixFromPlateAppearancesOrPitchLog(pitcherPas, eventsByPaId);
       const extras = aggregatePitchMixExtrasFromPas(pitcherPas, eventsByPaId);
       const twoStrikeAgg = aggregateTwoStrikePitchAggFromPas(pitcherPas, eventsByPaId);
+      const stripTypeDistribution = pitchTypeDistributionFromPitchLog(pitcherPas, eventsByPaId);
       const name = byId.get(pitcherId)?.name?.trim() || "Unknown";
       const lob = lobByPitcher.get(pitcherId) ?? 0;
-      return { pitcherId, name, mix, lob, extras, twoStrikeAgg };
+      return { pitcherId, name, mix, lob, extras, twoStrikeAgg, stripTypeDistribution };
     });
   }, [pas, players, eventsByPaId]);
 
@@ -606,6 +730,10 @@ export function BattingPitchMixCard({
     for (const v of lobByPitcherFromPas(pas).values()) s += v;
     return s;
   }, [pas]);
+  const teamStripDistribution = useMemo(
+    () => pitchTypeDistributionFromPitchLog(pas, eventsByPaId),
+    [pas, eventsByPaId]
+  );
 
   const multi = rows.length > 1;
   const highlightCurrent =
@@ -619,19 +747,13 @@ export function BattingPitchMixCard({
     const mix = pitchMixFromPlateAppearancesOrPitchLog(pitcherPas, eventsByPaId);
     const extras = aggregatePitchMixExtrasFromPas(pitcherPas, eventsByPaId);
     const twoStrikeAgg = aggregateTwoStrikePitchAggFromPas(pitcherPas, eventsByPaId);
+    const stripTypeDistribution = pitchTypeDistributionFromPitchLog(pitcherPas, eventsByPaId);
     const name = byId.get(currentPitcherId)?.name?.trim() || "Unknown";
     const lob = lobByPitcher.get(currentPitcherId) ?? 0;
-    return { pitcherId: currentPitcherId, name, mix, lob, extras, twoStrikeAgg };
+    return { pitcherId: currentPitcherId, name, mix, lob, extras, twoStrikeAgg, stripTypeDistribution };
   }, [highlightCurrent, currentPitcherId, pas, players, eventsByPaId]);
 
-  const pad = compact ? "px-2 py-1.5" : "px-2.5 py-2";
-  const titleClass = compact
-    ? "font-display text-[9px] font-semibold uppercase tracking-wider text-white"
-    : "font-display text-xs font-semibold uppercase tracking-wider text-white";
-
-  const nameClass =
-    "truncate font-display font-semibold text-[var(--accent)] " +
-    (compact ? "text-xs" : "text-sm");
+  const nameClass = pitchDataCardNameClass(compact);
 
   const teamTotalsNameClass =
     "truncate font-display font-bold uppercase tracking-[0.12em] text-white " +
@@ -654,39 +776,54 @@ export function BattingPitchMixCard({
         multi
         variant="team"
         as="div"
+        stripTypeDistribution={teamStripDistribution}
       />
     </div>
   );
 
   return (
-    <div className={`batting-pitch-mix-card-root rounded-lg border border-[var(--border)] bg-[var(--bg-card)] ${pad}`}>
-      <div
-        className={`flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0 ${compact ? "mb-1" : "mb-2"}`}
-      >
-        <h3 className={titleClass}>Pitch data</h3>
-        {!highlightCurrent && multi ? (
+    <div className={pitchDataPairCardShellClass(compact)} aria-label="Pitch data">
+      {!highlightCurrent && multi ? (
+        <div className="mb-1 flex flex-wrap items-baseline justify-end gap-x-2">
           <span className="text-[9px] font-medium tabular-nums text-[var(--text-muted)]">
             {rows.length} pitchers
           </span>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {rows.length === 0 && !(highlightCurrent && primaryRow) ? (
         <p className="text-[10px] text-[var(--text-muted)]">—</p>
       ) : highlightCurrent && primaryRow ? (
-        <PitchMixRow
-          key={primaryRow.pitcherId}
-          name={primaryRow.name}
-          mix={primaryRow.mix}
-          lob={primaryRow.lob}
-          extras={primaryRow.extras}
-          twoStrikeAgg={primaryRow.twoStrikeAgg}
-          nameClass={nameClass}
-          compact={compact}
-          multi={false}
-          flush
-          as="div"
-        />
+        <>
+          <div className="mb-1.5 flex flex-wrap items-start gap-x-3 gap-y-0.5">
+            <p className={`min-w-0 flex-1 ${nameClass}`} title={primaryRow.name}>
+              {primaryRow.name}
+            </p>
+            <p
+              className={`${pitchDataCardHeaderStatClass(compact)} text-transparent`}
+              aria-hidden
+            >
+              &nbsp;
+            </p>
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col">
+            <PitchMixRow
+              key={primaryRow.pitcherId}
+              name={primaryRow.name}
+              mix={primaryRow.mix}
+              lob={primaryRow.lob}
+              extras={primaryRow.extras}
+              twoStrikeAgg={primaryRow.twoStrikeAgg}
+              nameClass={nameClass}
+              compact={compact}
+              multi={false}
+              flush
+              as="div"
+              omitName
+              stripTypeDistribution={primaryRow.stripTypeDistribution}
+            />
+          </div>
+        </>
       ) : multi ? (
         <div className="batting-pitch-mix-inner-scroll overflow-x-hidden rounded border border-[var(--border)]/60 bg-[var(--bg-elevated)]/30">
           <ul className="divide-y divide-[var(--border)]/50">
@@ -701,6 +838,7 @@ export function BattingPitchMixCard({
                 nameClass={nameClass}
                 compact={compact}
                 multi
+                stripTypeDistribution={row.stripTypeDistribution}
               />
             ))}
           </ul>
@@ -719,6 +857,7 @@ export function BattingPitchMixCard({
               nameClass={nameClass}
               compact={compact}
               multi={false}
+              stripTypeDistribution={row.stripTypeDistribution}
             />
           ))}
         </ul>
@@ -756,9 +895,10 @@ export function PitchingPitchMixSupplement({
       const mix = pitchMixFromPlateAppearancesOrPitchLog(pitcherPas, eventsByPaId);
       const extras = aggregatePitchMixExtrasFromPas(pitcherPas, eventsByPaId);
       const twoStrikeAgg = aggregateTwoStrikePitchAggFromPas(pitcherPas, eventsByPaId);
+      const stripTypeDistribution = pitchTypeDistributionFromPitchLog(pitcherPas, eventsByPaId);
       const name = byId.get(pitcherId)?.name?.trim() || "Unknown";
       const lob = lobByPitcher.get(pitcherId) ?? 0;
-      return { pitcherId, name, mix, lob, extras, twoStrikeAgg };
+      return { pitcherId, name, mix, lob, extras, twoStrikeAgg, stripTypeDistribution };
     });
   }, [pas, players, eventsByPaId]);
 
@@ -779,17 +919,18 @@ export function PitchingPitchMixSupplement({
     for (const v of lobByPitcherFromPas(pas).values()) s += v;
     return s;
   }, [pas]);
+  const teamStripDistribution = useMemo(
+    () => pitchTypeDistributionFromPitchLog(pas, eventsByPaId),
+    [pas, eventsByPaId]
+  );
 
   if (!highlight || pas.length === 0) return null;
 
-  const pad = compact ? "px-2 py-1.5" : "px-2.5 py-2";
   const titleClass = compact
     ? "font-display text-[9px] font-semibold uppercase tracking-wider text-white"
     : "font-display text-xs font-semibold uppercase tracking-wider text-white";
 
-  const nameClass =
-    "truncate font-display font-semibold text-[var(--accent)] " +
-    (compact ? "text-xs" : "text-sm");
+  const nameClass = pitchDataCardNameClass(compact);
 
   const teamTotalsNameClass =
     "truncate font-display font-bold uppercase tracking-[0.12em] text-white " +
@@ -812,12 +953,13 @@ export function PitchingPitchMixSupplement({
         multi
         variant="team"
         as="div"
+        stripTypeDistribution={teamStripDistribution}
       />
     </div>
   );
 
   return (
-    <div className={`batting-pitch-mix-card-root rounded-lg border border-[var(--border)] bg-[var(--bg-card)] ${pad}`}>
+    <div className={pitchDataPairCardShellClass(compact)}>
       <div className={compact ? "mb-1" : "mb-2"}>
         <h3 className={titleClass}>Staff & totals</h3>
         {rows.length > 0 ? (
@@ -848,6 +990,7 @@ export function PitchingPitchMixSupplement({
                 nameClass={nameClass}
                 compact={compact}
                 multi
+                stripTypeDistribution={row.stripTypeDistribution}
               />
             ))}
           </ul>
@@ -866,14 +1009,24 @@ export function CurrentBatterPitchDataCard({
   batterName,
   pas,
   pitchEvents = [],
+  /** When set (e.g. coach pad), used only for “Mix” so typed pitches count before Record sets `result`. */
+  distributionPitchEvents,
   compact = false,
+  /** When true, only name + game line (e.g. coach pad shows pitch mix in page header). */
+  omitPitchMixRow = false,
 }: {
   batterName: string;
   pas: PlateAppearance[];
   pitchEvents?: PitchEvent[];
+  distributionPitchEvents?: PitchEvent[];
   compact?: boolean;
+  omitPitchMixRow?: boolean;
 }) {
   const eventsByPaId = useMemo(() => groupPitchEventsByPaId(pitchEvents), [pitchEvents]);
+  const eventsByPaIdForDistribution = useMemo(
+    () => groupPitchEventsByPaId(distributionPitchEvents ?? pitchEvents),
+    [distributionPitchEvents, pitchEvents]
+  );
   const mix = useMemo(
     () => pitchMixFromPlateAppearancesOrPitchLog(pas, eventsByPaId),
     [pas, eventsByPaId]
@@ -886,9 +1039,14 @@ export function CurrentBatterPitchDataCard({
     () => aggregateTwoStrikePitchAggFromPas(pas, eventsByPaId),
     [pas, eventsByPaId]
   );
-  /** Record PAs: unsaved row uses this id — must not count toward H-AB / game line. */
+  const stripTypeDistribution = useMemo(
+    () => pitchTypeDistributionFromPitchLog(pas, eventsByPaIdForDistribution),
+    [pas, eventsByPaIdForDistribution]
+  );
+  /** Record PAs: unsaved / coach-live rows must not count toward H-AB / game line. */
   const pasForGameStatLine = useMemo(
-    () => pas.filter((p) => p.id !== "__draft_pitch_mix__"),
+    () =>
+      pas.filter((p) => p.id !== "__draft_pitch_mix__" && p.id !== COACH_LIVE_AB_PA_ID),
     [pas]
   );
   const gameStatLine = useMemo(
@@ -896,42 +1054,41 @@ export function CurrentBatterPitchDataCard({
     [pasForGameStatLine]
   );
 
-  const pad = compact ? "px-2 py-1.5" : "px-2.5 py-2";
-
-  const nameClass =
-    "truncate font-display font-semibold text-[var(--accent)] " +
-    (compact ? "text-xs" : "text-sm");
+  const nameClass = pitchDataCardNameClass(compact);
 
   return (
-    <div className={`rounded-lg border border-[var(--border)] bg-[var(--bg-card)] ${pad}`}>
+    <div className={pitchDataPairCardShellClass(compact)} aria-label="Batter pitch data">
       <div className="mb-1.5 flex flex-wrap items-start gap-x-3 gap-y-0.5">
         <p className={`min-w-0 flex-1 ${nameClass}`} title={batterName}>
           {batterName}
         </p>
         <p
-          className={`min-w-0 flex-1 text-right font-semibold tabular-nums leading-tight text-[var(--text)] ${
-            compact ? "text-sm sm:text-base" : "text-base sm:text-lg"
-          }`}
+          className={pitchDataCardHeaderStatClass(compact)}
           title="This game — completed PAs: H-AB, results in order, RBI (current PA on the form is not included)"
         >
           {gameStatLine}
         </p>
       </div>
-      <PitchMixRow
-        name={batterName}
-        mix={mix}
-        lob={0}
-        extras={extras}
-        twoStrikeAgg={twoStrikeAgg}
-        twoStrikePerspective="batter"
-        nameClass={nameClass}
-        compact={compact}
-        multi={false}
-        showLob={false}
-        flush
-        as="div"
-        omitName
-      />
+      {omitPitchMixRow ? null : (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <PitchMixRow
+            name={batterName}
+            mix={mix}
+            lob={0}
+            extras={extras}
+            twoStrikeAgg={twoStrikeAgg}
+            twoStrikePerspective="batter"
+            nameClass={nameClass}
+            compact={compact}
+            multi={false}
+            showLob={false}
+            flush
+            as="div"
+            omitName
+            stripTypeDistribution={stripTypeDistribution}
+          />
+        </div>
+      )}
     </div>
   );
 }

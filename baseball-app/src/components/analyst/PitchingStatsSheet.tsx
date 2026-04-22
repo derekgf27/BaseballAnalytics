@@ -9,6 +9,7 @@ import { REGULATION_INNINGS } from "@/lib/leagueConfig";
 import { PITCHING_STAT_HEADER_TOOLTIPS } from "@/lib/statHeaderTooltips";
 import type {
   BattingFinalCountBucketKey,
+  PitchingRateLine,
   PitchingStats,
   PitchingStatsWithSplits,
   Player,
@@ -57,9 +58,55 @@ type PitchSortKey =
   | "ldPct"
   | "fbPct"
   | "iffPct"
-  | "e";
+  | "e"
+  | "plTyped"
+  | "plMixFB"
+  | "plMixSI"
+  | "plMixFC"
+  | "plMixSL"
+  | "plMixSW"
+  | "plMixCB"
+  | "plMixCH"
+  | "plMixSP"
+  | "plMixOT"
+  | "plSwFB"
+  | "plSwSI"
+  | "plSwFC"
+  | "plSwSL"
+  | "plSwSW"
+  | "plSwCB"
+  | "plSwCH"
+  | "plSwSP"
+  | "plSwOT"
+  | "plWhiffFB"
+  | "plWhiffSI"
+  | "plWhiffFC"
+  | "plWhiffSL"
+  | "plWhiffSW"
+  | "plWhiffCB"
+  | "plWhiffCH"
+  | "plWhiffSP"
+  | "plWhiffOT"
+  | "plBaaFB"
+  | "plBaaSI"
+  | "plBaaFC"
+  | "plBaaSL"
+  | "plBaaSW"
+  | "plBaaCB"
+  | "plBaaCH"
+  | "plBaaSP"
+  | "plBaaOT";
 
-type ColFormat = "name" | "int" | "era" | "ip" | "rate7" | "pct" | "pPa" | "avgAgainst";
+type ColFormat =
+  | "name"
+  | "int"
+  | "era"
+  | "ip"
+  | "rate7"
+  | "pct"
+  | "pPa"
+  | "avgAgainst"
+  | "avgPitchType";
 
 const RI = REGULATION_INNINGS;
 
@@ -167,6 +214,304 @@ const CONTACT_PITCH_COLUMNS: (typeof COLUMNS)[number][] = [
   COLUMNS.find((c) => c.key === "e")!,
 ];
 
+const PITCH_TYPE_PITCH_COLUMNS: (typeof COLUMNS)[number][] = [
+  COLUMNS[0]!,
+  COLUMNS[1]!,
+  COLUMNS[2]!,
+  COLUMNS[3]!,
+  {
+    key: "bf",
+    label: "PA",
+    align: "right",
+    format: "int",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.paPitchContact,
+  },
+  {
+    key: "plTyped",
+    label: "Typed",
+    align: "right",
+    format: "int",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plTypedPitch,
+  },
+  {
+    key: "plMixFB",
+    label: "FB%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plMixFBPitch,
+  },
+  {
+    key: "plMixSI",
+    label: "SI%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plMixSIPitch,
+  },
+  {
+    key: "plMixFC",
+    label: "FC%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plMixFCPitch,
+  },
+  {
+    key: "plMixSL",
+    label: "SL%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plMixSLPitch,
+  },
+  {
+    key: "plMixSW",
+    label: "SW%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plMixSWPitch,
+  },
+  {
+    key: "plMixCB",
+    label: "CB%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plMixCBPitch,
+  },
+  {
+    key: "plMixCH",
+    label: "CH%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plMixCHPitch,
+  },
+  {
+    key: "plMixSP",
+    label: "SP%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plMixSPPitch,
+  },
+  {
+    key: "plMixOT",
+    label: "OT%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plMixOTPitch,
+  },
+  {
+    key: "plSwFB",
+    label: "FB Sw%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plSwFBPitch,
+  },
+  {
+    key: "plSwSI",
+    label: "SI Sw%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plSwSIPitch,
+  },
+  {
+    key: "plSwFC",
+    label: "FC Sw%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plSwFCPitch,
+  },
+  {
+    key: "plSwSL",
+    label: "SL Sw%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plSwSLPitch,
+  },
+  {
+    key: "plSwSW",
+    label: "SW Sw%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plSwSWPitch,
+  },
+  {
+    key: "plSwCB",
+    label: "CB Sw%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plSwCBPitch,
+  },
+  {
+    key: "plSwCH",
+    label: "CH Sw%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plSwCHPitch,
+  },
+  {
+    key: "plSwSP",
+    label: "SP Sw%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plSwSPPitch,
+  },
+  {
+    key: "plSwOT",
+    label: "OT Sw%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plSwOTPitch,
+  },
+  {
+    key: "plWhiffFB",
+    label: "FB Whiff%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plWhiffFBPitch,
+  },
+  {
+    key: "plWhiffSI",
+    label: "SI Whiff%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plWhiffSIPitch,
+  },
+  {
+    key: "plWhiffFC",
+    label: "FC Whiff%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plWhiffFCPitch,
+  },
+  {
+    key: "plWhiffSL",
+    label: "SL Whiff%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plWhiffSLPitch,
+  },
+  {
+    key: "plWhiffSW",
+    label: "SW Whiff%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plWhiffSWPitch,
+  },
+  {
+    key: "plWhiffCB",
+    label: "CB Whiff%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plWhiffCBPitch,
+  },
+  {
+    key: "plWhiffCH",
+    label: "CH Whiff%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plWhiffCHPitch,
+  },
+  {
+    key: "plWhiffSP",
+    label: "SP Whiff%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plWhiffSPPitch,
+  },
+  {
+    key: "plWhiffOT",
+    label: "OT Whiff%",
+    align: "right",
+    format: "pct",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plWhiffOTPitch,
+  },
+  {
+    key: "plBaaFB",
+    label: "FB AVG",
+    align: "right",
+    format: "avgPitchType",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plBaaFBPitch,
+  },
+  {
+    key: "plBaaSI",
+    label: "SI AVG",
+    align: "right",
+    format: "avgPitchType",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plBaaSIPitch,
+  },
+  {
+    key: "plBaaFC",
+    label: "FC AVG",
+    align: "right",
+    format: "avgPitchType",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plBaaFCPitch,
+  },
+  {
+    key: "plBaaSL",
+    label: "SL AVG",
+    align: "right",
+    format: "avgPitchType",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plBaaSLPitch,
+  },
+  {
+    key: "plBaaSW",
+    label: "SW AVG",
+    align: "right",
+    format: "avgPitchType",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plBaaSWPitch,
+  },
+  {
+    key: "plBaaCB",
+    label: "CB AVG",
+    align: "right",
+    format: "avgPitchType",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plBaaCBPitch,
+  },
+  {
+    key: "plBaaCH",
+    label: "CH AVG",
+    align: "right",
+    format: "avgPitchType",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plBaaCHPitch,
+  },
+  {
+    key: "plBaaSP",
+    label: "SP AVG",
+    align: "right",
+    format: "avgPitchType",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plBaaSPPitch,
+  },
+  {
+    key: "plBaaOT",
+    label: "OT AVG",
+    align: "right",
+    format: "avgPitchType",
+    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plBaaOTPitch,
+  },
+  COLUMNS.find((c) => c.key === "e")!,
+];
+
+/** No bold “leader” styling — usage / swing context is ambiguous in a max/min sense. */
+const PITCH_SHEET_PITCH_TYPE_NEUTRAL = new Set<PitchSortKey>([
+  "ir",
+  "plTyped",
+  "plMixFB",
+  "plMixSI",
+  "plMixFC",
+  "plMixSL",
+  "plMixSW",
+  "plMixCB",
+  "plMixCH",
+  "plMixSP",
+  "plMixOT",
+  "plSwFB",
+  "plSwSI",
+  "plSwFC",
+  "plSwSL",
+  "plSwSW",
+  "plSwCB",
+  "plSwCH",
+  "plSwSP",
+  "plSwOT",
+]);
+
 const LOWER_BETTER = new Set<PitchSortKey>([
   "era",
   "fip",
@@ -185,14 +530,60 @@ const LOWER_BETTER = new Set<PitchSortKey>([
   "bbPct",
   "pPa",
   "e",
+  "plBaaFB",
+  "plBaaSI",
+  "plBaaFC",
+  "plBaaSL",
+  "plBaaSW",
+  "plBaaCB",
+  "plBaaCH",
+  "plBaaSP",
+  "plBaaOT",
 ]);
 
-const HIGHER_BETTER = new Set<PitchSortKey>(["so", "k7", "kPct", "whiffPct"]);
+const HIGHER_BETTER = new Set<PitchSortKey>([
+  "so",
+  "k7",
+  "kPct",
+  "whiffPct",
+  "plWhiffFB",
+  "plWhiffSI",
+  "plWhiffFC",
+  "plWhiffSL",
+  "plWhiffSW",
+  "plWhiffCB",
+  "plWhiffCH",
+  "plWhiffSP",
+  "plWhiffOT",
+]);
 
-type PitchColumnMode = "standard" | "contact";
+type PitchColumnMode = "standard" | "contact" | "pitchTypes";
 
 function contactPitchBorderLeft(key: PitchSortKey): boolean {
   return key === "pPa" || key === "swingPct" || key === "gbPct";
+}
+
+function pitchTypePitchBorderLeft(key: PitchSortKey): boolean {
+  return (
+    key === "bf" ||
+    key === "plTyped" ||
+    key === "plMixFB" ||
+    key === "plSwFB" ||
+    key === "plWhiffFB" ||
+    key === "plBaaFB" ||
+    key === "e"
+  );
+}
+
+function pitchSheetHeaderBorderLeft(
+  columnMode: PitchColumnMode,
+  key: PitchSortKey,
+  borderLeft: boolean | undefined,
+  idx: number
+): boolean {
+  if (columnMode === "contact") return contactPitchBorderLeft(key) || borderLeft === true || idx === 0;
+  if (columnMode === "pitchTypes") return pitchTypePitchBorderLeft(key) || idx === 0;
+  return borderLeft === true || idx === 0;
 }
 
 const OVERALL_PER7: PitchSortKey[] = ["k7", "bb7", "h7", "hr7"];
@@ -242,6 +633,37 @@ function formatOppBattingAvg(stats: PitchingStats): string {
   const s = v.toFixed(3);
   return s.startsWith("0.") ? s.slice(1) : s;
 }
+
+function pitchTypeBaaFromRates(
+  rates: PitchingRateLine,
+  abKey: keyof PitchingRateLine,
+  hKey: keyof PitchingRateLine
+): number | undefined {
+  const ab = rates[abKey];
+  const h = rates[hKey];
+  const abN = typeof ab === "number" && !Number.isNaN(ab) ? ab : 0;
+  const hN = typeof h === "number" && !Number.isNaN(h) ? h : 0;
+  return abN >= 1 ? hN / abN : undefined;
+}
+
+function formatPitchTypeBaa(rate: number | undefined): string {
+  if (rate === undefined) return "—";
+  const s = rate.toFixed(3);
+  return s.startsWith("0.") ? s.slice(1) : s;
+}
+
+/** AB denominator for per–pitch-type AVG (for leader styling). */
+const PITCH_BAA_AB_KEY: Partial<Record<PitchSortKey, keyof PitchingRateLine>> = {
+  plBaaFB: "plTxAbFB",
+  plBaaSI: "plTxAbSI",
+  plBaaFC: "plTxAbFC",
+  plBaaSL: "plTxAbSL",
+  plBaaSW: "plTxAbSW",
+  plBaaCB: "plTxAbCB",
+  plBaaCH: "plTxAbCH",
+  plBaaSP: "plTxAbSP",
+  plBaaOT: "plTxAbOT",
+};
 
 function getPitchingLineForSheet(
   splits: Record<string, PitchingStatsWithSplits>,
@@ -348,6 +770,80 @@ function getPitchingStatValue(stats: PitchingStats | undefined, key: PitchSortKe
       return stats.rates.fbPct ?? undefined;
     case "iffPct":
       return stats.rates.iffPct ?? undefined;
+    case "plTyped":
+      return stats.rates.plTyped ?? undefined;
+    case "plMixFB":
+      return stats.rates.plMixFB ?? undefined;
+    case "plMixSI":
+      return stats.rates.plMixSI ?? undefined;
+    case "plMixFC":
+      return stats.rates.plMixFC ?? undefined;
+    case "plMixSL":
+      return stats.rates.plMixSL ?? undefined;
+    case "plMixSW":
+      return stats.rates.plMixSW ?? undefined;
+    case "plMixCB":
+      return stats.rates.plMixCB ?? undefined;
+    case "plMixCH":
+      return stats.rates.plMixCH ?? undefined;
+    case "plMixSP":
+      return stats.rates.plMixSP ?? undefined;
+    case "plMixOT":
+      return stats.rates.plMixOT ?? undefined;
+    case "plSwFB":
+      return stats.rates.plSwFB ?? undefined;
+    case "plSwSI":
+      return stats.rates.plSwSI ?? undefined;
+    case "plSwFC":
+      return stats.rates.plSwFC ?? undefined;
+    case "plSwSL":
+      return stats.rates.plSwSL ?? undefined;
+    case "plSwSW":
+      return stats.rates.plSwSW ?? undefined;
+    case "plSwCB":
+      return stats.rates.plSwCB ?? undefined;
+    case "plSwCH":
+      return stats.rates.plSwCH ?? undefined;
+    case "plSwSP":
+      return stats.rates.plSwSP ?? undefined;
+    case "plSwOT":
+      return stats.rates.plSwOT ?? undefined;
+    case "plWhiffFB":
+      return stats.rates.plWhiffFB ?? undefined;
+    case "plWhiffSI":
+      return stats.rates.plWhiffSI ?? undefined;
+    case "plWhiffFC":
+      return stats.rates.plWhiffFC ?? undefined;
+    case "plWhiffSL":
+      return stats.rates.plWhiffSL ?? undefined;
+    case "plWhiffSW":
+      return stats.rates.plWhiffSW ?? undefined;
+    case "plWhiffCB":
+      return stats.rates.plWhiffCB ?? undefined;
+    case "plWhiffCH":
+      return stats.rates.plWhiffCH ?? undefined;
+    case "plWhiffSP":
+      return stats.rates.plWhiffSP ?? undefined;
+    case "plWhiffOT":
+      return stats.rates.plWhiffOT ?? undefined;
+    case "plBaaFB":
+      return pitchTypeBaaFromRates(stats.rates, "plTxAbFB", "plTxHFB");
+    case "plBaaSI":
+      return pitchTypeBaaFromRates(stats.rates, "plTxAbSI", "plTxHSI");
+    case "plBaaFC":
+      return pitchTypeBaaFromRates(stats.rates, "plTxAbFC", "plTxHFC");
+    case "plBaaSL":
+      return pitchTypeBaaFromRates(stats.rates, "plTxAbSL", "plTxHSL");
+    case "plBaaSW":
+      return pitchTypeBaaFromRates(stats.rates, "plTxAbSW", "plTxHSW");
+    case "plBaaCB":
+      return pitchTypeBaaFromRates(stats.rates, "plTxAbCB", "plTxHCB");
+    case "plBaaCH":
+      return pitchTypeBaaFromRates(stats.rates, "plTxAbCH", "plTxHCH");
+    case "plBaaSP":
+      return pitchTypeBaaFromRates(stats.rates, "plTxAbSP", "plTxHSP");
+    case "plBaaOT":
+      return pitchTypeBaaFromRates(stats.rates, "plTxAbOT", "plTxHOT");
     default:
       return undefined;
   }
@@ -389,6 +885,9 @@ function displayCell(stats: PitchingStats | undefined, key: PitchSortKey, format
   }
   if (format === "avgAgainst") {
     return formatOppBattingAvg(stats);
+  }
+  if (format === "avgPitchType") {
+    return formatPitchTypeBaa(getPitchingStatValue(stats, key));
   }
   const n = getPitchingStatValue(stats, key);
   if (n === undefined) return "—";
@@ -485,7 +984,8 @@ export function PitchingStatsSheet({
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
 
-  const displayColumns = columnMode === "contact" ? CONTACT_PITCH_COLUMNS : COLUMNS;
+  const displayColumns =
+    columnMode === "contact" ? CONTACT_PITCH_COLUMNS : columnMode === "pitchTypes" ? PITCH_TYPE_PITCH_COLUMNS : COLUMNS;
 
   useEffect(() => {
     setSortKey("name");
@@ -533,13 +1033,13 @@ export function PitchingStatsSheet({
       if (diff !== 0) return diff;
       return comparePlayersByLastNameThenFull(a, b);
     });
-  }, [filtered, initialPitchingStats, sortKey, sortDir]);
+  }, [filtered, initialPitchingStats, sortKey, sortDir, displayColumns]);
 
   const teamColumnBest = useMemo(() => {
     const keys = displayColumns.filter((c) => c.key !== "name").map((c) => c.key);
     const best: Partial<Record<PitchSortKey, number>> = {};
     for (const key of keys) {
-      if (key === "ir") continue;
+      if (PITCH_SHEET_PITCH_TYPE_NEUTRAL.has(key)) continue;
       const vals: number[] = [];
       for (const p of filtered) {
         const s = initialPitchingStats[p.id];
@@ -585,13 +1085,18 @@ export function PitchingStatsSheet({
   };
 
   const isL = (key: PitchSortKey, s: PitchingStats | undefined) => {
-    if (key === "name" || key === "ir") return false;
+    if (key === "name" || PITCH_SHEET_PITCH_TYPE_NEUTRAL.has(key)) return false;
     const val = getPitchingStatValue(s, key);
     const b = teamColumnBest[key];
     if (val === undefined || b === undefined) return false;
     if ((key === "era" || key === "fip" || key === "whip") && s && s.ip <= 0) return false;
     if (OVERALL_PER7.includes(key) && s && s.ip <= 0) return false;
     if (key === "baa" && s && s.abAgainst < 1) return false;
+    const baaAbK = PITCH_BAA_AB_KEY[key];
+    if (baaAbK && s) {
+      const ab = s.rates[baaAbK];
+      if (typeof ab !== "number" || ab < 1) return false;
+    }
     return isLeaderMatch(key, val, b);
   };
 
@@ -676,7 +1181,7 @@ export function PitchingStatsSheet({
                     title={
                       runnersFilter !== "all"
                         ? "Clear Runners filter to use Final count."
-                        : "Optional. When set, table uses only PAs whose saved final count matches. Works with Standard or Discipline columns."
+                        : "Optional. When set, table uses only PAs whose saved final count matches. Works with Standard, Discipline, or Pitch-type columns."
                     }
                   >
                     <option value="">All PAs</option>
@@ -766,6 +1271,7 @@ export function PitchingStatsSheet({
                   >
                     <option value="standard">Standard</option>
                     <option value="contact">Discipline &amp; BIP</option>
+                    <option value="pitchTypes">Pitch types</option>
                   </select>
                 </div>
                 <div
@@ -842,6 +1348,7 @@ export function PitchingStatsSheet({
               >
                 <option value="standard">Standard</option>
                 <option value="contact">Discipline &amp; BIP</option>
+                <option value="pitchTypes">Pitch types</option>
               </select>
             </label>
             <label className="flex min-w-0 items-center gap-2 text-sm text-white">
@@ -858,7 +1365,7 @@ export function PitchingStatsSheet({
                 title={
                   runnersFilter !== "all"
                     ? "Clear Runners filter to use Final count."
-                    : "Optional. When set, table uses only PAs whose saved final count matches. Works with Standard or Discipline columns."
+                    : "Optional. When set, table uses only PAs whose saved final count matches. Works with Standard, Discipline, or Pitch-type columns."
                 }
               >
                 <option value="">All PAs</option>
@@ -980,7 +1487,7 @@ export function PitchingStatsSheet({
                 <th
                   key={`${key}-${idx}`}
                     title={tooltip}
-                  className={`border-b border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[var(--accent)] ${SCROLL_CELL_Z} ${contactPitchBorderLeft(key) || borderLeft ? "border-l border-[var(--border)]" : idx === 0 ? "border-l border-[var(--border)]" : ""} ${align === "right" ? "text-right" : "text-left"} cursor-pointer select-none hover:opacity-85 ${sortKey === key ? "font-bold" : ""}`}
+                  className={`border-b border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[var(--accent)] ${SCROLL_CELL_Z} ${pitchSheetHeaderBorderLeft(columnMode, key, borderLeft, idx) ? "border-l border-[var(--border)]" : ""} ${align === "right" ? "text-right" : "text-left"} cursor-pointer select-none hover:opacity-85 ${sortKey === key ? "font-bold" : ""}`}
                     onClick={() => handleSort(key)}
                   >
                     {label}
@@ -1045,7 +1552,7 @@ export function PitchingStatsSheet({
                   {displayColumns.slice(1).map((col, idx) => (
                     <td
                       key={`${col.key}-${idx}`}
-                      className={`${SCROLL_CELL_Z} px-3 py-2 text-right tabular-nums text-[var(--text)] ${contactPitchBorderLeft(col.key) || col.borderLeft ? "border-l border-[var(--border)]" : idx === 0 ? "border-l border-[var(--border)]" : ""}`}
+                      className={`${SCROLL_CELL_Z} px-3 py-2 text-right tabular-nums text-[var(--text)] ${pitchSheetHeaderBorderLeft(columnMode, col.key, col.borderLeft, idx) ? "border-l border-[var(--border)]" : ""}`}
                     >
                       <LeaderStat show={isL(col.key, s)}>{displayCell(s, col.key, col.format)}</LeaderStat>
                     </td>
@@ -1075,7 +1582,7 @@ export function PitchingStatsSheet({
                 {displayColumns.slice(1).map((col, idx) => (
                   <td
                     key={`team-total-${col.key}-${idx}`}
-                    className={`${TEAM_FOOTER_TOP_RULE} ${SCROLL_CELL_Z} bg-[var(--bg-elevated)] px-3 py-2 text-right tabular-nums font-semibold text-[var(--accent)] ${contactPitchBorderLeft(col.key) || col.borderLeft ? TEAM_FOOTER_GROUP_LEFT : idx === 0 ? TEAM_FOOTER_GROUP_LEFT : ""}`}
+                    className={`${TEAM_FOOTER_TOP_RULE} ${SCROLL_CELL_Z} bg-[var(--bg-elevated)] px-3 py-2 text-right tabular-nums font-semibold text-[var(--accent)] ${pitchSheetHeaderBorderLeft(columnMode, col.key, col.borderLeft, idx) ? TEAM_FOOTER_GROUP_LEFT : ""}`}
                     title={
                       col.key === "g" || col.key === "gs"
                         ? "Team total not shown: summing each pitcher’s games does not equal team games played."

@@ -16,6 +16,7 @@ import {
   pasMatchFinalCount,
 } from "@/lib/compute/battingStatsWithSplitsFromPas";
 import { groupPitchEventsByPaId, mergeContactProfileIntoPitchingRates } from "@/lib/compute/contactProfileFromPas";
+import { mergePitchTypeTeamProfileFromLines } from "@/lib/compute/pitchTypeProfileFromPas";
 import { isDemoId } from "@/lib/db/mockData";
 import { REGULATION_INNINGS } from "@/lib/leagueConfig";
 import type {
@@ -876,6 +877,11 @@ export function aggregatePitchingTeamLine(lines: PitchingStats[]): PitchingStats
     fbPct: weightedRateByPa(L, (r) => r.fbPct) ?? undefined,
     iffPct: weightedRateByPa(L, (r) => r.iffPct) ?? undefined,
   };
+
+  mergePitchTypeTeamProfileFromLines(
+    L.map((l) => l.rates),
+    rates
+  );
 
   return {
     g,

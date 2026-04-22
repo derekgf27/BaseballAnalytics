@@ -476,7 +476,7 @@ export function BattingStatsSheet({
                     title={
                       runnersFilter !== "all"
                         ? "Clear Runners filter to use Final count (counts are only stored for the full sample splits)."
-                        : "Optional. When set, table uses only PAs whose saved final count matches. Works with Standard or Discipline columns."
+                        : "Optional. When set, table uses only PAs whose saved final count matches. Works with Standard, Discipline, or Pitch-type columns."
                     }
                   >
                     <option value="">All PAs</option>

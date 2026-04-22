@@ -173,7 +173,8 @@ export const BATTING_SHEET_CONTACT_COLUMNS: BattingSheetColumnDef[] = [
 ];
 
 export function battingSheetColumnsForMode(mode: BattingSheetColumnMode): BattingSheetColumnDef[] {
-  return mode === "contact" ? BATTING_SHEET_CONTACT_COLUMNS : BATTING_SHEET_COLUMNS;
+  if (mode === "contact") return BATTING_SHEET_CONTACT_COLUMNS;
+  return BATTING_SHEET_COLUMNS;
 }
 
 /** Data columns only (excludes Player) for profile / compact tables. */

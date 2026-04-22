@@ -3,8 +3,10 @@ import {
   replayCountAtEndOfSequence,
   type PitchSequenceEntry,
 } from "@/lib/compute/pitchSequence";
-import type { PitchOutcome } from "@/lib/types";
-import type { PitchTrackerLogResult } from "@/lib/types";
+import type { PitchEvent, PitchOutcome, PitchTrackerLogResult, PitchTrackerPitch } from "@/lib/types";
+
+/** Synthetic PA id for in-progress coach tracker pitches (merged into matchup cards before Record saves). */
+export const COACH_LIVE_AB_PA_ID = "__coach_live_ab__";
 
 function mapTrackerResultToOutcome(r: PitchTrackerLogResult): PitchOutcome {
   switch (r) {
@@ -56,4 +58,58 @@ export function displayCountFromPitchTrackerRows(
     balls: Math.min(3, balls),
     strikes: strikes >= 3 ? 2 : Math.min(2, strikes),
   };
+}
+
+/** Pitch log rows for Sw% / pitch-type mix while the AB is still open on the coach pad. */
+export function pitchEventsFromCoachTrackerRows(paId: string, rows: PitchTrackerPitch[]): PitchEvent[] {
+  const sorted = [...rows]
+    .filter((r): r is PitchTrackerPitch & { result: PitchTrackerLogResult } => r.result != null)
+    .sort((a, b) => a.pitch_number - b.pitch_number);
+  let b = 0;
+  let s = 0;
+  const out: PitchEvent[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const row = sorted[i]!;
+    const o = mapTrackerResultToOutcome(row.result);
+    out.push({
+      id: `__coach_pe_${paId}_${row.pitch_number}`,
+      pa_id: paId,
+      pitch_index: i + 1,
+      balls_before: b,
+      strikes_before: s,
+      outcome: o,
+      pitch_type: row.pitch_type != null ? row.pitch_type : null,
+    });
+    const next = countAfterPitch(b, s, o);
+    b = next.balls;
+    s = next.strikes;
+  }
+  return out;
+}
+
+/**
+ * One `PitchEvent` per coach row that has a `pitch_type`, including rows still waiting on Record for
+ * ball/strike (`result` null). Use **only** for pitch-type mix counts — not for strike% / Sw% / 2-strike
+ * blocks (those should use {@link pitchEventsFromCoachTrackerRows} with resolved outcomes only).
+ */
+export function pitchTypeMixEventsFromCoachTrackerRows(paId: string, rows: PitchTrackerPitch[]): PitchEvent[] {
+  const sorted = [...rows]
+    .filter((r) => r.pitch_type != null)
+    .sort((a, b) => a.pitch_number - b.pitch_number);
+  const out: PitchEvent[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const row = sorted[i]!;
+    const o =
+      row.result != null ? mapTrackerResultToOutcome(row.result) : ("ball" as PitchOutcome);
+    out.push({
+      id: `__coach_mix_pe_${paId}_${row.pitch_number}`,
+      pa_id: paId,
+      pitch_index: i + 1,
+      balls_before: 0,
+      strikes_before: 0,
+      outcome: o,
+      pitch_type: row.pitch_type,
+    });
+  }
+  return out;
 }

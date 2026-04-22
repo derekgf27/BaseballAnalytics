@@ -1,4 +1,4 @@
-import type { PAResult, PitchOutcome } from "@/lib/types";
+import type { PAResult, PitchOutcome, PitchTrackerLogResult } from "@/lib/types";
 
 /** PA results that imply a batted ball (final pitch is inferred `in_play` when using pitch log). */
 const BATTED_BALL_IN_PLAY_RESULTS = new Set<PAResult>([
@@ -135,6 +135,36 @@ export function replayCountAtEndOfSequence(entries: PitchSequenceEntry[]): { bal
     s = next.strikes;
   }
   return { balls: b, strikes: s };
+}
+
+/**
+ * Coach pitch pad: once Record has logged a terminal pitch count for this AB, block another pitch type
+ * until Undo / Reset AB. Matches tracker rules: 3 strikes (incl. putaway → 3 in UI) or 4 balls.
+ */
+export function coachPitchCountBlocksNewPitchType(
+  pitches: { pitch_number: number; result: PitchTrackerLogResult | null }[]
+): boolean {
+  return coachPitchCountNewPitchTypeBlockReason(pitches) != null;
+}
+
+/** Why new coach pitch types are blocked, if at all. */
+export function coachPitchCountNewPitchTypeBlockReason(
+  pitches: { pitch_number: number; result: PitchTrackerLogResult | null }[]
+): "strikes" | "balls" | null {
+  const withResult = pitches
+    .filter((p): p is typeof p & { result: PitchTrackerLogResult } => p.result != null)
+    .sort((a, b) => a.pitch_number - b.pitch_number);
+  if (withResult.length === 0) return null;
+  const entries: PitchSequenceEntry[] = withResult.map((p) => ({
+    balls_before: 0,
+    strikes_before: 0,
+    outcome: p.result as PitchOutcome,
+  }));
+  const end = replayCountAtEndOfSequence(entries);
+  if (end.strikes >= 3) return "strikes";
+  const ballPitches = withResult.filter((p) => p.result === "ball").length;
+  if (ballPitches >= 4) return "balls";
+  return null;
 }
 
 /** Derive pitches_seen, strikes_thrown, first_pitch_strike, final count from a full sequence. */

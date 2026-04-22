@@ -16,6 +16,7 @@ create table if not exists public.games (
   our_sp_plan_notes text,
   pitch_tracker_group_id uuid,
   pitch_tracker_batter_id uuid references public.players(id) on delete set null,
+  pitch_tracker_batter_slot smallint,
   pitch_tracker_outs smallint not null default 0,
   pitch_tracker_pitcher_id uuid references public.players(id) on delete set null,
   pitch_tracker_balls smallint not null default 0,
@@ -103,7 +104,19 @@ create table if not exists public.pitches (
   at_bat_id uuid references public.plate_appearances(id) on delete set null,
   tracker_group_id uuid not null,
   pitch_number int not null check (pitch_number >= 1),
-  pitch_type text not null check (pitch_type in ('fastball', 'slider', 'curveball', 'changeup')),
+  pitch_type text check (
+    pitch_type is null
+    or pitch_type in (
+      'fastball',
+      'sinker',
+      'cutter',
+      'slider',
+      'sweeper',
+      'curveball',
+      'changeup',
+      'splitter'
+    )
+  ),
   result text check (result is null or result in ('ball', 'called_strike', 'swinging_strike', 'foul', 'in_play')),
   batter_id uuid not null references public.players(id) on delete cascade,
   pitcher_id uuid references public.players(id) on delete set null,

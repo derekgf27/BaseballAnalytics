@@ -44,6 +44,7 @@ import {
   writeStoredPitchTrackerGroupId,
 } from "@/lib/pitchTrackerSession";
 import {
+  pitchOutcomeToTrackerLogResult,
   pitchTrackerAbbrev,
   pitchTrackerTypeChipClass,
   pitchTrackerTypeLabel,
@@ -164,6 +165,31 @@ function normBaseStateBits(baseState: BaseState): string {
     .replace(/[^01]/g, "0")
     .padStart(3, "0")
     .slice(0, 3);
+}
+
+/** Pitch pad sequence row: prior count (muted) → new count (bold accent) in an accent-rimmed chip. */
+function PitchPadCountTransition({
+  beforeBalls,
+  beforeStrikes,
+  after,
+}: {
+  beforeBalls: number;
+  beforeStrikes: number;
+  /** `null` when the PA pad has not logged this pitch yet (coach type only). */
+  after: { balls: number; strikes: number } | null;
+}) {
+  const tail = after == null ? "—" : `${after.balls}-${after.strikes}`;
+  return (
+    <div className="ml-auto inline-flex min-w-0 shrink-0 items-center gap-x-1.5 rounded-md border border-[var(--accent)]/40 bg-[var(--bg-elevated)]/30 px-2 py-1 tabular-nums">
+      <span className="text-[11px] text-[var(--text-muted)] sm:text-xs">
+        {beforeBalls}-{beforeStrikes}
+      </span>
+      <span className="text-[11px] text-[var(--text-muted)] sm:text-xs" aria-hidden>
+        →
+      </span>
+      <span className="text-[11px] font-bold text-[var(--accent)] sm:text-xs">{tail}</span>
+    </div>
+  );
 }
 
 /** Compute new runner IDs after a play (for 1st, 2nd, 3rd). Used to advance state after save. */
@@ -424,11 +450,26 @@ async function persistPitchTrackerGroupToGame(gameId: string, groupId: string) {
   await sb.from("games").update({ pitch_tracker_group_id: groupId }).eq("id", gameId);
 }
 
-async function persistPitchTrackerBatterToGame(gameId: string, batterId: string | null) {
+async function persistPitchTrackerBatterToGame(
+  gameId: string,
+  batterId: string | null,
+  batterSlot: number | null
+) {
   if (isDemoId(gameId)) return;
   const sb = getSupabaseBrowserClient();
   if (!sb) return;
-  await sb.from("games").update({ pitch_tracker_batter_id: batterId }).eq("id", gameId);
+  const slot =
+    batterId != null &&
+    typeof batterSlot === "number" &&
+    Number.isFinite(batterSlot) &&
+    batterSlot >= 1 &&
+    batterSlot <= 9
+      ? Math.trunc(batterSlot)
+      : null;
+  await sb
+    .from("games")
+    .update({ pitch_tracker_batter_id: batterId, pitch_tracker_batter_slot: slot })
+    .eq("id", gameId);
 }
 
 async function persistPitchTrackerOutsToGame(gameId: string, outs: number) {
@@ -950,6 +991,13 @@ export default function RecordPageClient({
     refresh: refreshCoachPitches,
   } = usePitchTrackerRows(selectedGameId && pitchTrackerGroupId ? pitchTrackerGroupId : null);
 
+  const maxCoachPitchNumber = useMemo(
+    () => coachPitchRows.reduce((m, r) => Math.max(m, r.pitch_number), 0),
+    [coachPitchRows]
+  );
+  /** Show coach iPad rows even before the analyst taps the pitch log for that pitch. */
+  const mergedSequenceLength = Math.max(draftPitchLog.length, maxCoachPitchNumber);
+
   useEffect(() => {
     if (draftPitchLog.length > 0) return;
     if (countBalls === 0 && countStrikes === 0) {
@@ -1051,10 +1099,87 @@ export default function RecordPageClient({
   draftPitchLogEmptyRef.current = draftPitchLog.length === 0;
   recordLockedRef.current = recordLocked;
 
+  const syncCoachPitchResultsSeqRef = useRef(0);
   useEffect(() => {
-    if (!selectedGameId || recordLocked) return;
-    void persistPitchTrackerBatterToGame(selectedGameId, batterId);
-  }, [selectedGameId, batterId, recordLocked]);
+    const sb = getSupabaseBrowserClient();
+    if (!sb || !pitchTrackerGroupId || recordLocked || !selectedGameId || isDemoId(selectedGameId)) {
+      return;
+    }
+    const groupId = pitchTrackerGroupId;
+    const log = draftPitchLog;
+    const seq = ++syncCoachPitchResultsSeqRef.current;
+    void (async () => {
+      try {
+        const n = log.length;
+        if (n === 0) {
+          const { error } = await sb.from("pitches").update({ result: null }).eq("tracker_group_id", groupId);
+          if (error) console.warn("[Record] Clear coach pitch results:", error.message);
+          const { error: delStubErr } = await sb
+            .from("pitches")
+            .delete()
+            .eq("tracker_group_id", groupId)
+            .is("pitch_type", null);
+          if (delStubErr) console.warn("[Record] Remove PA-only pitch rows:", delStubErr.message);
+        } else {
+          if (!batterId) return;
+          for (let i = 0; i < n; i++) {
+            const result = pitchOutcomeToTrackerLogResult(log[i]!.outcome);
+            const pitch_number = i + 1;
+            const { data: existing, error: readErr } = await sb
+              .from("pitches")
+              .select("id")
+              .eq("tracker_group_id", groupId)
+              .eq("pitch_number", pitch_number)
+              .maybeSingle();
+            if (readErr) {
+              console.warn("[Record] Read coach pitch row:", readErr.message);
+              continue;
+            }
+            const row = existing as { id: string } | null;
+            if (row?.id) {
+              const { error } = await sb.from("pitches").update({ result }).eq("id", row.id);
+              if (error) console.warn("[Record] Sync coach pitch result:", error.message);
+            } else {
+              const { error } = await sb.from("pitches").insert({
+                game_id: selectedGameId,
+                at_bat_id: null,
+                tracker_group_id: groupId,
+                pitch_number,
+                pitch_type: null,
+                result,
+                batter_id: batterId,
+                pitcher_id: pitcherId,
+              });
+              if (error) console.warn("[Record] Insert PA-only coach pitch row:", error.message);
+            }
+          }
+          const { error: clearErr } = await sb
+            .from("pitches")
+            .update({ result: null })
+            .eq("tracker_group_id", groupId)
+            .gt("pitch_number", n);
+          if (clearErr) console.warn("[Record] Clear trailing coach pitch results:", clearErr.message);
+          const { error: delTailErr } = await sb
+            .from("pitches")
+            .delete()
+            .eq("tracker_group_id", groupId)
+            .gt("pitch_number", n)
+            .is("pitch_type", null);
+          if (delTailErr) console.warn("[Record] Remove trailing PA-only rows:", delTailErr.message);
+        }
+      } finally {
+        if (seq === syncCoachPitchResultsSeqRef.current) void refreshCoachPitches();
+      }
+    })();
+  }, [
+    draftPitchLog,
+    pitchTrackerGroupId,
+    recordLocked,
+    selectedGameId,
+    refreshCoachPitches,
+    batterId,
+    pitcherId,
+  ]);
 
   useEffect(() => {
     if (!selectedGameId || recordLocked) return;
@@ -1169,6 +1294,20 @@ export default function RecordPageClient({
   ]);
 
   const lineupForBatting = battingSide === "away" ? lineupAway : lineupHome;
+
+  const pitchTrackerBatterSlot = useMemo(() => {
+    if (!batterId) return null;
+    const order = lineupForBatting.order ?? [];
+    const i = order.indexOf(batterId);
+    if (i < 0) return null;
+    return i + 1;
+  }, [batterId, lineupForBatting.order]);
+
+  useEffect(() => {
+    if (!selectedGameId || recordLocked) return;
+    void persistPitchTrackerBatterToGame(selectedGameId, batterId, pitchTrackerBatterSlot);
+  }, [selectedGameId, batterId, pitchTrackerBatterSlot, recordLocked]);
+
   const displayBattingSide = battingTablePeekOther
     ? battingSide === "away"
       ? "home"
@@ -2303,6 +2442,8 @@ export default function RecordPageClient({
         writeStoredPitchTrackerGroupId(selectedGameId, nextTracker);
         setPitchTrackerGroupId(nextTracker);
         void persistPitchTrackerGroupToGame(selectedGameId, nextTracker);
+        /** Coach pad reads count from `games` — flush 0-0 immediately so it stays aligned with the new AB. */
+        void persistPitchTrackerCountToGame(selectedGameId, 0, 0);
       }
       const scorerIds = runsScoredIds;
       const scorerNames = scorerIds.map(
@@ -3246,7 +3387,7 @@ export default function RecordPageClient({
             )}
 
           <div className="card-tech rounded-lg border p-2">
-            <div className="mb-3 grid grid-cols-1 gap-3 lg:grid-cols-2 lg:gap-4">
+            <div className="mb-3 grid grid-cols-1 gap-3 lg:grid-cols-2 lg:items-stretch lg:gap-4">
               <CurrentBatterPitchDataCard
                 batterName={currentBatterPitchDataName}
                 pas={pasForCurrentBatterPitchData}
@@ -3659,61 +3800,79 @@ export default function RecordPageClient({
                       }}
                     />
                   ) : null}
-                  {draftPitchLog.length > 0 ? (
+                  {mergedSequenceLength > 0 ? (
                     <ul className="max-h-40 space-y-1 overflow-y-auto overscroll-contain sm:max-h-[min(28rem,65dvh)]">
-                      {draftPitchLog.map((row, i) => {
-                        const prefix: PitchSequenceEntry[] = draftPitchLog.slice(0, i + 1).map((r) => ({
-                          balls_before: r.balls_before,
-                          strikes_before: r.strikes_before,
-                          outcome: r.outcome,
-                        }));
-                        const after = replayCountAtEndOfSequence(prefix);
-                        const lbl =
-                          PITCH_LOG_BUTTONS.find((b) => b.outcome === row.outcome)?.label ??
-                          (row.outcome === "in_play"
-                            ? "In play"
-                            : row.outcome.replace(/_/g, " "));
-                        const coachType =
-                          coachPitchRows.find((p) => p.pitch_number === i + 1)?.pitch_type ?? null;
-                        return (
-                          <li key={row.clientKey}>
-                            <div
-                              className="flex flex-wrap items-center gap-x-2 gap-y-0 rounded-md border border-[var(--border)] bg-[var(--bg-base)]/50 px-2 py-1.5 text-[11px] sm:text-xs"
-                              aria-label={`Pitch ${i + 1}: ${coachType ? pitchTrackerAbbrev(coachType) : "type pending"} ${lbl} count ${row.balls_before}-${row.strikes_before} to ${after.balls}-${after.strikes}`}
-                            >
-                              {coachType ? (
+                      {Array.from({ length: mergedSequenceLength }, (_, i) => {
+                        const draftRow = draftPitchLog[i];
+                        const coachRow = coachPitchRows.find((p) => p.pitch_number === i + 1);
+                        const coachType = coachRow?.pitch_type ?? null;
+                        if (draftRow) {
+                          const row = draftRow;
+                          const prefix: PitchSequenceEntry[] = draftPitchLog.slice(0, i + 1).map((r) => ({
+                            balls_before: r.balls_before,
+                            strikes_before: r.strikes_before,
+                            outcome: r.outcome,
+                          }));
+                          const after = replayCountAtEndOfSequence(prefix);
+                          const lbl =
+                            PITCH_LOG_BUTTONS.find((b) => b.outcome === row.outcome)?.label ??
+                            (row.outcome === "in_play"
+                              ? "In play"
+                              : row.outcome.replace(/_/g, " "));
+                          return (
+                            <li key={row.clientKey}>
+                              <div
+                                className="flex flex-wrap items-center gap-x-2 gap-y-0 rounded-md border border-[var(--accent)]/40 bg-[var(--bg-base)]/50 px-2 py-1.5 text-[11px] sm:text-xs"
+                                aria-label={`Pitch ${i + 1}: ${pitchTrackerAbbrev(coachType)} ${lbl} count ${row.balls_before}-${row.strikes_before} to ${after.balls}-${after.strikes}`}
+                              >
                                 <span
-                                  className={`inline-flex h-5 shrink-0 items-center justify-center rounded border px-1 text-[10px] font-bold ${pitchTrackerTypeChipClass(coachType)}`}
+                                  className={`inline-flex h-5 min-w-[1.75rem] shrink-0 items-center justify-center rounded border px-1 text-[10px] font-bold ${pitchTrackerTypeChipClass(coachType)}`}
                                   title={pitchTrackerTypeLabel(coachType)}
                                 >
                                   {pitchTrackerAbbrev(coachType)}
                                 </span>
-                              ) : (
-                                <span
-                                  className="inline-flex h-5 min-w-[1.75rem] shrink-0 items-center justify-center rounded border border-dashed border-[var(--border)] px-1 text-[9px] font-medium text-[var(--text-muted)] opacity-75"
-                                  title="Coach pitch type (iPad) — appears when logged for this pitch #"
-                                >
-                                  —
-                                </span>
-                              )}
-                              <span className="min-w-0 shrink-0 font-semibold text-[var(--text)]">{lbl}</span>
-                              <span className="shrink-0 text-[var(--text-muted)]" aria-hidden>
-                                →
-                              </span>
-                              <div className="ml-auto flex min-w-0 shrink-0 items-center gap-x-1.5 tabular-nums sm:gap-x-2">
-                                <span className="text-[var(--text-muted)]">
-                                  {row.balls_before}-{row.strikes_before}
-                                </span>
-                                <span className="shrink-0 text-[var(--text-muted)]" aria-hidden>
-                                  →
-                                </span>
-                                <span className="font-semibold text-[var(--accent)]">
-                                  {after.balls}-{after.strikes}
-                                </span>
+                                <span className="min-w-0 shrink-0 font-semibold text-[var(--text)]">{lbl}</span>
+                                <PitchPadCountTransition
+                                  beforeBalls={row.balls_before}
+                                  beforeStrikes={row.strikes_before}
+                                  after={{ balls: after.balls, strikes: after.strikes }}
+                                />
                               </div>
-                            </div>
-                          </li>
-                        );
+                            </li>
+                          );
+                        }
+                        if (coachRow) {
+                          const prefixBeforeCoach: PitchSequenceEntry[] = draftPitchLog.slice(0, i).map((r) => ({
+                            balls_before: r.balls_before,
+                            strikes_before: r.strikes_before,
+                            outcome: r.outcome,
+                          }));
+                          const countBeforeThis = replayCountAtEndOfSequence(prefixBeforeCoach);
+                          return (
+                            <li key={coachRow.id}>
+                              <div
+                                className="flex flex-wrap items-center gap-x-2 gap-y-0 rounded-md border border-dashed border-[var(--accent)]/45 bg-[var(--bg-base)]/40 px-2 py-1.5 text-[11px] sm:text-xs"
+                                aria-label={`Pitch ${i + 1}: ${pitchTrackerAbbrev(coachType)} — awaiting pitch log, count before pitch ${countBeforeThis.balls}-${countBeforeThis.strikes}`}
+                              >
+                                <span
+                                  className={`inline-flex h-5 min-w-[1.75rem] shrink-0 items-center justify-center rounded border px-1 text-[10px] font-bold ${pitchTrackerTypeChipClass(coachType)}`}
+                                  title={pitchTrackerTypeLabel(coachType)}
+                                >
+                                  {pitchTrackerAbbrev(coachType)}
+                                </span>
+                                <span className="min-w-0 shrink-0 font-medium text-[var(--text-muted)]">
+                                  Awaiting pitch log
+                                </span>
+                                <PitchPadCountTransition
+                                  beforeBalls={countBeforeThis.balls}
+                                  beforeStrikes={countBeforeThis.strikes}
+                                  after={null}
+                                />
+                              </div>
+                            </li>
+                          );
+                        }
+                        return null;
                       })}
                       {result != null &&
                         resultImpliesBattedBallInPlay(result) &&
@@ -3734,8 +3893,8 @@ export default function RecordPageClient({
                     </p>
                   ) : (
                     <p className="py-1 text-[10px] leading-snug text-[var(--text-muted)]">
-                      Each pitch you log appears here with a slot for the coach’s pitch type (iPad). Use{" "}
-                      <span className="text-[var(--accent)]">iPad link &amp; tools</span> above.
+                      Log a pitch on the pad or on the iPad — each pitch appears here (type from coach, result from
+                      pad). Use <span className="text-[var(--accent)]">iPad link &amp; tools</span> above.
                     </p>
                   )}
                 </div>
