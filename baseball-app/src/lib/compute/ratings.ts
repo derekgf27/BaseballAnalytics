@@ -42,17 +42,15 @@ function damagePotential(pas: PlateAppearance[]): number {
 }
 
 /**
- * Decision Quality (1–5): chase rate and BB/selectivity. Low chase + BBs → higher.
+ * Decision Quality (1–5): strikeout avoidance + BB/selectivity.
  */
 function decisionQuality(pas: PlateAppearance[]): number {
   if (pas.length === 0) return 3;
-  const withChase = pas.filter((pa) => pa.chase === true).length;
+  const strikeouts = pas.filter((pa) => pa.result === "so" || pa.result === "so_looking").length;
   const walks = pas.filter((pa) => pa.result === "bb" || pa.result === "ibb").length;
-  const chaseRate = pas.some((pa) => pa.chase !== null)
-    ? withChase / pas.filter((pa) => pa.chase !== null).length
-    : 0.25;
+  const kRate = strikeouts / pas.length;
   const bbRate = walks / pas.length;
-  const raw = 1 + (1 - chaseRate) * 2 + bbRate * 4;
+  const raw = 1 + (1 - kRate) * 2 + bbRate * 4;
   return clampRating(raw);
 }
 

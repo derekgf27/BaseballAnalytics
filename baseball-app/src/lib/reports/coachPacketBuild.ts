@@ -1,5 +1,5 @@
 import { normBaseState } from "@/lib/compute/battingStats";
-import type { Game, GameLineupSlot, PlateAppearance, Player } from "@/lib/types";
+import type { BattingStatsWithSplits, Game, GameLineupSlot, PlateAppearance, Player } from "@/lib/types";
 import type { CoachPacketLineupRow, CoachPacketModel, CoachPacketPaRow } from "./coachPacketTypes";
 
 function halfOrder(h: string | null | undefined): number {
@@ -17,14 +17,21 @@ function sortPasChronological(pas: PlateAppearance[]): PlateAppearance[] {
   });
 }
 
-function lineupRow(slot: GameLineupSlot, playersById: Map<string, Player>): CoachPacketLineupRow {
+function lineupRow(
+  slot: GameLineupSlot,
+  playersById: Map<string, Player>,
+  battingStatsByPlayerId: Record<string, BattingStatsWithSplits | undefined>
+): CoachPacketLineupRow {
   const p = playersById.get(slot.player_id);
+  const o = battingStatsByPlayerId[slot.player_id]?.overall;
   return {
     slot: slot.slot,
     name: p?.name ?? slot.player_id.slice(0, 8),
     position: (slot.position?.trim() || p?.positions?.[0] || "").trim(),
     jersey: p?.jersey != null && String(p.jersey).trim() !== "" ? String(p.jersey).trim() : "",
     bats: p?.bats ?? "",
+    avg: o && Number.isFinite(o.avg) ? o.avg : null,
+    ops: o && Number.isFinite(o.ops) ? o.ops : null,
   };
 }
 
@@ -39,7 +46,8 @@ export function buildCoachPacketModel(
   game: Game,
   lineup: GameLineupSlot[],
   playersById: Map<string, Player>,
-  pas: PlateAppearance[]
+  pas: PlateAppearance[],
+  battingStatsByPlayerId: Record<string, BattingStatsWithSplits | undefined>
 ): CoachPacketModel {
   const ourSide = game.our_side;
   const oppSide: "home" | "away" = ourSide === "home" ? "away" : "home";
@@ -86,8 +94,8 @@ export function buildCoachPacketModel(
     },
     our_team_name: ourTeamName,
     opponent_team_name: opponentTeamName,
-    our_lineup: ourSlots.map((s) => lineupRow(s, playersById)),
-    opponent_lineup: oppSlots.map((s) => lineupRow(s, playersById)),
+    our_lineup: ourSlots.map((s) => lineupRow(s, playersById, battingStatsByPlayerId)),
+    opponent_lineup: oppSlots.map((s) => lineupRow(s, playersById, battingStatsByPlayerId)),
     plate_appearances: paRows,
   };
 }

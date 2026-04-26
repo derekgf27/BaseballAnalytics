@@ -9,7 +9,7 @@ import {
 import { BenchPanel } from "@/components/coach/BenchPanel";
 import { LineupInsightsCard } from "./LineupInsightsCard";
 import { LineupTrendsCard } from "./LineupTrendsCard";
-import type { PitchEvent, PlateAppearance, Player } from "@/lib/types";
+import type { PitchingStats, PlateAppearance } from "@/lib/types";
 import type { Confidence } from "@/data/mock";
 import type { PlayerTagType } from "@/data/mock";
 
@@ -70,10 +70,10 @@ interface CoachTodayClientProps {
   starterCompare: StarterComparePayload | null;
   /** Plate appearances for current game (linescore); refreshed on client. */
   initialGamePas: PlateAppearance[];
-  /** Pitch log rows for those PAs (same as Record PA pitch data). */
-  initialGamePitchEvents: PitchEvent[];
-  /** Starters + lineup + anyone who has pitched in this game (for pitch-mix names). */
-  coachPitchPlayers: Player[];
+  /** Our starter: full pitching line from all logged PAs (season-to-date in app). */
+  clubStarterSeasonPitching: PitchingStats | null;
+  /** Opponent starter: cumulative line vs our lineup (games where we have `our_side` lineup rows). */
+  opponentVsOurClubPitching: PitchingStats | null;
 }
 
 /**
@@ -85,8 +85,8 @@ export function CoachTodayClient({
   recommendedLineup,
   starterCompare,
   initialGamePas,
-  initialGamePitchEvents,
-  coachPitchPlayers,
+  clubStarterSeasonPitching,
+  opponentVsOurClubPitching,
 }: CoachTodayClientProps) {
   const orderedLineup = [...recommendedLineup].sort((a, b) => a.order - b.order);
 
@@ -109,19 +109,17 @@ export function CoachTodayClient({
 
         {/* Lineup + starting pitchers | Trends full width | Intel / bench below trends */}
         <section className="grid gap-6 lg:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)] lg:items-stretch">
-          <div className="flex h-full min-h-0 min-w-0 flex-col">
+          <div className="flex min-h-0 min-w-0 flex-col self-start w-full">
             <CoachLineupTable lineup={orderedLineup} />
           </div>
 
           <aside className="flex h-full min-h-0 min-w-0 flex-col">
             {starterCompare && game ? (
               <StartingPitchersCompareCard
-                gameId={game.id}
-                initialGamePas={initialGamePas}
-                initialGamePitchEvents={initialGamePitchEvents}
-                coachPitchPlayers={coachPitchPlayers}
                 club={starterCompare.club}
                 opponent={starterCompare.opponent}
+                clubSeasonPitching={clubStarterSeasonPitching}
+                opponentVsOurClubPitching={opponentVsOurClubPitching}
               />
             ) : (
               <div className="neo-card flex h-full min-h-0 flex-col p-4 text-sm text-[var(--neo-text-muted)] lg:p-5">

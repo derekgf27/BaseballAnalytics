@@ -12,8 +12,10 @@ import { PostGameReport } from "@/app/reports/components/PostGameReport";
 import { PreGameReport } from "@/app/reports/components/PreGameReport";
 import { PlayerReportsTab } from "@/app/reports/components/PlayerReportsTab";
 import { PlayersToWatch } from "@/app/reports/components/PlayersToWatch";
+import { ReportsAssistantPanel } from "@/app/reports/components/ReportsAssistantPanel";
 import { TeamTrends } from "@/app/reports/components/TeamTrends";
 import { formatDateMMDDYYYY } from "@/lib/format";
+import { matchupLabelUsFirst } from "@/lib/opponentUtils";
 import type { TeamTrendPoint } from "@/lib/reports/teamTrendsSnapshot";
 import type { BattingStatsWithSplits, Game, Player } from "@/lib/types";
 import type { PostGameSnapshot } from "@/lib/reports/postGameSnapshot";
@@ -33,6 +35,22 @@ const TAB_META: { id: HubTab; label: string }[] = [
   { id: "trends", label: "Team Trends" },
 ];
 
+/** In-page anchors for the pre-game scouting layout (`PreGameReport`). */
+const PREGAME_JUMP_LINKS: { href: string; label: string }[] = [
+  { href: "#pre-context", label: "Context" },
+  { href: "#pre-pitching", label: "Pitching" },
+  { href: "#pre-hitting-trends", label: "Hitting" },
+  { href: "#pre-players", label: "Players" },
+  { href: "#pre-opp", label: "Opponent" },
+  { href: "#pre-matchup", label: "Matchup" },
+  { href: "#pre-plan", label: "Plan" },
+  { href: "#pre-lineups", label: "Lineups" },
+  { href: "#pre-history", label: "History" },
+  { href: "#pre-leaders", label: "Leaders" },
+  { href: "#pre-trends", label: "Trends" },
+  { href: "#pre-checklist", label: "Checklist" },
+];
+
 const PRINT_PAGE_STYLE = `
   @page { size: auto; margin: 14mm; }
   body {
@@ -45,7 +63,7 @@ const PRINT_PAGE_STYLE = `
 
 function gameOptionLabel(g: Game) {
   const d = formatDateMMDDYYYY(g.date);
-  return `${d} — ${g.away_team} @ ${g.home_team}`;
+  return `${d} — ${matchupLabelUsFirst(g, true)}`;
 }
 
 export function ReportsHubClient({
@@ -82,7 +100,7 @@ export function ReportsHubClient({
     }
     let cancelled = false;
     void (async () => {
-      const res = await fetchPreGameOverview(gameId);
+      const res = await fetchPreGameOverview(gameId, teamTrendInsights);
       if (cancelled) return;
       if ("error" in res) setPreGameOverview(null);
       else setPreGameOverview(res);
@@ -90,12 +108,12 @@ export function ReportsHubClient({
     return () => {
       cancelled = true;
     };
-  }, [gameId]);
+  }, [gameId, teamTrendInsights]);
 
   const documentTitle = useCallback((): string => {
     const tlab = TAB_META.find((t) => t.id === tab)?.label ?? "Reports";
     const g = tab === "postgame" ? postGameGame : selectedGame;
-    const gameBit = g ? ` — ${g.away_team} @ ${g.home_team}` : "";
+    const gameBit = g ? ` — ${matchupLabelUsFirst(g, true)}` : "";
     return `Reports — ${tlab}${gameBit}`;
   }, [tab, postGameGame, selectedGame]);
 
@@ -138,7 +156,8 @@ export function ReportsHubClient({
         <div>
           <h1 className="font-orbitron text-3xl font-semibold tracking-tight text-[var(--text)]">Reports</h1>
           <p className="mt-1 max-w-xl text-sm text-[var(--text-muted)]">
-            Pre-game prep and post-game snapshots built from logged data—built for quick coach huddles.
+            Pre-game shows scouting sections (context, pitch mix, trends, matchup notes, plan) plus lineups; post-game
+            snapshots and PDF export use the same logged data.
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
@@ -205,6 +224,32 @@ export function ReportsHubClient({
           );
         })}
       </nav>
+
+      {tab === "pregame" && selectedGame ? (
+        <nav
+          className="flex gap-1 overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-2 py-2 [-ms-overflow-style:none] [scrollbar-width:thin]"
+          aria-label="Pre-game report sections"
+        >
+          <span className="hidden shrink-0 self-center px-2 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] sm:inline">
+            Jump to
+          </span>
+          {PREGAME_JUMP_LINKS.map(({ href, label }) => (
+            <a
+              key={href}
+              href={href}
+              className="font-orbitron shrink-0 rounded-md border border-transparent px-2.5 py-1.5 text-xs font-semibold tracking-wide text-[var(--text-muted)] hover:border-[var(--accent)]/40 hover:bg-[var(--accent-dim)] hover:text-[var(--accent)]"
+            >
+              {label}
+            </a>
+          ))}
+        </nav>
+      ) : null}
+
+      <ReportsAssistantPanel
+        selectedGame={selectedGame}
+        preGameOverview={preGameOverview}
+        teamTrendInsights={teamTrendInsights}
+      />
 
       <div ref={printRef} className="reports-print-area space-y-6">
         <AnimatePresence mode="wait">

@@ -10,12 +10,18 @@ export async function fetchGameLineupForCoach(
   side: LineupSide
 ): Promise<{ slot: number; player_id: string; position: string | null }[]> {
   if (isDemoId(gameId)) return [];
-  const slots = (await getGameLineup(gameId)).filter((s) => s.side === side);
-  return [...slots].sort((a, b) => a.slot - b.slot).map((s) => ({
-    slot: s.slot,
-    player_id: s.player_id,
-    position: s.position ?? null,
-  }));
+  const rows = (await getGameLineup(gameId)).filter((s) => s.side === side);
+  const bySlot = new Map<number, (typeof rows)[0]>();
+  for (const s of rows) {
+    bySlot.set(s.slot, s);
+  }
+  return [...bySlot.values()]
+    .sort((a, b) => a.slot - b.slot)
+    .map((s) => ({
+      slot: s.slot,
+      player_id: s.player_id,
+      position: s.position ?? null,
+    }));
 }
 
 /** Save one side's lineup for a game from coach page. */

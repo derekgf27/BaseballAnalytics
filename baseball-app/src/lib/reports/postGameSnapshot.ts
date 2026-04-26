@@ -18,7 +18,6 @@ export type PostGameSnapshot = {
   } | null;
   plateDiscipline: {
     fpsPct: number | null;
-    chaseRate: number | null;
     pPa: number | null;
   };
   situational: {
@@ -96,10 +95,6 @@ export function buildPostGameSnapshot(
   const fpsDenom = pasOur.filter((p) => p.first_pitch_strike != null).length;
   const fpsNum = pasOur.filter((p) => p.first_pitch_strike === true).length;
   const fpsPct = fpsDenom > 0 ? fpsNum / fpsDenom : null;
-
-  const chaseDenom = pasOur.filter((p) => p.chase != null).length;
-  const chaseNum = pasOur.filter((p) => p.chase === true).length;
-  const chaseRate = chaseDenom > 0 ? chaseNum / chaseDenom : null;
 
   const pPa = teamStats?.pPa ?? null;
 
@@ -207,7 +202,7 @@ export function buildPostGameSnapshot(
           rispLine,
         }
       : null,
-    plateDiscipline: { fpsPct, chaseRate, pPa },
+    plateDiscipline: { fpsPct, pPa },
     situational: {
       rispHits: rispStats?.h ?? 0,
       rispPa: rispStats?.pa ?? 0,

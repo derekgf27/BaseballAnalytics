@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { analystPlayerProfileHref } from "@/lib/analystRoutes";
 import { CurrentBatterPitchDataCard } from "@/components/analyst/BattingPitchMixCard";
 import {
@@ -39,16 +39,31 @@ export function GameBatterPitchDetailStack({
     baserunningByPlayerId
   );
   if (rows.length === 0) return null;
+  const substitutionLabelByPlayerId = useMemo(() => {
+    const map = new Map<string, string>();
+    let subIndex = 0;
+    for (const row of rows) {
+      if (!row.isSubstitution) continue;
+      const marker = substitutionMarker(subIndex);
+      const roleAndPos = row.position ? `PH-${row.position}` : "PH";
+      map.set(row.playerId, `${marker}-${row.name} ${roleAndPos}`);
+      subIndex += 1;
+    }
+    return map;
+  }, [rows]);
 
   return (
     <div
       className={`game-batter-pitch-detail-stack space-y-2 ${compact ? "text-xs" : ""}`.trim()}
     >
       {rows.map((row, index) => {
-        const orderNum = index + 1;
-        const nameWithOrder = row.position
-          ? `${orderNum}. ${row.name} ${row.position}`
-          : `${orderNum}. ${row.name}`;
+        const starterLabel = row.position
+          ? `${row.lineupSlot ?? index + 1}. ${row.name} ${row.position}`
+          : `${row.lineupSlot ?? index + 1}. ${row.name}`;
+        const substitutionLabel =
+          substitutionLabelByPlayerId.get(row.playerId) ??
+          (row.position ? `${substitutionMarker(index)}-${row.name} PH-${row.position}` : `${substitutionMarker(index)}-${row.name} PH`);
+        const nameWithOrder = row.isSubstitution ? substitutionLabel : starterLabel;
         const batterPas = pas.filter((p) => p.batter_id === row.playerId);
         const batterPaIds = new Set(batterPas.map((p) => p.id));
         const batterPitchEvents = pitchEvents.filter((e) => batterPaIds.has(e.pa_id));
@@ -70,6 +85,8 @@ export interface GameBattingRow {
   playerId: string;
   name: string;
   position: string;
+  lineupSlot: number | null;
+  isSubstitution: boolean;
   ab: number;
   r: number;
   h: number;
@@ -139,6 +156,14 @@ function formatAvgOps(value: number): string {
   return s.startsWith("0.") ? s.slice(1) : s;
 }
 
+function substitutionMarker(index: number): string {
+  const alphabet = "abcdefghijklmnopqrstuvwxyz";
+  if (index < alphabet.length) return alphabet[index]!;
+  const first = alphabet[Math.floor(index / alphabet.length) - 1] ?? "z";
+  const second = alphabet[index % alphabet.length] ?? "z";
+  return `${first}${second}`;
+}
+
 function computeGameBatting(
   pas: PlateAppearance[],
   players: Player[],
@@ -150,18 +175,49 @@ function computeGameBatting(
   const playerMap = new Map(list.map((p) => [p.id, p]));
   const lobByBatter = lobByBatterFromPas(pas);
   const batterIdsInGame = new Set(pas.map((pa) => pa.batter_id).filter(Boolean));
+  const sortedPas = [...pas].sort(
+    (a, b) =>
+      a.inning - b.inning ||
+      (a.inning_half ?? "").localeCompare(b.inning_half ?? "") ||
+      new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime()
+  );
 
   const order: string[] = [];
+  const starterSlots = new Map<string, number>();
+  const inferredSubSlots = new Map<string, number>();
+  const firstAppearanceIndex = new Map<string, number>();
   if (lineupOrder?.length) {
-    for (const playerId of lineupOrder) {
+    for (let i = 0; i < lineupOrder.length; i += 1) {
+      const playerId = lineupOrder[i]!;
       order.push(playerId);
+      if (!starterSlots.has(playerId)) starterSlots.set(playerId, i + 1);
+    }
+    let slotCursor = 0;
+    const firstKnownBatter = sortedPas.find((pa) => starterSlots.has(pa.batter_id));
+    if (firstKnownBatter) {
+      const mapped = starterSlots.get(firstKnownBatter.batter_id);
+      if (mapped != null) slotCursor = Math.max(0, mapped - 1);
+    }
+    for (let i = 0; i < sortedPas.length; i += 1) {
+      const pa = sortedPas[i]!;
+      if (!firstAppearanceIndex.has(pa.batter_id)) firstAppearanceIndex.set(pa.batter_id, i);
+      if (!starterSlots.has(pa.batter_id) && !inferredSubSlots.has(pa.batter_id)) {
+        inferredSubSlots.set(pa.batter_id, slotCursor + 1);
+      }
+      const starterSlot = starterSlots.get(pa.batter_id);
+      if (starterSlot != null) {
+        slotCursor = starterSlot - 1;
+      }
+      slotCursor = (slotCursor + 1) % lineupOrder.length;
     }
     for (const id of batterIdsInGame) {
       if (!order.includes(id)) order.push(id);
     }
   } else {
     const seen = new Set<string>();
-    for (const pa of pas) {
+    for (let i = 0; i < sortedPas.length; i += 1) {
+      const pa = sortedPas[i]!;
+      if (!firstAppearanceIndex.has(pa.batter_id)) firstAppearanceIndex.set(pa.batter_id, i);
       if (!seen.has(pa.batter_id)) {
         seen.add(pa.batter_id);
         order.push(pa.batter_id);
@@ -201,6 +257,8 @@ function computeGameBatting(
       playerId: batterId,
       name: displayName,
       position: displayPosition,
+      lineupSlot: starterSlots.get(batterId) ?? inferredSubSlots.get(batterId) ?? null,
+      isSubstitution: !starterSlots.has(batterId),
       ab: stats?.ab ?? 0,
       r,
       h: stats?.h ?? 0,
@@ -221,7 +279,16 @@ function computeGameBatting(
       lob: lobByBatter.get(batterId) ?? 0,
     });
   }
-  return rows;
+  return rows.sort((a, b) => {
+    const slotA = a.lineupSlot ?? Number.MAX_SAFE_INTEGER;
+    const slotB = b.lineupSlot ?? Number.MAX_SAFE_INTEGER;
+    if (slotA !== slotB) return slotA - slotB;
+    if (a.isSubstitution !== b.isSubstitution) return a.isSubstitution ? 1 : -1;
+    const firstA = firstAppearanceIndex.get(a.playerId) ?? Number.MAX_SAFE_INTEGER;
+    const firstB = firstAppearanceIndex.get(b.playerId) ?? Number.MAX_SAFE_INTEGER;
+    if (firstA !== firstB) return firstA - firstB;
+    return a.name.localeCompare(b.name);
+  });
 }
 
 interface GameBattingTableProps {
@@ -273,6 +340,18 @@ export function GameBattingTable({
     baserunningByPlayerId
   );
   const rowsWithPending = rows;
+  const substitutionLabelByPlayerId = useMemo(() => {
+    const map = new Map<string, string>();
+    let subIndex = 0;
+    for (const row of rowsWithPending) {
+      if (!row.isSubstitution) continue;
+      const marker = substitutionMarker(subIndex);
+      const roleAndPos = row.position ? `PH-${row.position}` : "PH";
+      map.set(row.playerId, `${marker}-${row.name} ${roleAndPos}`);
+      subIndex += 1;
+    }
+    return map;
+  }, [rowsWithPending]);
   const headingTeamName =
     teamNameProp ??
     (game.our_side === "home" ? game.home_team : game.away_team);
@@ -375,40 +454,46 @@ export function GameBattingTable({
           </thead>
           <tbody>
             {rowsWithPending.map((row, index) => {
-              const orderNum = index + 1;
-              const nameWithOrder = row.position ? `${orderNum}. ${row.name} ${row.position}` : `${orderNum}. ${row.name}`;
+              const starterLabel = row.position
+                ? `${row.lineupSlot ?? index + 1}. ${row.name} ${row.position}`
+                : `${row.lineupSlot ?? index + 1}. ${row.name}`;
+              const substitutionLabel =
+                substitutionLabelByPlayerId.get(row.playerId) ??
+                (row.position ? `${substitutionMarker(index)}-${row.name} PH-${row.position}` : `${substitutionMarker(index)}-${row.name} PH`);
+              const nameWithOrder = row.isSubstitution ? substitutionLabel : starterLabel;
               return (
-                <tr
-                  key={row.playerId}
-                  className={`break-inside-avoid border-b border-[var(--border)] ${
-                    highlightedBatterId && row.playerId === highlightedBatterId
-                      ? "bg-[var(--accent)]/15"
-                      : ""
-                  }`}
-                >
-                  <td className={compact ? "px-1.5 py-1 font-medium text-[var(--text)]" : "px-3 py-2 font-medium text-[var(--text)]"}>
-                    {linkPlayersToProfile ? (
-                      <Link
-                        href={analystPlayerProfileHref(row.playerId)}
-                        className="text-[var(--accent)] hover:underline"
-                      >
-                        {nameWithOrder}
-                      </Link>
-                    ) : (
-                      nameWithOrder
-                    )}
-                  </td>
-                  <td className={compact ? "px-1 py-1 text-right tabular-nums text-[var(--text)]" : "px-2 py-2 text-right tabular-nums text-[var(--text)]"}>{row.ab}</td>
-                  <td className={compact ? "px-1 py-1 text-right tabular-nums text-[var(--text)]" : "px-2 py-2 text-right tabular-nums text-[var(--text)]"}>{row.r}</td>
-                  <td className={compact ? "px-1 py-1 text-right tabular-nums text-[var(--text)]" : "px-2 py-2 text-right tabular-nums text-[var(--text)]"}>{row.h}</td>
-                  <td className={compact ? "px-1 py-1 text-right tabular-nums text-[var(--text)]" : "px-2 py-2 text-right tabular-nums text-[var(--text)]"}>{row.rbi}</td>
-                  <td className={compact ? "px-1 py-1 text-right tabular-nums text-[var(--text)]" : "px-2 py-2 text-right tabular-nums text-[var(--text)]"}>{row.bb}</td>
-                  <td className={compact ? "px-1 py-1 text-right tabular-nums text-[var(--text)]" : "px-2 py-2 text-right tabular-nums text-[var(--text)]"}>{row.k}</td>
-                  <td className={compact ? "px-1 py-1 text-right tabular-nums text-[var(--text)]" : "px-2 py-2 text-right tabular-nums text-[var(--text)]"}>{row.lob}</td>
-                  <td className={compact ? "px-1 py-1 text-right tabular-nums text-[var(--text)]" : "px-2 py-2 text-right tabular-nums text-[var(--text)]"}>
-                    {formatBattingTripleSlash(row.avg, row.obp, row.slg)}
-                  </td>
-                </tr>
+                <Fragment key={row.playerId}>
+                  <tr
+                    className={`break-inside-avoid border-b border-[var(--border)] ${
+                      highlightedBatterId && row.playerId === highlightedBatterId
+                        ? "bg-[var(--accent)]/15"
+                        : ""
+                    }`}
+                  >
+                    <td className={compact ? "px-1.5 py-1 font-medium text-[var(--text)]" : "px-3 py-2 font-medium text-[var(--text)]"}>
+                      {linkPlayersToProfile ? (
+                        <Link
+                          href={analystPlayerProfileHref(row.playerId)}
+                          className={`${row.isSubstitution ? "inline-block pl-4" : ""} text-[var(--accent)] hover:underline`}
+                        >
+                          {nameWithOrder}
+                        </Link>
+                      ) : (
+                        <span className={row.isSubstitution ? "inline-block pl-4" : ""}>{nameWithOrder}</span>
+                      )}
+                    </td>
+                    <td className={compact ? "px-1 py-1 text-right tabular-nums text-[var(--text)]" : "px-2 py-2 text-right tabular-nums text-[var(--text)]"}>{row.ab}</td>
+                    <td className={compact ? "px-1 py-1 text-right tabular-nums text-[var(--text)]" : "px-2 py-2 text-right tabular-nums text-[var(--text)]"}>{row.r}</td>
+                    <td className={compact ? "px-1 py-1 text-right tabular-nums text-[var(--text)]" : "px-2 py-2 text-right tabular-nums text-[var(--text)]"}>{row.h}</td>
+                    <td className={compact ? "px-1 py-1 text-right tabular-nums text-[var(--text)]" : "px-2 py-2 text-right tabular-nums text-[var(--text)]"}>{row.rbi}</td>
+                    <td className={compact ? "px-1 py-1 text-right tabular-nums text-[var(--text)]" : "px-2 py-2 text-right tabular-nums text-[var(--text)]"}>{row.bb}</td>
+                    <td className={compact ? "px-1 py-1 text-right tabular-nums text-[var(--text)]" : "px-2 py-2 text-right tabular-nums text-[var(--text)]"}>{row.k}</td>
+                    <td className={compact ? "px-1 py-1 text-right tabular-nums text-[var(--text)]" : "px-2 py-2 text-right tabular-nums text-[var(--text)]"}>{row.lob}</td>
+                    <td className={compact ? "px-1 py-1 text-right tabular-nums text-[var(--text)]" : "px-2 py-2 text-right tabular-nums text-[var(--text)]"}>
+                      {formatBattingTripleSlash(row.avg, row.obp, row.slg)}
+                    </td>
+                  </tr>
+                </Fragment>
               );
             })}
             <tr className="break-inside-avoid border-t-2 border-[var(--border)] bg-[var(--bg-elevated)] font-medium">

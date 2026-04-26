@@ -21,7 +21,7 @@ interface CoachLineupTableProps {
 export function CoachLineupTable({ lineup }: CoachLineupTableProps) {
   if (!lineup.length) {
     return (
-      <div className="neo-card flex h-full min-h-0 flex-col border border-dashed border-[var(--neo-border)] p-4 lg:p-5">
+      <div className="neo-card flex min-h-0 w-full flex-col border border-dashed border-[var(--neo-border)] p-4 lg:p-5">
         <div className="section-label mb-3">Lineup</div>
         <div className="py-4 text-center lg:py-6">
           <p className="font-medium text-[var(--neo-text)]">No lineup set</p>
@@ -34,11 +34,11 @@ export function CoachLineupTable({ lineup }: CoachLineupTableProps) {
   }
 
   return (
-    <div className="neo-card flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+    <div className="neo-card flex min-w-0 flex-col overflow-hidden">
       <div className="px-4 pt-4 lg:px-5 lg:pt-5">
         <div className="section-label mb-3">Lineup</div>
       </div>
-      <div className="min-h-0 flex-1 overflow-x-auto">
+      <div className="overflow-x-auto px-4 pb-4 lg:px-5 lg:pb-5">
         <table className="w-full border-collapse text-left">
         <thead>
           <tr className="bg-[#151b21]">

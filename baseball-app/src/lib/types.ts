@@ -105,7 +105,6 @@ export interface PlateAppearance {
   count_strikes: number;
   result: PAResult;
   contact_quality: ContactQuality | null;
-  chase: boolean | null;
   hit_direction: HitDirection | null;
   /** Ground ball, line drive, fly ball, or infield fly (balls in play). */
   batted_ball_type?: BattedBallType | null;

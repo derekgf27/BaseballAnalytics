@@ -5,14 +5,12 @@ import { useRouter } from "next/navigation";
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
-  useSensor,
-  useSensors,
   useDraggable,
   useDroppable,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { useTouchOptimizedDndSensors } from "@/lib/dndTouchSensors";
 import Link from "next/link";
 import type { BattingStats, BattingStatsWithSplits, Player, SavedLineup } from "@/lib/types";
 import { lineupAggregateFromBattingStats } from "@/lib/compute/battingStats";
@@ -82,10 +80,7 @@ function poolCardStatLine(
   poolSortBy: PoolSortKey,
   stats: BattingStats | undefined
 ): { label: string; value: string } | null {
-  if (poolSortBy === "name") {
-    if (!stats) return null;
-    return { label: "AVG/OBP/SLG", value: formatBattingTripleSlash(stats.avg, stats.obp, stats.slg) };
-  }
+  if (poolSortBy === "name") return null;
   const label = poolSortBy === "avg" ? "AVG" : poolSortBy === "ops" ? "OPS" : "OBP";
   const key = poolSortBy as keyof BattingStats;
   return { label, value: formatLineupBattingCell(stats, key, "avg") };
@@ -167,7 +162,7 @@ function PlayerCard({
   if (compact) {
     return (
       <div
-        className={`flex cursor-grab items-center gap-2 active:cursor-grabbing ${
+        className={`flex cursor-grab touch-none select-none items-center gap-2 active:cursor-grabbing ${
           isDragging ? "opacity-50" : ""
         }`}
       >
@@ -180,7 +175,7 @@ function PlayerCard({
   }
   return (
     <div
-      className={`card-tech flex cursor-grab items-center gap-3 rounded-lg border p-3 active:cursor-grabbing ${
+      className={`card-tech flex cursor-grab touch-none select-none items-center gap-3 rounded-lg border p-3 active:cursor-grabbing ${
         isDragging ? "opacity-50" : ""
       }`}
     >
@@ -220,7 +215,12 @@ function DraggablePlayer({
     data: { player },
   });
   return (
-    <div ref={setNodeRef} {...listeners} {...attributes} className={compact ? "min-w-0 flex-1" : undefined}>
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className={compact ? "min-w-0 flex-1 touch-none select-none" : "touch-none select-none"}
+    >
       <PlayerCard player={player} isDragging={isDragging} compact={compact} poolStatLine={poolStatLine} />
     </div>
   );
@@ -315,11 +315,13 @@ function PlayerStatsTable({
   statsMap,
   emptyMessage,
   showSpot,
+  showOps,
 }: {
   players: Player[];
   statsMap: Record<string, BattingStats>;
   emptyMessage: string;
   showSpot?: boolean;
+  showOps?: boolean;
 }) {
   if (players.length === 0) {
     return (
@@ -341,6 +343,9 @@ function PlayerStatsTable({
             >
               AVG/OBP/SLG
             </th>
+            {showOps && (
+              <th className="font-display py-1.5 px-2 text-center text-xs font-semibold uppercase">OPS</th>
+            )}
             {BATTING_TAIL_LABELS.map(({ key, label }) => (
               <th key={key} className="font-display py-1.5 px-2 text-center text-xs font-semibold uppercase">
                 {label}
@@ -365,6 +370,11 @@ function PlayerStatsTable({
                   )}
                 </td>
                 <td className="py-1.5 px-2 text-center text-[var(--text)] tabular-nums">{formatSlashCell(s)}</td>
+                {showOps && (
+                  <td className="py-1.5 px-2 text-center text-[var(--text)] tabular-nums">
+                    {formatLineupBattingCell(s, "ops", "avg")}
+                  </td>
+                )}
                 {BATTING_TAIL_LABELS.map(({ key, format }) => (
                   <td key={key} className="py-1.5 px-2 text-center text-[var(--text)] tabular-nums">
                     {formatLineupBattingCell(s, key, format)}
@@ -416,9 +426,7 @@ export default function LineupConstructionClient({
     return () => clearTimeout(t);
   }, [saveStatus]);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
-  );
+  const sensors = useTouchOptimizedDndSensors();
 
   const inLineupIds = new Set(
     lineup.filter((s) => s.player != null).map((s) => s.player!.id)
@@ -690,6 +698,7 @@ export default function LineupConstructionClient({
 
       <DndContext
         sensors={sensors}
+        autoScroll={false}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
@@ -865,6 +874,7 @@ export default function LineupConstructionClient({
                 players={availablePlayers}
                 statsMap={initialBattingStats}
                 emptyMessage="No players in pool."
+                showOps
               />
             </div>
             <div className="min-w-0">
@@ -883,7 +893,7 @@ export default function LineupConstructionClient({
 
         <DragOverlay dropAnimation={null}>
           {activePlayer ? (
-            <div className="cursor-grabbing rounded-lg border border-[var(--neo-border)] bg-[var(--neo-bg-card)] shadow-lg">
+            <div className="will-change-transform cursor-grabbing rounded-lg border border-[var(--neo-border)] bg-[var(--neo-bg-card)] shadow-lg">
               <PlayerCard player={activePlayer} />
             </div>
           ) : null}

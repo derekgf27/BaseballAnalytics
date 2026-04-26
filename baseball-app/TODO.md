@@ -16,7 +16,6 @@
 - [ ] **Mobile-first polish** — Larger tap targets, optional PWA for field use.
 
 ## Coach mode
-- [ ] **Situation: batter ratings** — Pass real ratings for selected batter into situationPrompt (fetch in page, pass to client or compute in API).
 - [ ] **Alerts** — Tie substitution alerts to lineup + defense_trust + inning/score (e.g. “Consider defensive sub for X in 8th”).
 - [ ] **Green-light** — Optional: filter by “today’s lineup” only.
 

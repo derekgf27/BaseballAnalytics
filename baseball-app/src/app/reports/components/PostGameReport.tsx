@@ -1,7 +1,7 @@
 "use client";
 
 import type { PostGameSnapshot } from "@/lib/reports/postGameSnapshot";
-import { ourTeamName } from "@/lib/opponentUtils";
+import { matchupLabelUsFirst, ourTeamName } from "@/lib/opponentUtils";
 import type { Game } from "@/lib/types";
 
 const jumpLink =
@@ -110,7 +110,7 @@ export function PostGameReport({
       <div id="post-score" className="scroll-mt-6 rounded-xl border-2 border-[var(--accent)]/35 bg-[var(--accent-dim)]/25 p-6 sm:p-8">
         <p className="text-xs font-bold uppercase tracking-[0.15em] text-[var(--accent)]">Post-game snapshot</p>
         <p className="mt-2 font-display text-2xl font-bold leading-tight text-[var(--text)] sm:text-3xl">
-          {game.away_team} @ {game.home_team}
+          {matchupLabelUsFirst(game, true)}
         </p>
         {data.finalScore ? (
           <p className="mt-4 font-display text-4xl font-bold tabular-nums text-[var(--text)] sm:text-5xl">
@@ -184,11 +184,6 @@ export function PostGameReport({
               label="First-pitch strike %"
               hint="Share of PAs where first pitch was a strike (when tracked)"
               value={data.plateDiscipline.fpsPct != null ? fmtPct(data.plateDiscipline.fpsPct) : "—"}
-            />
-            <MetricRow
-              label="Chase rate"
-              hint="Swings at pitches outside the zone (when tracked)"
-              value={data.plateDiscipline.chaseRate != null ? fmtPct(data.plateDiscipline.chaseRate) : "—"}
             />
             <MetricRow
               label="Pitches per PA"
@@ -269,7 +264,7 @@ export function PostGameReport({
             value={analystAddendum}
             onChange={(e) => onAnalystAddendumChange(e.target.value)}
             rows={5}
-            placeholder={"e.g.\n• Chased high heat with two strikes\n• Ran the bases aggressively on contact"}
+            placeholder={"e.g.\n• Expanded at high heat with two strikes\n• Ran the bases aggressively on contact"}
             className="mt-2 w-full rounded-lg border-2 border-[var(--border)] bg-[var(--bg-input)] px-3 py-3 text-base text-[var(--text)] placeholder:text-[var(--text-faint)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
           />
         </label>

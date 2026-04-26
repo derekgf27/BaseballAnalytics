@@ -6,10 +6,12 @@
 import {
   pitchOutcomeIsSwing,
   pitchOutcomeStrikesThrownIncrement,
+  withInferredTerminalOutcomePitches,
 } from "@/lib/compute/pitchSequence";
 import { mergePitchTypeProfileIntoPitchingRates } from "@/lib/compute/pitchTypeProfileFromPas";
 import type {
   BattingStats,
+  PAResult,
   PitchEvent,
   PitchOutcome,
   PitchingRateLine,
@@ -26,6 +28,36 @@ export function pitchEventsFromDraftPitchLog(
   }>
 ): PitchEvent[] {
   return rows.map((row, i) => ({
+    id: `__draft_pe_${paId}_${i}`,
+    pa_id: paId,
+    pitch_index: i + 1,
+    balls_before: row.balls_before,
+    strikes_before: row.strikes_before,
+    outcome: row.outcome,
+    pitch_type: null,
+  }));
+}
+
+/**
+ * Same as {@link pitchEventsFromDraftPitchLog} but appends the same inferred terminal pitch as save
+ * (`in_play`, walk 4th ball, HBP) so live pitcher pitch-mix “Balls” matches the PA form.
+ */
+export function pitchEventsFromDraftPitchLogWithTerminal(
+  paId: string,
+  rows: ReadonlyArray<{
+    balls_before: number;
+    strikes_before: number;
+    outcome: PitchOutcome;
+  }>,
+  result: PAResult | null
+): PitchEvent[] {
+  const entries = rows.map((r) => ({
+    balls_before: r.balls_before,
+    strikes_before: r.strikes_before,
+    outcome: r.outcome,
+  }));
+  const withTerminal = withInferredTerminalOutcomePitches(entries, result);
+  return withTerminal.map((row, i) => ({
     id: `__draft_pe_${paId}_${i}`,
     pa_id: paId,
     pitch_index: i + 1,

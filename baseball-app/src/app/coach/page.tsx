@@ -5,10 +5,11 @@ import {
   getBattingStatsWithSplitsForPlayers,
   getPlateAppearancesByBatters,
   getPlateAppearancesByGame,
-  getPitchEventsForPaIds,
+  getPitchingStatsForPlayers,
+  getPitchingStatsForPitcherVsOurClub,
 } from "@/lib/db/queries";
 import { formatGameTime } from "@/lib/format";
-import type { PitchEvent, PlateAppearance, Player } from "@/lib/types";
+import type { PitchingStats, PlateAppearance } from "@/lib/types";
 import { battingStatsFromPAs } from "@/lib/compute/battingStats";
 import { trendFromRecentPAs, TREND_RECENT_PA_COUNT } from "@/lib/compute/trends";
 import { platoonFromSplits } from "@/lib/compute/platoon";
@@ -29,15 +30,11 @@ export default async function CoachPage() {
   let recommendedLineup: Parameters<typeof CoachTodayClient>[0]["recommendedLineup"] = [];
   let starterCompare: Parameters<typeof CoachTodayClient>[0]["starterCompare"] = null;
   let initialGamePas: PlateAppearance[] = [];
-  let initialGamePitchEvents: PitchEvent[] = [];
-  let coachPitchPlayers: Player[] = [];
+  let clubStarterSeasonPitching: PitchingStats | null = null;
+  let opponentVsOurClubPitching: PitchingStats | null = null;
 
   if (game) {
     initialGamePas = await getPlateAppearancesByGame(game.id);
-    initialGamePitchEvents =
-      initialGamePas.length > 0
-        ? await getPitchEventsForPaIds(initialGamePas.map((p) => p.id))
-        : [];
     const fullLineup = await getGameLineup(game.id);
     const opponent =
       game.our_side === "home" ? game.away_team : game.home_team;
@@ -53,14 +50,9 @@ export default async function CoachPage() {
     const starterIds = [ourStarterId, opponentStarterId].filter(
       (id): id is string => Boolean(id)
     );
-    const pitcherIdsFromPas = [
-      ...new Set(initialGamePas.map((p) => p.pitcher_id).filter((id): id is string => Boolean(id))),
-    ];
-    const lineupPlayerIds = fullLineup.map((s) => s.player_id);
-    const coachPlayerIdSet = new Set<string>([...starterIds, ...lineupPlayerIds, ...pitcherIdsFromPas]);
-    coachPitchPlayers =
-      coachPlayerIdSet.size > 0 ? await getPlayersByIds([...coachPlayerIdSet]) : [];
-    const starterById = new Map(coachPitchPlayers.map((p) => [p.id, p]));
+    const starterRows =
+      starterIds.length > 0 ? await getPlayersByIds(starterIds) : [];
+    const starterById = new Map(starterRows.map((p) => [p.id, p]));
 
     function starterDisplay(id: string | null | undefined) {
       if (!id) return null;
@@ -80,6 +72,14 @@ export default async function CoachPage() {
       },
     };
 
+    if (ourStarterId) {
+      const seasonMap = await getPitchingStatsForPlayers([ourStarterId]);
+      clubStarterSeasonPitching = seasonMap[ourStarterId]?.overall ?? null;
+    }
+    if (opponentStarterId) {
+      opponentVsOurClubPitching = await getPitchingStatsForPitcherVsOurClub(opponentStarterId);
+    }
+
     gameInfo = {
       id: game.id,
       date: game.date,
@@ -92,7 +92,13 @@ export default async function CoachPage() {
       startTime: game.game_time ? formatGameTime(game.game_time) : undefined,
     };
 
-    const slots = fullLineup.filter((s) => s.side === game.our_side);
+    /** Gameday batting order from `game_lineups` only (no roster fallback). */
+    const ourRows = fullLineup.filter((s) => s.side === game.our_side);
+    const bySlot = new Map<number, (typeof ourRows)[0]>();
+    for (const s of ourRows) {
+      bySlot.set(s.slot, s);
+    }
+    const slots = [...bySlot.values()].sort((a, b) => a.slot - b.slot);
     if (slots.length > 0) {
       const playerIds = slots.map((s) => s.player_id);
       const [players, splits, allPAs] = await Promise.all([
@@ -204,8 +210,8 @@ export default async function CoachPage() {
       recommendedLineup={recommendedLineup}
       starterCompare={starterCompare}
       initialGamePas={initialGamePas}
-      initialGamePitchEvents={initialGamePitchEvents}
-      coachPitchPlayers={coachPitchPlayers}
+      clubStarterSeasonPitching={clubStarterSeasonPitching}
+      opponentVsOurClubPitching={opponentVsOurClubPitching}
     />
   );
 }

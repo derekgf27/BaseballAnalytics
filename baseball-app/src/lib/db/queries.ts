@@ -606,7 +606,7 @@ export async function getSprayChartRowsForGames(gameIds: string[]): Promise<
 
 /** Base-hit PAs with hit_direction when a club pitcher is on the mound — team pitching spray (vs LHB / vs RHB). */
 export async function getTeamPlateAppearancesForPitchingSpray(): Promise<
-  { game_id: string; batter_id: string; hit_direction: string; result: string; pitcher_hand: "L" | "R" | null }[]
+  { game_id: string; batter_id: string; hit_direction: string; result: string; pitcher_hand: "L" | "R" | null; inning: number | null; base_state: string | null }[]
 > {
   const supabase = await getSupabase();
   if (!supabase) return [];
@@ -617,7 +617,7 @@ export async function getTeamPlateAppearancesForPitchingSpray(): Promise<
   if (clubPitcherIds.size === 0) return [];
   const { data } = await supabase
     .from("plate_appearances")
-    .select("game_id, batter_id, pitcher_id, hit_direction, result, pitcher_hand");
+    .select("game_id, batter_id, pitcher_id, hit_direction, result, pitcher_hand, inning, base_state");
   const rows = (data ?? []) as {
     game_id: string;
     batter_id: string;
@@ -625,6 +625,8 @@ export async function getTeamPlateAppearancesForPitchingSpray(): Promise<
     hit_direction: string | null;
     result: string;
     pitcher_hand: string | null;
+    inning: number | null;
+    base_state: string | null;
   }[];
   return rows
     .filter(
@@ -644,6 +646,8 @@ export async function getTeamPlateAppearancesForPitchingSpray(): Promise<
       hit_direction: r.hit_direction!,
       result: r.result,
       pitcher_hand: r.pitcher_hand === "L" || r.pitcher_hand === "R" ? r.pitcher_hand : null,
+      inning: typeof r.inning === "number" ? r.inning : null,
+      base_state: r.base_state ?? null,
     }));
 }
 
@@ -686,14 +690,22 @@ export async function getAllPlateAppearancesForRunExpectancy(): Promise<
  *  Includes batter_id and pitcher_hand for RHB/LHB split (switch hitters inferred: vs LHP → R, vs RHP → L).
  */
 export async function getTeamPlateAppearancesForSpray(): Promise<
-  { game_id: string; batter_id: string; hit_direction: string; result: string; pitcher_hand: "L" | "R" | null }[]
+  { game_id: string; batter_id: string; hit_direction: string; result: string; pitcher_hand: "L" | "R" | null; inning: number | null; base_state: string | null }[]
 > {
   const supabase = await getSupabase();
   if (!supabase) return [];
   const { data } = await supabase
     .from("plate_appearances")
-    .select("game_id, batter_id, hit_direction, result, pitcher_hand");
-  const rows = (data ?? []) as { game_id: string; batter_id: string; hit_direction: string | null; result: string; pitcher_hand: string | null }[];
+    .select("game_id, batter_id, hit_direction, result, pitcher_hand, inning, base_state");
+  const rows = (data ?? []) as {
+    game_id: string;
+    batter_id: string;
+    hit_direction: string | null;
+    result: string;
+    pitcher_hand: string | null;
+    inning: number | null;
+    base_state: string | null;
+  }[];
   return rows.filter(
     (r) =>
       !isDemoId(r.game_id) &&
@@ -702,7 +714,61 @@ export async function getTeamPlateAppearancesForSpray(): Promise<
       r.hit_direction !== "" &&
       r.batter_id &&
       !isDemoId(r.batter_id)
-  ).map((r) => ({ ...r, hit_direction: r.hit_direction!, pitcher_hand: r.pitcher_hand === "L" || r.pitcher_hand === "R" ? r.pitcher_hand : null })) as { game_id: string; batter_id: string; hit_direction: string; result: string; pitcher_hand: "L" | "R" | null }[];
+  ).map((r) => ({
+    ...r,
+    hit_direction: r.hit_direction!,
+    pitcher_hand: r.pitcher_hand === "L" || r.pitcher_hand === "R" ? r.pitcher_hand : null,
+    inning: typeof r.inning === "number" ? r.inning : null,
+    base_state: r.base_state ?? null,
+  })) as { game_id: string; batter_id: string; hit_direction: string; result: string; pitcher_hand: "L" | "R" | null; inning: number | null; base_state: string | null }[];
+}
+
+/** Team batting PAs for objective charts (discipline/contact/situational/player compare). */
+export async function getTeamPlateAppearancesForCharts(): Promise<
+  {
+    game_id: string;
+    batter_id: string;
+    result: PlateAppearance["result"];
+    inning: number | null;
+    base_state: string | null;
+    pitcher_hand: "L" | "R" | null;
+    batted_ball_type: PlateAppearance["batted_ball_type"] | null;
+    pitches_seen: number | null;
+    strikes_thrown: number | null;
+    first_pitch_strike: boolean | null;
+  }[]
+> {
+  const supabase = await getSupabase();
+  if (!supabase) return [];
+  const roster = await getPlayers();
+  const clubBatterIds = new Set(
+    roster.filter((p) => !isDemoId(p.id) && isClubRosterPlayer(p) && !isPitcherPlayer(p)).map((p) => p.id)
+  );
+  if (clubBatterIds.size === 0) return [];
+  const { data } = await supabase
+    .from("plate_appearances")
+    .select(
+      "game_id, batter_id, result, inning, base_state, pitcher_hand, batted_ball_type, pitches_seen, strikes_thrown, first_pitch_strike"
+    );
+  const rows = (data ?? []) as {
+    game_id: string;
+    batter_id: string;
+    result: PlateAppearance["result"];
+    inning: number | null;
+    base_state: string | null;
+    pitcher_hand: string | null;
+    batted_ball_type: PlateAppearance["batted_ball_type"] | null;
+    pitches_seen: number | null;
+    strikes_thrown: number | null;
+    first_pitch_strike: boolean | null;
+  }[];
+  return rows
+    .filter((r) => !isDemoId(r.game_id) && clubBatterIds.has(r.batter_id))
+    .map((r) => ({
+      ...r,
+      batted_ball_type: r.batted_ball_type ?? null,
+      pitcher_hand: r.pitcher_hand === "L" || r.pitcher_hand === "R" ? r.pitcher_hand : null,
+    }));
 }
 
 export async function getPlateAppearancesByBatter(batterId: string): Promise<PlateAppearance[]> {
@@ -1041,6 +1107,98 @@ export async function getPitchingStatsForPlayers(
     };
   }
   return result;
+}
+
+/**
+ * Pitching line for this pitcher on PAs where the batter was on our club’s side in that game
+ * (`game_lineups.side === games.our_side`). Games without a saved lineup for our side contribute no PAs.
+ */
+export async function getPitchingStatsForPitcherVsOurClub(
+  pitcherId: string
+): Promise<PitchingStats | null> {
+  const supabase = await getSupabase();
+  if (!supabase || !pitcherId || isDemoId(pitcherId)) return null;
+
+  const { data: pasRows } = await supabase
+    .from("plate_appearances")
+    .select("*")
+    .eq("pitcher_id", pitcherId);
+  const allPitcherPas = (pasRows ?? []) as PlateAppearance[];
+  if (allPitcherPas.length === 0) return null;
+
+  const gameIds = [...new Set(allPitcherPas.map((p) => p.game_id).filter(Boolean))] as string[];
+  const [gamesRes, lineupRes] = await Promise.all([
+    supabase.from("games").select("id, our_side").in("id", gameIds),
+    supabase.from("game_lineups").select("game_id, player_id, side").in("game_id", gameIds),
+  ]);
+
+  const gameOurSide = new Map<string, "home" | "away">();
+  for (const row of gamesRes.data ?? []) {
+    const g = row as Game;
+    gameOurSide.set(g.id, g.our_side);
+  }
+
+  const ourBattersByGame = new Map<string, Set<string>>();
+  for (const row of lineupRes.data ?? []) {
+    const r = row as { game_id: string; player_id: string; side: string };
+    const ourSide = gameOurSide.get(r.game_id);
+    if (!ourSide || r.side !== ourSide) continue;
+    const set = ourBattersByGame.get(r.game_id) ?? new Set<string>();
+    set.add(r.player_id);
+    ourBattersByGame.set(r.game_id, set);
+  }
+
+  const filteredPas = allPitcherPas.filter((pa) => ourBattersByGame.get(pa.game_id)?.has(pa.batter_id) ?? false);
+  if (filteredPas.length === 0) return null;
+
+  const filteredGameIds = [...new Set(filteredPas.map((p) => p.game_id))];
+  const { data: gamePas } = await supabase.from("plate_appearances").select("*").in("game_id", filteredGameIds);
+  const allPasForGames = (gamePas ?? []) as PlateAppearance[];
+
+  const batterIds = new Set<string>();
+  for (const pa of filteredPas) {
+    if (pa.batter_id) batterIds.add(pa.batter_id);
+  }
+  const batterBatsById = new Map<string, Bats | null>();
+  if (batterIds.size > 0) {
+    const { data: batterRows } = await supabase.from("players").select("id, bats").in("id", [...batterIds]);
+    for (const row of batterRows ?? []) {
+      const r = row as { id: string; bats: string | null };
+      batterBatsById.set(r.id, (r.bats as Bats | null) ?? null);
+    }
+  }
+
+  const [homeStarters, awayStarters] = await Promise.all([
+    supabase.from("games").select("id").eq("starting_pitcher_home_id", pitcherId),
+    supabase.from("games").select("id").eq("starting_pitcher_away_id", pitcherId),
+  ]);
+  const starterGameIds = new Set<string>();
+  for (const row of homeStarters.data ?? []) {
+    starterGameIds.add((row as { id: string }).id);
+  }
+  for (const row of awayStarters.data ?? []) {
+    starterGameIds.add((row as { id: string }).id);
+  }
+  const fgSet = new Set(filteredGameIds);
+  const startersForSample = new Set([...starterGameIds].filter((id) => fgSet.has(id)));
+
+  const paPitchIds = filteredPas.map((p) => p.id).filter(Boolean) as string[];
+  const pitchEventsPitching =
+    paPitchIds.length > 0 ? await getPitchEventsForPaIds(paPitchIds) : [];
+  const eventsByPaIdPitching = groupPitchEventsByPaId(pitchEventsPitching);
+
+  const withSplits = pitchingStatsFromPAs(
+    filteredPas,
+    startersForSample,
+    batterBatsById,
+    eventsByPaIdPitching,
+    { allPasForRunCharges: allPasForGames }
+  );
+  if (!withSplits) return null;
+  const eCountsPitch = await fetchFieldingErrorCountsForPlayers(supabase, [pitcherId]);
+  const eN = eCountsPitch[pitcherId] ?? 0;
+  withSplits.overall.e = eN;
+  return withSplits.overall;
 }
 
 /**

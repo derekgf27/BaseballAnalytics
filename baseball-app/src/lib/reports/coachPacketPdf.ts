@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
 import { formatDateMMDDYYYY } from "@/lib/format";
+import { ourVenueLabel } from "@/lib/opponentUtils";
 import type { CoachPacketModel } from "./coachPacketTypes";
 
 function coachPacketFilenameBase(m: CoachPacketModel): string {
@@ -11,114 +11,84 @@ function coachPacketFilenameBase(m: CoachPacketModel): string {
       .replace(/[^\w\s-]+/g, "")
       .replace(/\s+/g, "_")
       .slice(0, 40) || "game";
-  return `coach-packet_${d}_${safe(m.game.away_team)}_at_${safe(m.game.home_team)}`;
+  return `coach-packet_${d}_${safe(m.our_team_name)}_vs_${safe(m.opponent_team_name)}_${m.game.our_side}`;
 }
 
-function nextStartY(doc: jsPDF, margin: number): number {
-  const last = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable;
-  return (last?.finalY ?? margin) + 10;
+function statFmt(n: number | null): string {
+  return n != null && Number.isFinite(n) ? n.toFixed(3) : "—";
+}
+
+function drawLineupColumn(
+  doc: jsPDF,
+  rows: CoachPacketModel["our_lineup"],
+  x: number,
+  startY: number,
+  width: number
+): void {
+  let y = startY;
+  for (const r of rows) {
+    if (y > 258) break;
+    const slot = `${r.slot}.`;
+    const name = r.name || "Unknown";
+    const meta = [r.jersey ? `#${r.jersey}` : null, r.position || null].filter(Boolean).join(" · ") || "—";
+    const stats = `AVG ${statFmt(r.avg)}   OPS ${statFmt(r.ops)}`;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text(slot, x, y);
+    doc.text(name, x + 8, y);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.text(stats, x + width - 2, y, { align: "right" });
+
+    y += 4.6;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(90, 90, 90);
+    doc.text(meta, x + 8, y);
+    doc.setTextColor(20, 20, 20);
+    y += 5.4;
+  }
 }
 
 export function downloadCoachPacketPdf(m: CoachPacketModel): void {
   const filenameBase = coachPacketFilenameBase(m);
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
-  const margin = 14;
-  let y = margin;
+  const margin = 12;
 
-  const title = `${formatDateMMDDYYYY(m.game.date)} — ${m.game.away_team} @ ${m.game.home_team}`;
-  doc.setFontSize(14);
+  const title = `${m.our_team_name} vs ${m.opponent_team_name}`;
+  const subtitle = `${formatDateMMDDYYYY(m.game.date)} · ${ourVenueLabel(m.game)} · Season AVG/OPS`;
+  doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
-  doc.text(title, margin, y);
-  y += 8;
+  doc.text(title, margin, margin + 4);
 
-  doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
-  const scoreLine =
-    m.game.final_score_home != null && m.game.final_score_away != null
-      ? `Score: ${m.game.final_score_away}-${m.game.final_score_home} (away-home)`
-      : "Score: not finalized";
-  doc.text(scoreLine, margin, y);
-  y += 10;
+  doc.setFontSize(10);
+  doc.text(subtitle, margin, margin + 10);
 
-  doc.setFontSize(11);
+  const yTop = margin + 20;
+  const pageW = doc.internal.pageSize.getWidth();
+  const colGap = 8;
+  const colW = (pageW - margin * 2 - colGap) / 2;
+  const leftX = margin;
+  const rightX = margin + colW + colGap;
+
+  doc.setDrawColor(190, 190, 190);
+  doc.line(margin, yTop - 4, pageW - margin, yTop - 4);
+
+  doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
-  doc.text(`Lineup — ${m.our_team_name}`, margin, y);
-  y += 2;
+  doc.text(m.our_team_name, leftX, yTop);
+  doc.text(m.opponent_team_name, rightX, yTop);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(90, 90, 90);
+  doc.text("AVG / OPS are season totals from logged PAs", leftX, yTop + 4.8);
+  doc.text("AVG / OPS are season totals from logged PAs", rightX, yTop + 4.8);
+  doc.setTextColor(20, 20, 20);
 
-  autoTable(doc, {
-    startY: y,
-    margin: { left: margin, right: margin },
-    head: [["Slot", "Name", "Pos", "#", "Bats"]],
-    body: m.our_lineup.map((r) => [r.slot, r.name, r.position || "—", r.jersey || "—", r.bats || "—"]),
-    styles: { fontSize: 9, cellPadding: 2 },
-    headStyles: { fillColor: [55, 55, 55], textColor: 255 },
-    theme: "striped",
-  });
-
-  y = nextStartY(doc, margin);
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text(`Lineup — ${m.opponent_team_name}`, margin, y);
-  y += 2;
-
-  autoTable(doc, {
-    startY: y,
-    margin: { left: margin, right: margin },
-    head: [["Slot", "Name", "Pos", "#", "Bats"]],
-    body: m.opponent_lineup.map((r) => [r.slot, r.name, r.position || "—", r.jersey || "—", r.bats || "—"]),
-    styles: { fontSize: 9, cellPadding: 2 },
-    headStyles: { fillColor: [55, 55, 55], textColor: 255 },
-    theme: "striped",
-  });
-
-  y = nextStartY(doc, margin);
-  if (y > 240) {
-    doc.addPage();
-    y = margin;
-  }
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("Plate appearances", margin, y);
-  y += 2;
-
-  autoTable(doc, {
-    startY: y,
-    margin: { left: margin, right: margin },
-    head: [
-      [
-        "Inn",
-        "½",
-        "O",
-        "Bases",
-        "Cnt",
-        "Batter",
-        "Bt",
-        "Pitcher",
-        "Thr",
-        "Result",
-        "RBI",
-        "#P",
-      ],
-    ],
-    body: m.plate_appearances.map((p) => [
-      p.inning,
-      p.inning_half,
-      p.outs,
-      p.base_state,
-      `${p.count_balls}-${p.count_strikes}`,
-      p.batter,
-      p.batter_bats || "—",
-      p.pitcher || "—",
-      p.pitcher_throws || "—",
-      p.result,
-      p.rbi,
-      p.pitches_seen || "—",
-    ]),
-    styles: { fontSize: 6.5, cellPadding: 0.8 },
-    headStyles: { fillColor: [55, 55, 55], textColor: 255 },
-    theme: "striped",
-    showHead: "everyPage",
-  });
+  drawLineupColumn(doc, m.our_lineup, leftX, yTop + 11, colW);
+  drawLineupColumn(doc, m.opponent_lineup, rightX, yTop + 11, colW);
 
   doc.save(`${filenameBase}.pdf`);
 }

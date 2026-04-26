@@ -39,8 +39,11 @@ export async function fetchCoachPacketAction(
   }
   const players: Player[] = ids.size > 0 ? await getPlayersByIds([...ids]) : [];
   const playersById = new Map<string, Player>(players.map((p) => [p.id, p]));
+  const lineupPlayerIds = [...new Set(lineup.map((s) => s.player_id))];
+  const battingStatsByPlayerId =
+    lineupPlayerIds.length > 0 ? await getBattingStatsWithSplitsForPlayers(lineupPlayerIds) : {};
 
-  return buildCoachPacketModel(game, lineup, playersById, pas);
+  return buildCoachPacketModel(game, lineup, playersById, pas, battingStatsByPlayerId);
 }
 
 /** Splits + spray data for PDF hitter reports (club roster only). */

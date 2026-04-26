@@ -8,7 +8,7 @@ import { PitchingStatsSheet } from "@/components/analyst/PitchingStatsSheet";
 import { computeBattingStatsWithSplitsFromPas } from "@/lib/compute/battingStatsWithSplitsFromPas";
 import { computePitchingStatsWithSplitsForRoster } from "@/lib/compute/pitchingStats";
 import { formatDateMMDDYYYY } from "@/lib/format";
-import { opponentNameKey } from "@/lib/opponentUtils";
+import { matchupLabelUsFirst, opponentNameKey } from "@/lib/opponentUtils";
 import { SPRAY_CHART_HIT_RESULTS, SPRAY_CHART_OUT_RESULTS } from "@/lib/sprayChartFilters";
 import type {
   BattingStatsWithSplits,
@@ -361,7 +361,7 @@ export function OpponentDetailClient({
                   className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] pb-2 last:border-0 last:pb-0"
                 >
                   <span className="min-w-0 text-[var(--text)]">
-                    {formatDateMMDDYYYY(g.date)} — {g.away_team} @ {g.home_team}
+                    {formatDateMMDDYYYY(g.date)} — {matchupLabelUsFirst(g, true)}
                   </span>
                   <div className="flex shrink-0 flex-wrap gap-2">
                     <Link

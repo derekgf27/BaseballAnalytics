@@ -10,7 +10,7 @@
 │  /analyst/*                      │  /coach/*                     │
 │  - Game logging UI               │  - Lineup (roles only)        │
 │  - Player profiles + overrides   │  - Green-light matrix         │
-│  - Charts (contact, chase, etc.) │  - Situation prompt           │
+│  - Charts (contact, chase, etc.) │  - Stats & green-light        │
 │  - Games / Players (add, edit)   │  - Alerts / substitutions    │
 ├──────────────────────────────────┼───────────────────────────────┤
 │  Presentation Layer (React)      │  Same components, no raw data │
@@ -36,7 +36,7 @@
 
 1. **Event-first:** All persisted data is either an event (PA, defensive decision) or reference (games, players). Aggregates and stats are derived.
 2. **Computation separate from presentation:** `lib/compute/` has no React, no Supabase; it receives plain objects and returns recommendations/ratings.
-3. **Coach sees only outputs:** Coach Mode API/pages return lineup roles, green-light labels, one-sentence situation, alerts — never raw events or decimals.
+3. **Coach sees only outputs:** Coach Mode API/pages return lineup roles, green-light labels, aggregated stats views, alerts — never raw events or decimals.
 4. **Analyst can override:** Stored `player_ratings` override computed ratings when present.
 
 ## Folder Structure
@@ -61,17 +61,17 @@ src/
 │   │   ├── layout.tsx
 │   │   ├── page.tsx          → hub
 │   │   ├── lineup/page.tsx
-│   │   ├── green-light/page.tsx
-│   │   ├── situation/page.tsx
-│   │   └── alerts/page.tsx
+│   │   ├── stats/page.tsx
+│   │   ├── pitch-tracker/page.tsx
+│   │   └── players/…
 │   └── api/                  → optional: computed endpoints for coach
 ├── components/
 │   ├── analyst/              → game log form, player ratings editor, charts
-│   ├── coach/                → lineup cards, green-light grid, situation result
+│   ├── coach/                → lineup cards, green-light / stats views
 │   └── shared/               → base state selector, player picker
 ├── lib/
 │   ├── db/                   → Supabase client, queries
-│   ├── compute/              → ratings, lineup roles, green light, situation, alerts
+│   ├── compute/              → ratings, lineup roles, green light, alerts
 │   └── types.ts              → shared types
 └── types.ts (or under lib)
 ```
@@ -82,8 +82,6 @@ src/
 - **Analyst views chart:** Fetch events from Supabase → pass to `lib/compute` for aggregates → render chart (analyst only).
 - **Analyst overrides rating:** UI → Supabase upsert `player_ratings` (with `overridden_at`).
 - **Coach opens Lineup:** Fetch lineup + players → `lineupRoles(players, ratings)` → render role labels only.
-- **Coach uses Situation:** Input (inning, outs, bases, batter) → `situationPrompt(context, batterRating)` → render Aggressive/Neutral/Conservative + one sentence.
-
 ## Tech Stack
 
 - **Next.js** (App Router) + **React** + **TypeScript**

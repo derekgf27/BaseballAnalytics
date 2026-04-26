@@ -7,7 +7,7 @@
  * - `/reports` (Reports hub), `/analyst`, `/analyst/roster`, `/analyst/roster/[id]`, `/analyst/stats`, `/analyst/games`,
  *   `/analyst/games/[id]/log`, `/analyst/games/[id]/review`, `/analyst/opponents`, `/analyst/opponents/[slug]`,
  *   `/analyst/lineup`, `/analyst/charts`, `/analyst/record`, `/analyst/run-expectancy`, `/analyst/compare-players`
- * - `/coach`, `/coach/lineup`, `/coach/players`, `/coach/players/[id]`, `/coach/green-light`, `/coach/situation`
+ * - `/coach`, `/coach/stats`, `/coach/lineup`, `/coach/players`, `/coach/players/[id]`, `/coach/pitch-tracker`
  * - `/coach/today` → redirects to `/coach` (see `app/coach/today/page.tsx`)
  * - `/auth/callback`, API routes under `/api/*`
  */
@@ -37,6 +37,7 @@ export const SHORTLINK_REDIRECTS: { source: string; destination: string; permane
 
   // Coach (sidebar: CoachNav.tsx — "Today" is `/coach`)
   { source: "/today", destination: "/coach", permanent: false },
-  { source: "/situation", destination: "/coach/situation", permanent: false },
-  { source: "/green-light", destination: "/coach/green-light", permanent: false },
+  { source: "/situation", destination: "/coach", permanent: false },
+  { source: "/green-light", destination: "/coach/stats", permanent: false },
+  { source: "/coach/green-light", destination: "/coach/stats", permanent: false },
 ];

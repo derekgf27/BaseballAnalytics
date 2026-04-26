@@ -161,7 +161,7 @@ export const mockPlayers: PlayerCard[] = [
     throws: "R",
     trend: "hot",
     strengths: ["Power", "Arm strength", "Clutch hits"],
-    weaknesses: ["Chase up"],
+    weaknesses: ["High fastballs up"],
     situationalValue: { risp: "high", lateInnings: "high", defense: "high" },
     tags: ["POWER", "CONTACT"],
   },

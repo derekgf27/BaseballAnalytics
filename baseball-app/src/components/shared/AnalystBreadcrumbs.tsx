@@ -75,13 +75,15 @@ function buildCrumbs(pathname: string, searchParams: URLSearchParams): Breadcrum
   }
 
   const gameId = searchParams.get("gameId");
-  // Record with game: Games › Game (log hub) › Record
-  if (pathname === "/analyst/record" && gameId && isGameIdParam(gameId)) {
-    return [
-      { label: "Games", href: "/analyst/games" },
-      { label: "Game", href: `/analyst/games/${gameId}/log` },
-      { label: "Record", href: null },
-    ];
+  if (pathname === "/analyst/record") {
+    if (gameId && isGameIdParam(gameId)) {
+      return [
+        { label: "Games", href: "/analyst/games" },
+        { label: "Game", href: `/analyst/games/${gameId}/log` },
+        { label: "Record", href: null },
+      ];
+    }
+    return [];
   }
 
   if (pathname === "/analyst") {

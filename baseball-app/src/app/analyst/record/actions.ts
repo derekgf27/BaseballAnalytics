@@ -38,7 +38,11 @@ export async function fetchPAsForGame(gameId: string): Promise<{
 function lineupSlotsToOrder(
   slots: Awaited<ReturnType<typeof getGameLineup>>
 ): { order: string[]; positionByPlayerId: Record<string, string> } {
-  const sorted = [...slots].sort((a, b) => a.slot - b.slot);
+  const bySlot = new Map<number, (typeof slots)[0]>();
+  for (const s of slots) {
+    bySlot.set(s.slot, s);
+  }
+  const sorted = [...bySlot.values()].sort((a, b) => a.slot - b.slot);
   const order = sorted.map((s) => s.player_id);
   const positionByPlayerId: Record<string, string> = {};
   for (const s of sorted) {

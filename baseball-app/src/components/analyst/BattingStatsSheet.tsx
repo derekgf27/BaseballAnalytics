@@ -11,6 +11,8 @@ import type {
   BattingFinalCountBucketKey,
   BattingStats,
   BattingStatsWithSplits,
+  PitchEvent,
+  PlateAppearance,
   Player,
   StatsRunnersFilterKey,
 } from "@/lib/types";
@@ -24,6 +26,7 @@ import {
   formatBattingSheetDataCell,
   formatBattingSheetNumber,
 } from "./battingStatsSheetModel";
+import { isBasesEmpty, isBasesLoaded, isRisp, isRunnersOn } from "@/lib/compute/battingStats";
 type BattingColumnMode = "standard" | "contact";
 
 /** Platoon slice for the stat sheet (runner situation is a separate control). */
@@ -73,6 +76,64 @@ const TEAM_FOOTER_TOP_RULE =
 /** Stat-group dividers on the team row (matches accent-tinted top rule; plain `--border` reads too dim). */
 const TEAM_FOOTER_GROUP_LEFT =
   "border-l-2 border-[color-mix(in_srgb,var(--accent)_58%,var(--border)_42%)]";
+
+type PitchCountStateContact = {
+  swingPct?: number;
+  whiffPct?: number;
+  foulPct?: number;
+};
+
+function buildPitchCountStateContactByPlayer(
+  players: Player[],
+  pas: PlateAppearance[] | undefined,
+  pitchEvents: PitchEvent[] | undefined,
+  splitView: SplitView,
+  runnersFilter: StatsRunnersFilterKey,
+  finalCountBucket: BattingFinalCountBucketKey | null
+): Record<string, PitchCountStateContact> {
+  if (!pas || !pitchEvents || !finalCountBucket) return {};
+  const [ballsNeed, strikesNeed] = finalCountBucket.split("-").map((n) => Number(n));
+  if (!Number.isFinite(ballsNeed) || !Number.isFinite(strikesNeed)) return {};
+  const playerIds = new Set(players.map((p) => p.id));
+  const paById = new Map<string, PlateAppearance>();
+  for (const pa of pas) {
+    if (!playerIds.has(pa.batter_id)) continue;
+    if (splitView === "vsL" && pa.pitcher_hand !== "L") continue;
+    if (splitView === "vsR" && pa.pitcher_hand !== "R") continue;
+    if (runnersFilter === "basesEmpty" && !isBasesEmpty(pa.base_state)) continue;
+    if (runnersFilter === "runnersOn" && !isRunnersOn(pa.base_state)) continue;
+    if (runnersFilter === "risp" && !isRisp(pa.base_state)) continue;
+    if (runnersFilter === "basesLoaded" && !isBasesLoaded(pa.base_state)) continue;
+    paById.set(pa.id, pa);
+  }
+
+  const agg: Record<string, { pitches: number; swings: number; whiffs: number; fouls: number }> = {};
+  for (const e of pitchEvents) {
+    if (e.balls_before !== ballsNeed || e.strikes_before !== strikesNeed) continue;
+    const pa = paById.get(e.pa_id);
+    if (!pa) continue;
+    const pid = pa.batter_id;
+    const cur = agg[pid] ?? { pitches: 0, swings: 0, whiffs: 0, fouls: 0 };
+    cur.pitches += 1;
+    if (e.outcome === "swinging_strike" || e.outcome === "foul" || e.outcome === "in_play") {
+      cur.swings += 1;
+    }
+    if (e.outcome === "swinging_strike") cur.whiffs += 1;
+    if (e.outcome === "foul") cur.fouls += 1;
+    agg[pid] = cur;
+  }
+
+  const out: Record<string, PitchCountStateContact> = {};
+  for (const pid of Object.keys(agg)) {
+    const a = agg[pid]!;
+    out[pid] = {
+      swingPct: a.pitches > 0 ? a.swings / a.pitches : undefined,
+      whiffPct: a.swings > 0 ? a.whiffs / a.swings : undefined,
+      foulPct: a.pitches > 0 ? a.fouls / a.pitches : undefined,
+    };
+  }
+  return out;
+}
 
 function getFinalCountMapForSplit(
   splits: Record<string, BattingStatsWithSplits>,
@@ -252,6 +313,11 @@ export interface BattingStatsSheetProps {
   onRunnersFilterChange?: (v: StatsRunnersFilterKey) => void;
   /** `grouped`: single filters card (split, runners, final count, matchup, columns, search) — e.g. Stats page. */
   toolbarVariant?: "default" | "grouped";
+  /** Player name link target (default: analyst roster profile). */
+  playerProfileHref?: (playerId: string) => string;
+  /** Optional PA/pitch-event scope for pitch-count-state contact rates on Final count. */
+  pas?: PlateAppearance[];
+  pitchEvents?: PitchEvent[];
 }
 
 export function BattingStatsSheet({
@@ -268,6 +334,9 @@ export function BattingStatsSheet({
   runnersFilter: runnersFilterProp,
   onRunnersFilterChange,
   toolbarVariant = "default",
+  playerProfileHref = analystPlayerProfileHref,
+  pas,
+  pitchEvents,
 }: BattingStatsSheetProps) {
   const [search, setSearch] = useState("");
   const [splitView, setSplitView] = useState<SplitView>("overall");
@@ -294,37 +363,80 @@ export function BattingStatsSheet({
 
   useEffect(() => {
     if (runnersFilter === "all") return;
+    if (columnMode === "contact") return;
     if (finalCountControlled) {
       if (finalCountBucket != null) onFinalCountBucketChange?.(null);
     } else {
       setFinalCountBucketInternal((prev) => (prev == null ? prev : null));
     }
-  }, [runnersFilter, finalCountControlled, finalCountBucket, onFinalCountBucketChange]);
+  }, [runnersFilter, finalCountControlled, finalCountBucket, onFinalCountBucketChange, columnMode]);
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
 
   const displayColumns = columnMode === "contact" ? CONTACT_COLUMNS : COLUMNS;
+  const countStateMode = columnMode === "contact";
+  const countFilterLabel = countStateMode ? "Count state" : "Final count";
+  const countFilterAria = countStateMode
+    ? "Filter discipline rates to pitches thrown at this ball-strike count state"
+    : "Filter stats to plate appearances ending at this ball-strike count";
+  const countFilterTitle =
+    runnersFilter !== "all" && !countStateMode
+      ? "Clear Runners filter to use Final count in Standard columns."
+      : countStateMode
+        ? "In Discipline mode, Sw% / Whiff% / Foul% use pitches thrown at this count state."
+        : "Optional. When set, table uses only PAs whose saved final count matches.";
 
   useEffect(() => {
     setSortKey("name");
     setSortDir("asc");
   }, [columnMode]);
 
+  const pitchCountStateContactByPlayer = useMemo(
+    () =>
+      columnMode === "contact" && finalCountBucket != null
+        ? buildPitchCountStateContactByPlayer(players, pas, pitchEvents, splitView, runnersFilter, finalCountBucket)
+        : {},
+    [columnMode, finalCountBucket, runnersFilter, players, pas, pitchEvents, splitView]
+  );
+
   const initialBattingStats = useMemo(() => {
     const out: Record<string, BattingStats> = {};
     for (const p of players) {
       let s: BattingStats | undefined;
-      if (finalCountBucket != null) {
+      if (finalCountBucket != null && columnMode !== "contact") {
         const map = getFinalCountMapForSplit(battingStatsWithSplits, p.id, splitView, runnersFilter);
         s = map?.[finalCountBucket] ?? undefined;
       } else {
         s = getBattingLineForSheet(battingStatsWithSplits, p.id, splitView, runnersFilter);
       }
+      if (
+        s &&
+        columnMode === "contact" &&
+        finalCountBucket != null
+      ) {
+        const contact = pitchCountStateContactByPlayer[p.id];
+        if (contact) {
+          s = {
+            ...s,
+            swingPct: contact.swingPct,
+            whiffPct: contact.whiffPct,
+            foulPct: contact.foulPct,
+          };
+        }
+      }
       if (s) out[p.id] = s;
     }
     return out;
-  }, [players, battingStatsWithSplits, splitView, finalCountBucket, runnersFilter]);
+  }, [
+    players,
+    battingStatsWithSplits,
+    splitView,
+    finalCountBucket,
+    runnersFilter,
+    columnMode,
+    pitchCountStateContactByPlayer,
+  ]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -462,7 +574,7 @@ export function BattingStatsSheet({
                 </div>
                 <div className="flex min-w-0 flex-col gap-1.5">
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
-                    Final count
+                    {countFilterLabel}
                   </span>
                   <select
                     value={finalCountBucket ?? ""}
@@ -470,14 +582,10 @@ export function BattingStatsSheet({
                       const v = e.target.value;
                       setFinalCountBucket(v === "" ? null : (v as BattingFinalCountBucketKey));
                     }}
-                    disabled={runnersFilter !== "all"}
+                    disabled={runnersFilter !== "all" && columnMode !== "contact"}
                     className="w-full min-w-0 rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-2 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-                    aria-label="Filter stats to plate appearances ending at this ball–strike count"
-                    title={
-                      runnersFilter !== "all"
-                        ? "Clear Runners filter to use Final count (counts are only stored for the full sample splits)."
-                        : "Optional. When set, table uses only PAs whose saved final count matches. Works with Standard, Discipline, or Pitch-type columns."
-                    }
+                    aria-label={countFilterAria}
+                    title={countFilterTitle}
                   >
                     <option value="">All PAs</option>
                     {FINAL_COUNT_BUCKET_OPTIONS.map((o) => (
@@ -647,21 +755,17 @@ export function BattingStatsSheet({
               </select>
             </label>
             <label className="flex min-w-0 items-center gap-2 text-sm text-white">
-              <span className="shrink-0">Final count</span>
+              <span className="shrink-0">{countFilterLabel}</span>
               <select
                 value={finalCountBucket ?? ""}
                 onChange={(e) => {
                   const v = e.target.value;
                   setFinalCountBucket(v === "" ? null : (v as BattingFinalCountBucketKey));
                 }}
-                disabled={runnersFilter !== "all"}
+                disabled={runnersFilter !== "all" && columnMode !== "contact"}
                 className="max-w-[7.5rem] rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-1.5 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="Filter stats to plate appearances ending at this ball–strike count"
-                title={
-                  runnersFilter !== "all"
-                    ? "Clear Runners filter to use Final count (counts are only stored for the full sample splits)."
-                    : "Optional. When set, table uses only PAs whose saved final count matches. Works with Standard or Discipline columns."
-                }
+                aria-label={countFilterAria}
+                title={countFilterTitle}
               >
                 <option value="">All PAs</option>
                 {FINAL_COUNT_BUCKET_OPTIONS.map((o) => (
@@ -745,10 +849,19 @@ export function BattingStatsSheet({
       )}
       {finalCountBucket != null && (
         <p className="text-xs leading-snug text-[var(--text-muted)]">
-          Showing stats for PAs whose{" "}
-          <strong className="font-medium text-[var(--text)]">saved final count</strong> is{" "}
-          <strong className="font-medium text-[var(--text)]">{finalCountBucket}</strong> (after Split). SB/CS and SB%
-          still use full-season totals. Clear Final count to return to all PAs.
+          {countStateMode ? (
+            <>
+              Showing discipline rates from <strong className="font-medium text-[var(--text)]">pitches thrown at count state</strong>{" "}
+              <strong className="font-medium text-[var(--text)]">{finalCountBucket}</strong> (after Split/Runners). Team row
+              uses the same count-state denominator.
+            </>
+          ) : (
+            <>
+              Showing stats for PAs whose <strong className="font-medium text-[var(--text)]">saved final count</strong> is{" "}
+              <strong className="font-medium text-[var(--text)]">{finalCountBucket}</strong> (after Split). SB/CS and SB%
+              still use full-season totals. Clear Final count to return to all PAs.
+            </>
+          )}
         </p>
       )}
 
@@ -835,7 +948,7 @@ export function BattingStatsSheet({
                     className={`min-w-0 px-3 py-2 font-medium text-[var(--text)] ${STICKY_LEAD.player} ${stickyLeadRowBg(selectedPlayerId === player.id, index)}`}
                   >
                     <Link
-                      href={analystPlayerProfileHref(player.id)}
+                      href={playerProfileHref(player.id)}
                       onClick={(e) => e.stopPropagation()}
                       className="block truncate text-[var(--accent)] hover:underline"
                       title={player.name}

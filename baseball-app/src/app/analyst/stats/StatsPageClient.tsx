@@ -9,6 +9,7 @@ import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
 import { PitchingStatsSheet } from "@/components/analyst/PitchingStatsSheet";
 import { computeBattingStatsWithSplitsFromPas } from "@/lib/compute/battingStatsWithSplitsFromPas";
 import { computePitchingStatsWithSplitsForRoster } from "@/lib/compute/pitchingStats";
+import { analystPlayerProfileHref } from "@/lib/analystRoutes";
 import { opponentNameKey, opponentTeamName, uniqueOpponentNames } from "@/lib/opponentUtils";
 import { buildStatsUrlState, type StatsPageUrlState } from "./statsUrlState";
 import type {
@@ -100,6 +101,10 @@ interface StatsPageClientProps {
   playerIdToName?: Record<string, string>;
   /** Parsed from the request URL on the server — keeps SSR HTML in sync with the first client render (see `useSearchParams` hydration notes). */
   statsUrlState: StatsPageUrlState;
+  /** Player name links (e.g. coach portal uses `/coach/players/...`). */
+  playerProfileHref?: (playerId: string) => string;
+  /** When false, hide destructive “clear all stats” (coach stats page). */
+  showDataManagement?: boolean;
 }
 
 export function StatsPageClient({
@@ -112,6 +117,8 @@ export function StatsPageClient({
   pitchingMatchupPayload,
   playerIdToName = {},
   statsUrlState,
+  playerProfileHref = analystPlayerProfileHref,
+  showDataManagement = true,
 }: StatsPageClientProps) {
   const batters = initialBatters ?? initialPlayers ?? [];
   const batterIds = useMemo(() => batters.map((p) => p.id), [batters]);
@@ -288,6 +295,16 @@ export function StatsPageClient({
     return raw.filter((e) => ids.has(e.pa_id));
   }, [battingMatchupPayload?.pitchEvents, filteredMatchupPas]);
 
+  const displayBattingPas = useMemo(
+    () => filteredMatchupPas ?? battingMatchupPayload?.pas ?? [],
+    [filteredMatchupPas, battingMatchupPayload?.pas]
+  );
+
+  const displayBattingPitchEvents = useMemo(
+    () => (filteredMatchupPas ? filteredBattingPitchEvents : battingMatchupPayload?.pitchEvents ?? []),
+    [filteredMatchupPas, filteredBattingPitchEvents, battingMatchupPayload?.pitchEvents]
+  );
+
   const displayBattingStatsWithSplits = useMemo(() => {
     if (!filteredMatchupPas || !battingMatchupPayload) return initialBattingStatsWithSplits;
     return computeBattingStatsWithSplitsFromPas(
@@ -380,6 +397,21 @@ export function StatsPageClient({
     const ids = new Set(filteredPitchingMatchupPas.map((p) => p.id));
     return raw.filter((e) => ids.has(e.pa_id));
   }, [pitchingMatchupPayload?.pitchEvents, filteredPitchingMatchupPas]);
+
+  const displayPitchingPas = useMemo(
+    () => filteredPitchingMatchupPas ?? pitchingMatchupPayload?.pas ?? [],
+    [filteredPitchingMatchupPas, pitchingMatchupPayload?.pas]
+  );
+
+  const displayPitchingPitchEvents = useMemo(
+    () => (filteredPitchingMatchupPas ? filteredPitchingPitchEvents : pitchingMatchupPayload?.pitchEvents ?? []),
+    [filteredPitchingMatchupPas, filteredPitchingPitchEvents, pitchingMatchupPayload?.pitchEvents]
+  );
+
+  const pitchBatterBatsByIdObj = useMemo(
+    () => Object.fromEntries(Array.from(pitchBatterBatsMap.entries())),
+    [pitchBatterBatsMap]
+  );
 
   const displayPitchingStatsWithSplits = useMemo(() => {
     if (!filteredPitchingMatchupPas || !pitchingMatchupPayload) return initialPitchingStatsWithSplits;
@@ -508,6 +540,8 @@ export function StatsPageClient({
           <BattingStatsSheet
             players={batters}
             battingStatsWithSplits={displayBattingStatsWithSplits}
+            pas={displayBattingPas}
+            pitchEvents={displayBattingPitchEvents}
             splitDisabled={!!matchupPitcherId}
             finalCountBucket={battingFinalCount}
             onFinalCountBucketChange={setBattingFinalCount}
@@ -527,6 +561,7 @@ export function StatsPageClient({
                   }
                 : undefined
             }
+            playerProfileHref={playerProfileHref}
           />
         </div>
       ) : (
@@ -534,6 +569,9 @@ export function StatsPageClient({
           <PitchingStatsSheet
             players={pitchers}
             pitchingStatsWithSplits={displayPitchingStatsWithSplits}
+            pas={displayPitchingPas}
+            pitchEvents={displayPitchingPitchEvents}
+            batterBatsById={pitchBatterBatsByIdObj}
             splitDisabled={!!pitchMatchupBatterId}
             finalCountBucket={pitchingFinalCount}
             onFinalCountBucketChange={setPitchingFinalCount}
@@ -553,72 +591,77 @@ export function StatsPageClient({
                   }
                 : undefined
             }
+            playerProfileHref={playerProfileHref}
           />
         </div>
       )}
 
-      <details className="group rounded-lg border border-[var(--border)]/80 bg-[var(--bg-elevated)]/20">
-        <summary className="cursor-pointer list-none px-4 py-3 font-display text-sm font-semibold text-[var(--text-muted)] marker:hidden [&::-webkit-details-marker]:hidden">
-          <span className="inline-flex items-center gap-2">
-            <span className="text-[var(--text)] group-open:rotate-90 transition-transform">▸</span>
-            Data management
-          </span>
-          <span className="mt-0.5 block text-xs font-normal font-sans text-[var(--text-muted)]">
-            Destructive actions — clear all plate appearances and baserunning from the database.
-          </span>
-        </summary>
-        <div className="border-t border-[var(--border)]/50 px-4 pb-4 pt-3" style={{ borderColor: "var(--danger)" }}>
-          <h3 className="font-display text-sm font-semibold uppercase tracking-wider" style={{ color: "var(--danger)" }}>
-            Clear all stats
-          </h3>
-          <p className="mt-1 text-sm text-[var(--text-muted)]">
-            Permanently delete every plate appearance and baserunning event in the database. Batting stats and trends will
-            reset.
-          </p>
-          <button
-            type="button"
-            disabled={clearingAll}
-            onClick={() => setClearStatsConfirmOpen(true)}
-            className="mt-3 rounded-lg border px-3 py-2 text-sm font-medium transition disabled:opacity-50"
-            style={{ borderColor: "var(--danger)", color: "var(--danger)" }}
-          >
-            {clearingAll ? "Clearing…" : "Clear all stats"}
-          </button>
-          {clearMessage && (
-            <p
-              className={`mt-3 text-sm ${clearMessage.type === "ok" ? "text-[var(--success)]" : "text-[var(--danger)]"}`}
-            >
-              {clearMessage.text}
-            </p>
-          )}
-        </div>
-      </details>
+      {showDataManagement ? (
+        <>
+          <details className="group rounded-lg border border-[var(--border)]/80 bg-[var(--bg-elevated)]/20">
+            <summary className="cursor-pointer list-none px-4 py-3 font-display text-sm font-semibold text-[var(--text-muted)] marker:hidden [&::-webkit-details-marker]:hidden">
+              <span className="inline-flex items-center gap-2">
+                <span className="text-[var(--text)] group-open:rotate-90 transition-transform">▸</span>
+                Data management
+              </span>
+              <span className="mt-0.5 block text-xs font-normal font-sans text-[var(--text-muted)]">
+                Destructive actions — clear all plate appearances and baserunning from the database.
+              </span>
+            </summary>
+            <div className="border-t border-[var(--border)]/50 px-4 pb-4 pt-3" style={{ borderColor: "var(--danger)" }}>
+              <h3 className="font-display text-sm font-semibold uppercase tracking-wider" style={{ color: "var(--danger)" }}>
+                Clear all stats
+              </h3>
+              <p className="mt-1 text-sm text-[var(--text-muted)]">
+                Permanently delete every plate appearance and baserunning event in the database. Batting stats and trends
+                will reset.
+              </p>
+              <button
+                type="button"
+                disabled={clearingAll}
+                onClick={() => setClearStatsConfirmOpen(true)}
+                className="mt-3 rounded-lg border px-3 py-2 text-sm font-medium transition disabled:opacity-50"
+                style={{ borderColor: "var(--danger)", color: "var(--danger)" }}
+              >
+                {clearingAll ? "Clearing…" : "Clear all stats"}
+              </button>
+              {clearMessage && (
+                <p
+                  className={`mt-3 text-sm ${clearMessage.type === "ok" ? "text-[var(--success)]" : "text-[var(--danger)]"}`}
+                >
+                  {clearMessage.text}
+                </p>
+              )}
+            </div>
+          </details>
 
-      <ConfirmDeleteDialog
-        open={clearStatsConfirmOpen}
-        onClose={() => !clearingAll && setClearStatsConfirmOpen(false)}
-        title="Clear all stats?"
-        description="This permanently deletes every plate appearance and baserunning event in the database for all games. Batting and pitching stats will reset. This cannot be undone."
-        confirmLabel="Clear all stats"
-        pendingLabel="Clearing…"
-        pending={clearingAll}
-        onConfirm={async () => {
-          setClearingAll(true);
-          setClearMessage(null);
-          const result = await clearAllStatsAction();
-          setClearingAll(false);
-          setClearStatsConfirmOpen(false);
-          if (result.ok) {
-            setClearMessage({
-              type: "ok",
-              text: result.count > 0 ? `Cleared ${result.count} plate appearance(s).` : "No PAs to clear.",
-            });
-            router.refresh();
-          } else {
-            setClearMessage({ type: "err", text: result.error ?? "Failed to clear stats." });
-          }
-        }}
-      />
+          <ConfirmDeleteDialog
+            open={clearStatsConfirmOpen}
+            onClose={() => !clearingAll && setClearStatsConfirmOpen(false)}
+            title="Clear all stats?"
+            description="This permanently deletes every plate appearance and baserunning event in the database for all games. Batting and pitching stats will reset. This cannot be undone."
+            confirmLabel="Clear all stats"
+            pendingLabel="Clearing…"
+            pending={clearingAll}
+            onConfirm={async () => {
+              setClearingAll(true);
+              setClearMessage(null);
+              const result = await clearAllStatsAction();
+              setClearingAll(false);
+              setClearStatsConfirmOpen(false);
+              if (result.ok) {
+                setClearMessage({
+                  type: "ok",
+                  text: result.count > 0 ? `Cleared ${result.count} plate appearance(s).` : "No PAs to clear.",
+                });
+                router.refresh();
+              } else {
+                setClearMessage({ type: "err", text: result.error ?? "Failed to clear stats." });
+              }
+            }}
+          />
+        </>
+      ) : null}
     </div>
   );
 }

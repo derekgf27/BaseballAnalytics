@@ -224,3 +224,49 @@ export function withInferredInPlayPitch(
   const { balls, strikes } = replayCountAtEndOfSequence(entries);
   return [...entries, { balls_before: balls, strikes_before: strikes, outcome: "in_play" }];
 }
+
+/** True if the last pitch is already the 4th ball (walk). */
+function lastPitchIsFourthBall(entries: PitchSequenceEntry[]): boolean {
+  const last = entries[entries.length - 1];
+  return last != null && last.outcome === "ball" && last.balls_before === 3;
+}
+
+/**
+ * When the PA ends on a walk, append the 4th ball if the log ends at 3 balls and it is not already logged.
+ * (Mirrors {@link withInferredInPlayPitch} for BIP — keeps pitch count / display in sync with Outcome.)
+ */
+export function withInferredWalkFourthBall(
+  entries: PitchSequenceEntry[],
+  result: PAResult | null
+): PitchSequenceEntry[] {
+  if (entries.length === 0 || result === null) return entries;
+  if (result !== "bb" && result !== "ibb") return entries;
+  if (lastPitchIsFourthBall(entries)) return entries;
+  const { balls, strikes } = replayCountAtEndOfSequence(entries);
+  if (balls < 3) return entries;
+  return [...entries, { balls_before: balls, strikes_before: strikes, outcome: "ball" }];
+}
+
+/**
+ * When the PA ends on HBP, append one `hbp` pitch if the log does not already end with it.
+ */
+export function withInferredHbpPitch(
+  entries: PitchSequenceEntry[],
+  result: PAResult | null
+): PitchSequenceEntry[] {
+  if (entries.length === 0 || result === null || result !== "hbp") return entries;
+  const last = entries[entries.length - 1]!;
+  if (last.outcome === "hbp") return entries;
+  const { balls, strikes } = replayCountAtEndOfSequence(entries);
+  return [...entries, { balls_before: balls, strikes_before: strikes, outcome: "hbp" }];
+}
+
+/** Apply BIP `in_play`, then walk 4th ball, then HBP terminal pitch — for save + live pitch totals. */
+export function withInferredTerminalOutcomePitches(
+  entries: PitchSequenceEntry[],
+  result: PAResult | null
+): PitchSequenceEntry[] {
+  const afterBip = withInferredInPlayPitch(entries, result);
+  const afterWalk = withInferredWalkFourthBall(afterBip, result);
+  return withInferredHbpPitch(afterWalk, result);
+}

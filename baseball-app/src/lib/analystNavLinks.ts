@@ -7,7 +7,6 @@ export type AnalystNavLink = { readonly href: string; readonly label: string; re
 export const ANALYST_NAV_LINKS: readonly AnalystNavLink[] = [
   { href: "/analyst", label: "Dashboard", icon: "\u{1F4CA}" },
   { href: "/analyst/games", label: "Games", icon: "\u{1F19A}" },
-  { href: "/analyst/record", label: "Record", icon: "\u{270F}\u{FE0F}" },
   { href: "/analyst/lineup", label: "Lineup Construction", icon: "\u{1F4CB}" },
   { href: "/analyst/roster", label: "Roster", icon: "\u{1F464}" },
   { href: "/analyst/opponents", label: "Opponents", icon: "\u{1F3AF}" },

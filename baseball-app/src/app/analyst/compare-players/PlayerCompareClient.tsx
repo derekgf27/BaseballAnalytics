@@ -6,14 +6,12 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
   useDraggable,
   useDroppable,
-  useSensor,
-  useSensors,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { useTouchOptimizedDndSensors } from "@/lib/dndTouchSensors";
 import { formatHeight } from "@/lib/height";
 import type { AnalystPlayerSpraySplits } from "@/lib/analystPlayerSpraySplits";
 import {
@@ -570,7 +568,7 @@ function RosterListRow({
       {...listeners}
       {...attributes}
       onClick={() => onPick(player)}
-      className={`grid w-full cursor-grab touch-manipulation grid-cols-[1fr_auto_auto] items-center gap-x-2 rounded-md border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-left text-sm text-[var(--text)] transition hover:border-[var(--accent)]/50 hover:bg-[var(--bg-elevated)] active:cursor-grabbing ${
+      className={`grid w-full cursor-grab touch-none select-none grid-cols-[1fr_auto_auto] items-center gap-x-2 rounded-md border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-left text-sm text-[var(--text)] transition hover:border-[var(--accent)]/50 hover:bg-[var(--bg-elevated)] active:cursor-grabbing ${
         isDragging ? "opacity-40" : ""
       }`}
       aria-label={`${side === "L" ? "Player 1" : "Player 2"} list: ${player.name}`}
@@ -660,9 +658,7 @@ export function PlayerCompareClient({
   rosterRoleRef.current = rosterRole;
   const [activeDragPlayer, setActiveDragPlayer] = useState<Player | null>(null);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
-  );
+  const sensors = useTouchOptimizedDndSensors();
 
   const sortedRoster = useMemo(() => [...roster].sort(comparePlayersByLastNameThenFull), [roster]);
 
@@ -796,7 +792,12 @@ export function PlayerCompareClient({
   const isSwitchB = playerB?.bats?.toUpperCase().startsWith("S") ?? false;
 
   return (
-    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+    <DndContext
+      sensors={sensors}
+      autoScroll={false}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
       <div className="space-y-8">
         <div className="flex flex-row flex-wrap items-start justify-between gap-x-4 gap-y-3">
           <div className="min-w-0 flex-1">
@@ -1009,7 +1010,7 @@ export function PlayerCompareClient({
 
       <DragOverlay dropAnimation={null}>
         {activeDragPlayer ? (
-          <div className="rounded-md border border-[var(--accent)] bg-[var(--bg-card)] px-3 py-2 shadow-lg">
+          <div className="will-change-transform rounded-md border border-[var(--accent)] bg-[var(--bg-card)] px-3 py-2 shadow-lg">
             <p className="font-medium text-[var(--text)]">{activeDragPlayer.name}</p>
           </div>
         ) : null}

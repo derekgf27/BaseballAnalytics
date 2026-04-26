@@ -49,7 +49,7 @@ export default function Home() {
             Coach
           </span>
           <p className="max-w-[260px] text-center text-sm text-[var(--text-muted)]">
-            Today’s lineup, players, green lights, situation.
+            Today’s lineup, players, stats, and green lights.
           </p>
           <span className="mt-1 text-xs font-medium uppercase tracking-wider text-[var(--accent-coach)] opacity-0 transition group-hover:opacity-100">
             Enter →

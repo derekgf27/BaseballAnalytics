@@ -4,14 +4,12 @@ import { useMemo, useState } from "react";
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
-  useSensor,
-  useSensors,
   useDraggable,
   useDroppable,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { useTouchOptimizedDndSensors } from "@/lib/dndTouchSensors";
 import type { Player } from "@/lib/types";
 import { comparePlayersByLastNameThenFull } from "@/lib/playerSort";
 
@@ -42,7 +40,7 @@ function DraggableArm({ player }: { player: Player }) {
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      className={`flex cursor-grab items-center justify-between gap-2 rounded-lg border-2 border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-3 active:cursor-grabbing touch-manipulation ${
+      className={`flex cursor-grab touch-none select-none items-center justify-between gap-2 rounded-lg border-2 border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-3 active:cursor-grabbing ${
         isDragging ? "opacity-50" : "hover:border-[var(--accent)]/50"
       }`}
     >
@@ -62,7 +60,7 @@ function DraggableArm({ player }: { player: Player }) {
 function DragOverlayArm({ player }: { player: Player }) {
   const meta = jerseyAndHandednessLine(player);
   return (
-    <div className="rounded-lg border-2 border-[var(--accent)] bg-[var(--bg-card)] px-4 py-3 shadow-xl">
+    <div className="will-change-transform rounded-lg border-2 border-[var(--accent)] bg-[var(--bg-card)] px-4 py-3 shadow-xl">
       <span className="font-semibold text-[var(--text)]">{player.name}</span>
       {meta ? <span className="ml-2 text-xs font-semibold text-[var(--accent)]">{meta}</span> : null}
     </div>
@@ -121,7 +119,7 @@ export function RecordPitcherChangeModal({
   onApply,
 }: RecordPitcherChangeModalProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  const sensors = useTouchOptimizedDndSensors();
 
   const playerMap = useMemo(() => new Map(pitchers.map((p) => [p.id, p])), [pitchers]);
   const current = currentPitcherId ? playerMap.get(currentPitcherId) ?? null : null;
@@ -194,7 +192,12 @@ export function RecordPitcherChangeModal({
               No pitchers on this roster. Add pitchers (position P + throwing hand) for the defensive team.
             </p>
           ) : (
-            <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+            <DndContext
+              sensors={sensors}
+              autoScroll={false}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+            >
               <div className="grid min-h-0 grid-cols-1 gap-5 md:grid-cols-2 md:gap-6 md:items-stretch">
                 <div className="flex min-h-[12rem] flex-col md:min-h-[min(50vh,20rem)]">
                   <MoundZone

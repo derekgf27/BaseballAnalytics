@@ -13,7 +13,7 @@ import {
   replaceOurGameLineupAction,
 } from "./actions";
 import { isGameFinalized, ourTeamOutcomeFromFinalScore } from "@/lib/gameRecord";
-import { isClubRosterPlayer, pitchersForGameTeamSide } from "@/lib/opponentUtils";
+import { isClubRosterPlayer, matchupLabelUsFirst, pitchersForGameTeamSide } from "@/lib/opponentUtils";
 import { formatDateMMDDYYYY } from "@/lib/format";
 import { StyledDatePicker } from "@/components/shared/StyledDatePicker";
 import type { Game, Player, SavedLineup } from "@/lib/types";
@@ -234,7 +234,7 @@ export function GamesPageClient({
             >
               <div className="flex items-center gap-3">
                 <span className="font-medium text-[var(--text)]">
-                  {formatDateMMDDYYYY(g.date)} — {g.away_team} @ {g.home_team}
+                  {formatDateMMDDYYYY(g.date)} — {matchupLabelUsFirst(g, true)}
                 </span>
                 {outcome != null && (
                   <span

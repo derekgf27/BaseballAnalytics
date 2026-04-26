@@ -4,14 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
-  useSensor,
-  useSensors,
   useDraggable,
   useDroppable,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { useTouchOptimizedDndSensors } from "@/lib/dndTouchSensors";
 import { isPitcherPlayer, playersForGameSideWhenNoLineup } from "@/lib/opponentUtils";
 import type { Game, LineupSide, Player } from "@/lib/types";
 import { comparePlayersByLastNameThenFull } from "@/lib/playerSort";
@@ -96,7 +94,7 @@ function DraggablePlayer({ player }: { player: Player }) {
     data: { player },
   });
   return (
-    <div ref={setNodeRef} {...listeners} {...attributes} className="min-w-0 flex-1">
+    <div ref={setNodeRef} {...listeners} {...attributes} className="min-w-0 flex-1 touch-none select-none">
       <div
         className={`flex cursor-grab items-center gap-2 active:cursor-grabbing ${isDragging ? "opacity-50" : ""}`}
       >
@@ -243,7 +241,7 @@ export function RecordSubstitutionModal({
     comparePlayersByLastNameThenFull
   );
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  const sensors = useTouchOptimizedDndSensors();
 
   const sideLabel = side === "away" ? game.away_team : game.home_team;
 
@@ -469,7 +467,12 @@ export function RecordSubstitutionModal({
               Check opponent tags (away/home) or club roster. (Pitchers are set on the game.)
             </p>
           ) : (
-            <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+            <DndContext
+              sensors={sensors}
+              autoScroll={false}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+            >
               <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
                 <PlayerPoolDroppable>
                   <div className="card-tech flex min-h-[16rem] flex-col rounded-lg border border-[var(--border)] p-3">
@@ -525,9 +528,9 @@ export function RecordSubstitutionModal({
                   </table>
                 </div>
               </div>
-              <DragOverlay>
+              <DragOverlay dropAnimation={null}>
                 {activePlayer ? (
-                  <div className="rounded border border-[var(--accent)] bg-[var(--bg-card)] px-3 py-2 shadow-lg">
+                  <div className="will-change-transform rounded border border-[var(--accent)] bg-[var(--bg-card)] px-3 py-2 shadow-lg">
                     <span className="font-medium text-[var(--text)]">{activePlayer.name}</span>
                   </div>
                 ) : null}

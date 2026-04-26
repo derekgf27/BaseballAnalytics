@@ -7,6 +7,7 @@ import { updateGameLogPlateAppearanceAction } from "@/app/analyst/games/actions"
 import { analystGameReviewHref, analystPlayerProfileHref, analystRecordHref } from "@/lib/analystRoutes";
 import { isGameFinalized } from "@/lib/gameRecord";
 import { formatDateMMDDYYYY } from "@/lib/format";
+import { matchupLabelUsFirst } from "@/lib/opponentUtils";
 import { RESULT_ALLOWS_HIT_DIRECTION } from "@/lib/paResultSets";
 import { normBaseState } from "@/lib/compute/battingStats";
 import type {
@@ -142,7 +143,7 @@ export function GameLogPageClient({
 }: GameLogPageClientProps) {
   const router = useRouter();
   const gameId = game.id;
-  const gameLabel = `${formatDateMMDDYYYY(game.date)} — ${game.away_team} @ ${game.home_team}`;
+  const gameLabel = `${formatDateMMDDYYYY(game.date)} — ${matchupLabelUsFirst(game, true)}`;
   const finalized = isGameFinalized(game);
   const [pas, setPas] = useState<PlateAppearance[]>(initialPas);
   const [savingId, setSavingId] = useState<string | null>(null);

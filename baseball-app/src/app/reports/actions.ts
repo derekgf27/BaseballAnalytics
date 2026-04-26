@@ -11,17 +11,27 @@ import {
   getGameLineup,
   getGames,
   getPitcherLastOutingBefore,
+  getPitchEventsForPaIds,
+  getPitchingStatsForPitcherVsOurClub,
   getPitchingStatsForPlayers,
   getPlateAppearancesByGame,
   getPlateAppearancesForGames,
   getPlayersByIds,
 } from "@/lib/db/queries";
+import { buildPreGameReport, type PreGameReportSections } from "@/lib/reports/preGameReportBuild";
+import type {
+  PreGameOurStarterSummary,
+  PreGamePriorMeeting,
+  PreGameRecentHitterLine,
+} from "@/lib/reports/preGameReportTypes";
 import type { PostGameSnapshot } from "@/lib/reports/postGameSnapshot";
 import type { TeamTrendPoint } from "@/lib/reports/teamTrendsSnapshot";
 import type { BattingStatsWithSplits, Game, PlateAppearance, Player } from "@/lib/types";
 
 const PREGAME_RECENT_GAMES = 5;
 const PREGAME_PRIOR_MEETINGS = 5;
+/** Completed team games before the selected game used for team offense / starter pitch-mix samples. */
+const PREGAME_TEAM_METRICS_GAMES = 25;
 
 function sameMatchup(a: Game, b: Game): boolean {
   const x = [a.home_team, a.away_team].sort().join("\0");
@@ -48,37 +58,8 @@ function ourRunsOppRuns(g: Game): { ours: number | null; opp: number | null } {
   };
 }
 
-function chasePctFromPas(pas: PlateAppearance[]): number | null {
-  const tagged = pas.filter((p) => p.chase != null);
-  if (tagged.length === 0) return null;
-  return tagged.filter((p) => p.chase === true).length / tagged.length;
-}
-
-export type PreGameRecentHitterLine = {
-  pa: number;
-  ops: number;
-  kPct: number;
-  bbPct: number;
-  chasePct: number | null;
-};
-
-export type PreGamePriorMeeting = {
-  gameId: string;
-  date: string;
-  ourRuns: number | null;
-  oppRuns: number | null;
-  outcome: "W" | "L" | "T" | null;
-  fromPas: { pa: number; ops: number; kPct: number; bbPct: number } | null;
-};
-
-export type PreGameOurStarterSummary = {
-  playerId: string | null;
-  name: string | null;
-  seasonIpDisplay: string | null;
-  seasonEra: string | null;
-  lastOutingLine: string | null;
-  planNotes: string | null;
-};
+export type { PreGameOurStarterSummary, PreGamePriorMeeting, PreGameRecentHitterLine } from "@/lib/reports/preGameReportTypes";
+export type { PreGameReportSections } from "@/lib/reports/preGameReportBuild";
 
 /** Lineup slots for our club + players needed to show names (lineup + both SPs + opponent lineup). */
 export type PreGameOverviewPayload = {
@@ -92,6 +73,9 @@ export type PreGameOverviewPayload = {
   recentGamesCount: number;
   priorMeetings: PreGamePriorMeeting[];
   ourStarterSummary: PreGameOurStarterSummary | null;
+  opponentStarterSummary: { playerId: string | null; name: string | null; seasonEra: string | null } | null;
+  /** Structured scouting-style sections for the coach pre-game tab. */
+  report: PreGameReportSections;
 };
 
 function recentHitterLineFromPas(pas: PlateAppearance[]): PreGameRecentHitterLine | null {
@@ -103,12 +87,12 @@ function recentHitterLineFromPas(pas: PlateAppearance[]): PreGameRecentHitterLin
     ops: st.ops,
     kPct: st.kPct ?? 0,
     bbPct: st.bbPct ?? 0,
-    chasePct: chasePctFromPas(pas),
   };
 }
 
 export async function fetchPreGameOverview(
-  gameId: string
+  gameId: string,
+  teamTrendInsightsFromHub: string[] = []
 ): Promise<PreGameOverviewPayload | { error: string }> {
   if (!gameId?.trim()) return { error: "No game selected." };
   const game = await getGame(gameId);
@@ -164,12 +148,18 @@ export async function fetchPreGameOverview(
     .slice(0, PREGAME_RECENT_GAMES);
   const recentGameIds = new Set(recentClubGames.map((g) => g.id));
 
+  const teamMetricsGames = allGames
+    .filter((g) => g.id !== game.id && g.date < game.date)
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+    .slice(0, PREGAME_TEAM_METRICS_GAMES);
+  const teamMetricsGameIds = new Set(teamMetricsGames.map((g) => g.id));
+
   const priorMeetingsGames = allGames
     .filter((g) => g.id !== game.id && sameMatchup(g, game) && g.date < game.date)
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
     .slice(0, PREGAME_PRIOR_MEETINGS);
 
-  const pasGameIds = [...new Set([...recentGameIds, ...priorMeetingsGames.map((g) => g.id)])];
+  const pasGameIds = [...new Set([...teamMetricsGameIds, ...priorMeetingsGames.map((g) => g.id)])];
   const bulkPas = pasGameIds.length > 0 ? await getPlateAppearancesForGames(pasGameIds) : [];
 
   const recentHitterLineByPlayerId: Record<string, PreGameRecentHitterLine | null> = {};
@@ -206,12 +196,19 @@ export async function fetchPreGameOverview(
     };
   });
 
+  const starterIdsForPitchStats = [ourSpId, oppSpId].filter(
+    (id): id is string => Boolean(id && !isDemoId(id))
+  );
+  const pitcherStatsById =
+    starterIdsForPitchStats.length > 0 ? await getPitchingStatsForPlayers(starterIdsForPitchStats) : {};
+
   let ourStarterSummary: PreGameOurStarterSummary | null = null;
+  let opponentStarterSummary: { playerId: string | null; name: string | null; seasonEra: string | null } | null =
+    null;
   const planNotes = game.our_sp_plan_notes?.trim() || null;
   if (ourSpId && !isDemoId(ourSpId)) {
     const p = playersById[ourSpId];
-    const pitchStats = await getPitchingStatsForPlayers([ourSpId]);
-    const po = pitchStats[ourSpId]?.overall;
+    const po = pitcherStatsById[ourSpId]?.overall;
     let lastOutingLine: string | null = null;
     const last = await getPitcherLastOutingBefore(ourSpId, game.date, game.id);
     if (last) {
@@ -240,6 +237,51 @@ export async function fetchPreGameOverview(
     };
   }
 
+  if (oppSpId && !isDemoId(oppSpId)) {
+    const p = playersById[oppSpId];
+    const po = pitcherStatsById[oppSpId]?.overall;
+    opponentStarterSummary = {
+      playerId: oppSpId,
+      name: p?.name ?? null,
+      seasonEra: po && po.ip > 0 && Number.isFinite(po.era) ? po.era.toFixed(2) : null,
+    };
+  } else if (oppSpId) {
+    opponentStarterSummary = {
+      playerId: oppSpId,
+      name: playersById[oppSpId]?.name ?? null,
+      seasonEra: null,
+    };
+  }
+
+  const pasForTeamWindow = bulkPas.filter((p) => p.game_id && teamMetricsGameIds.has(p.game_id));
+  const ourStarterPasIds =
+    ourSpId && !isDemoId(ourSpId)
+      ? pasForTeamWindow.filter((p) => p.pitcher_id === ourSpId).map((p) => p.id)
+      : [];
+  const pitchEventsOurStarter =
+    ourStarterPasIds.length > 0 ? await getPitchEventsForPaIds(ourStarterPasIds) : [];
+
+  const oppStarterVsOur =
+    oppSpId && !isDemoId(oppSpId) ? await getPitchingStatsForPitcherVsOurClub(oppSpId) : null;
+
+  const report = buildPreGameReport({
+    game,
+    seasonGamesNewestFirst: teamMetricsGames,
+    recentGamesNewestFirst: recentClubGames,
+    pasInSeasonWindow: pasForTeamWindow,
+    ourStarterId: ourSpId && !isDemoId(ourSpId) ? ourSpId : null,
+    pitchEventsOurStarter,
+    oppStarterVsOur,
+    ourStarterSummary,
+    priorMeetings,
+    ourLineupIds: lineupIds,
+    opponentLineupIds,
+    lineupStatsByPlayerId,
+    recentHitterLineByPlayerId,
+    playersById,
+    teamTrendInsights: teamTrendInsightsFromHub,
+  });
+
   return {
     ourLineup,
     opponentLineup,
@@ -249,6 +291,8 @@ export async function fetchPreGameOverview(
     recentGamesCount: recentClubGames.length,
     priorMeetings,
     ourStarterSummary,
+    opponentStarterSummary,
+    report,
   };
 }
 

@@ -26,14 +26,14 @@ import { clearPAsForGameAction } from "@/app/analyst/games/actions";
 import { isDemoId } from "@/lib/db/mockData";
 import { plateAppearancesForPitchingSide } from "@/lib/compute/gamePitchingBox";
 import { inferLiveLinescoreFromPAs, totalRunsBottom, totalRunsTop } from "@/lib/compute/boxScore";
-import { pitchEventsFromDraftPitchLog } from "@/lib/compute/contactProfileFromPas";
+import { pitchEventsFromDraftPitchLogWithTerminal } from "@/lib/compute/contactProfileFromPas";
 import {
   hasPutawayStrikeAtTwoStrikes,
   isPitchOutcomeBlockedByFullCount,
   replayCountAtEndOfSequence,
   resultImpliesBattedBallInPlay,
   summarizePitchSequence,
-  withInferredInPlayPitch,
+  withInferredTerminalOutcomePitches,
   type PitchSequenceEntry,
 } from "@/lib/compute/pitchSequence";
 import { battingSideFromHalf, nextHalfInningAfterThreeOuts } from "@/lib/gameBattingSide";
@@ -58,6 +58,7 @@ import {
 import {
   isClubRosterPlayer,
   isPitcherPlayer,
+  matchupLabelUsFirst,
   pitchersForGameTeamSide,
   playersForGameSideWhenNoLineup,
 } from "@/lib/opponentUtils";
@@ -149,6 +150,11 @@ function pitchCountBlockHint(value: PAResult, balls: number, strikes: number): s
   }
   return undefined;
 }
+
+function isWalkOrHbpResult(r: PAResult | null): boolean {
+  return r === "bb" || r === "ibb" || r === "hbp";
+}
+
 /** Results that add one out (used to advance outs/inning after save). */
 const RESULT_ADDS_ONE_OUT = new Set<PAResult>([
   "out",
@@ -685,6 +691,27 @@ const PITCH_LOG_BUTTONS: { outcome: PitchOutcome; label: string; title: string }
   { outcome: "foul", label: "Foul", title: "Foul ball" },
 ];
 
+/** Muted fills so the pad reads fast without the saturated coach pitch-type grid. */
+function pitchLogOutcomePadClass(outcome: PitchOutcome): string {
+  switch (outcome) {
+    case "ball":
+      return "border-emerald-700/50 bg-emerald-950/80 text-emerald-50 hover:border-emerald-600/55 hover:bg-emerald-900/42";
+    case "called_strike":
+      return "border-orange-700/55 bg-orange-950/80 text-orange-50 hover:border-orange-600/58 hover:bg-orange-900/45";
+    case "swinging_strike":
+      return "border-rose-800/50 bg-rose-950/80 text-rose-50 hover:border-rose-700/52 hover:bg-rose-900/40";
+    case "foul":
+      return "border-blue-800/52 bg-blue-950/80 text-blue-100 hover:border-blue-700/52 hover:bg-blue-900/40";
+    default:
+      return "border-[var(--border)] bg-[var(--bg-input)] text-[var(--text)] hover:border-[var(--accent)]/60 hover:bg-[var(--bg-elevated)]";
+  }
+}
+
+const PITCH_LOG_UNDO_PAD_CLASS =
+  "border-zinc-600/35 bg-zinc-800/45 text-zinc-300 hover:border-zinc-500/40 hover:bg-zinc-800/68";
+const PITCH_LOG_CLEAR_PAD_CLASS =
+  "border-rose-900/42 bg-rose-950/38 text-rose-200/85 hover:border-rose-800/48 hover:bg-rose-950/52";
+
 function recordFormStorageKey(gameId: string): string {
   return `record-form-state:${gameId}`;
 }
@@ -1015,7 +1042,7 @@ export default function RecordPageClient({
         outcome,
       })
     );
-    const s = summarizePitchSequence(withInferredInPlayPitch(entries, result));
+    const s = summarizePitchSequence(withInferredTerminalOutcomePitches(entries, result));
     setPitchesSeen(s.pitches_seen);
     setStrikesThrown(s.strikes_thrown);
     setCountBalls(s.finalBalls);
@@ -1058,6 +1085,9 @@ export default function RecordPageClient({
         if (typeof pitchesEff === "number" && pitchesEff === 1 && (s === "" || s === 0)) return 1;
         return s;
       });
+    } else if (result != null && isWalkOrHbpResult(result)) {
+      if (pitchesSeen === "") setPitchesSeen(1);
+      setStrikesThrown((s) => (s === "" || s === 0 ? 0 : s));
     } else if (
       prev != null &&
       resultImpliesBattedBallInPlay(prev) &&
@@ -1065,6 +1095,9 @@ export default function RecordPageClient({
     ) {
       setPitchesSeen((p) => (p === 1 ? "" : p));
       setStrikesThrown((s) => (s === 1 ? "" : s));
+    } else if (prev != null && isWalkOrHbpResult(prev) && !isWalkOrHbpResult(result)) {
+      setPitchesSeen((p) => (p === 1 ? "" : p));
+      setStrikesThrown((s) => (s === 0 || s === "" ? "" : s));
     }
     prevResultForBipDefaultsRef.current = result;
   }, [result, draftPitchLog.length]);
@@ -1348,7 +1381,6 @@ export default function RecordPageClient({
       count_strikes: countStrikes,
       result: result ?? "other",
       contact_quality: null,
-      chase: null,
       hit_direction:
         result != null && RESULT_ALLOWS_HIT_DIRECTION.has(result) ? hitDirection : null,
       batted_ball_type:
@@ -1401,10 +1433,10 @@ export default function RecordPageClient({
       draftPaForPitchMix &&
       draftPitchLog.length > 0 &&
       ids.has("__draft_pitch_mix__")
-        ? pitchEventsFromDraftPitchLog("__draft_pitch_mix__", draftPitchLog)
+        ? pitchEventsFromDraftPitchLogWithTerminal("__draft_pitch_mix__", draftPitchLog, result)
         : [];
     return [...fromDb, ...synthetic];
-  }, [gamePitchEvents, pasForPitchMixUnderPitchingTable, draftPaForPitchMix, draftPitchLog]);
+  }, [gamePitchEvents, pasForPitchMixUnderPitchingTable, draftPaForPitchMix, draftPitchLog, result]);
 
   /** Current batter’s PAs in this game (+ draft PA when it matches selected batter). */
   const pasForCurrentBatterPitchData = useMemo(() => {
@@ -1428,7 +1460,7 @@ export default function RecordPageClient({
       pasForCurrentBatterPitchData.some((p) => p.id === "__draft_pitch_mix__");
     const synthetic =
       draftInSample && draftPitchLog.length > 0
-        ? pitchEventsFromDraftPitchLog("__draft_pitch_mix__", draftPitchLog)
+        ? pitchEventsFromDraftPitchLogWithTerminal("__draft_pitch_mix__", draftPitchLog, result)
         : [];
     return [...fromDb, ...synthetic];
   }, [
@@ -1437,6 +1469,7 @@ export default function RecordPageClient({
     draftPaForPitchMix,
     draftPitchLog,
     batterId,
+    result,
   ]);
 
   const currentBatterPitchDataName = useMemo(() => {
@@ -2234,7 +2267,7 @@ export default function RecordPageClient({
         outcome,
       })
     );
-    const sequenceForSave = withInferredInPlayPitch(sequenceBase, result);
+    const sequenceForSave = withInferredTerminalOutcomePitches(sequenceBase, result);
     const pitchLogForSave: PitchEventDraft[] | undefined =
       sequenceForSave.length > 0
         ? sequenceForSave.map((row, i) => ({
@@ -2399,7 +2432,6 @@ export default function RecordPageClient({
         count_strikes: countStrikesSave,
         result,
         contact_quality: null,
-        chase: null,
         hit_direction: RESULT_ALLOWS_HIT_DIRECTION.has(result) ? hitDirection : null,
         batted_ball_type: RESULT_ALLOWS_HIT_DIRECTION.has(result) ? battedBallType : null,
         pitches_seen: pitchCount,
@@ -2940,7 +2972,7 @@ export default function RecordPageClient({
         outcome,
       })
     );
-    return summarizePitchSequence(withInferredInPlayPitch(entries, result));
+    return summarizePitchSequence(withInferredTerminalOutcomePitches(entries, result));
   }, [draftPitchLog, result]);
 
   const displayCountBalls = livePitchSequenceSummary?.finalBalls ?? countBalls;
@@ -3287,7 +3319,7 @@ export default function RecordPageClient({
         >
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 sm:mb-4">
             <p className="text-sm font-medium text-[var(--text)]">
-              {formatDateMMDDYYYY(selectedGame.date)} — {selectedGame.away_team} @ {selectedGame.home_team}
+              {formatDateMMDDYYYY(selectedGame.date)} — {matchupLabelUsFirst(selectedGame, true)}
             </p>
             <div className="flex flex-wrap items-center gap-2">
               {finalizedScoreText ? (
@@ -3386,7 +3418,7 @@ export default function RecordPageClient({
               document.body
             )}
 
-          <div className="card-tech rounded-lg border p-2">
+          <div className="card-tech min-w-0 rounded-lg border p-2">
             <div className="mb-3 grid grid-cols-1 gap-3 lg:grid-cols-2 lg:items-stretch lg:gap-4">
               <CurrentBatterPitchDataCard
                 batterName={currentBatterPitchDataName}
@@ -3402,11 +3434,11 @@ export default function RecordPageClient({
                 currentPitcherId={pitcherId}
               />
             </div>
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:gap-3">
-              <div className="min-w-0 flex-1 space-y-1.5">
-            {/* Game state + At bat (left) · Outcome (right, sticky on lg) */}
-            <div className="grid gap-1.5 lg:grid-cols-2 lg:gap-2 lg:items-start">
-            <div className="min-w-0 space-y-1.5">
+            <div className="flex min-h-0 min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:gap-3">
+              <div className="order-1 flex min-h-0 min-w-0 flex-1 flex-col space-y-1.5 lg:order-2">
+            {/* Outcome (left on lg) · Game state + At bat (right on lg). Single column below lg: game → at bat → outcome. */}
+            <div className="grid min-h-0 min-w-0 gap-1.5 lg:grid-cols-2 lg:gap-2 lg:items-start">
+            <div className="min-h-0 min-w-0 space-y-1.5 lg:order-2 lg:max-h-[calc(100dvh-5rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-1">
             {/* Game state */}
             <section
               className="rounded border border-[var(--border)] bg-[var(--bg-elevated)] p-1.5"
@@ -3556,8 +3588,8 @@ export default function RecordPageClient({
               >
                 At bat
               </h4>
-              <div className="mt-1 grid grid-cols-1 gap-2 sm:grid-cols-2 sm:items-start sm:gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.12fr)]">
-                <div className="min-w-0 space-y-1.5 sm:self-start">
+              <div className="mt-1 grid grid-cols-1 gap-2 sm:grid-cols-2 sm:items-start sm:gap-3 lg:grid-cols-[minmax(0,1.12fr)_minmax(0,1fr)] lg:items-start">
+                <div className="min-w-0 space-y-1.5 sm:order-2 sm:self-start lg:sticky lg:top-2 lg:z-20 lg:max-h-[min(calc(100dvh-9rem),42rem)] lg:overflow-y-auto lg:overflow-x-hidden lg:rounded-md lg:bg-[var(--bg-elevated)] lg:px-1.5 lg:py-1.5 lg:shadow-[0_8px_28px_rgba(0,0,0,0.35)]">
                   <div>
                     <span className="font-heading text-xs font-semibold text-[var(--text)]">Batter</span>
                     <select
@@ -3576,10 +3608,71 @@ export default function RecordPageClient({
                     </select>
                   </div>
 
+                <details className="mt-2">
+                  <summary className="mb-0.5 cursor-pointer list-none text-[9px] text-[var(--text-muted)] underline decoration-dotted underline-offset-2 marker:content-none [&::-webkit-details-marker]:hidden">
+                    Pitch log tips
+                  </summary>
+                  <p className="mt-1 text-[9px] leading-snug text-[var(--text-muted)]">
+                    Tap a pitch — count updates live. At 2 strikes you can still tap Called or Whiff for the putaway strike; Foul stays available for two-strike fouls. If you use a pitch log and save a strikeout, log that putaway pitch before saving. Walk / HBP without a log: use Outcome only; clear the log if not logging pitches.
+                  </p>
+                </details>
+
+                <div className="mt-2 grid w-full min-w-0 max-w-[min(100%,13rem)] grid-cols-3 grid-rows-2 gap-1 sm:gap-1.5">
+                  {PITCH_LOG_BUTTONS.map(({ outcome, label, title }) => {
+                    const lastPitch =
+                      draftPitchLog.length > 0
+                        ? {
+                            balls_before: draftPitchLog[draftPitchLog.length - 1]!.balls_before,
+                            strikes_before: draftPitchLog[draftPitchLog.length - 1]!.strikes_before,
+                            outcome: draftPitchLog[draftPitchLog.length - 1]!.outcome,
+                          }
+                        : null;
+                    const countBlocked = isPitchOutcomeBlockedByFullCount(
+                      pitchLogEndCount.balls,
+                      pitchLogEndCount.strikes,
+                      outcome,
+                      lastPitch
+                    );
+                    const blockHint =
+                      outcome === "ball"
+                        ? "3 balls already — choose Walk (BB) as outcome."
+                        : "Putaway strike already logged at 2 strikes — Undo to change.";
+                    return (
+                      <button
+                        key={outcome}
+                        type="button"
+                        title={countBlocked ? blockHint : title}
+                        disabled={countBlocked}
+                        onClick={() => appendDraftPitch(outcome)}
+                        className={`flex min-h-[40px] w-full touch-manipulation items-center justify-center rounded-md border px-1 py-1.5 text-[11px] font-semibold leading-tight transition disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-[44px] sm:text-xs ${pitchLogOutcomePadClass(outcome)}`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={undoLastDraftPitch}
+                    disabled={draftPitchLog.length === 0}
+                    className={`flex min-h-[40px] w-full touch-manipulation items-center justify-center rounded-md border px-1 py-1.5 text-[11px] font-medium leading-tight transition disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-[44px] sm:text-xs ${PITCH_LOG_UNDO_PAD_CLASS}`}
+                  >
+                    Undo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearDraftPitchLog}
+                    disabled={draftPitchLog.length === 0}
+                    className={`flex min-h-[40px] w-full touch-manipulation items-center justify-center rounded-md border px-1 py-1.5 text-[11px] font-medium leading-tight transition disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-[44px] sm:text-xs ${PITCH_LOG_CLEAR_PAD_CLASS}`}
+                  >
+                    Clear
+                  </button>
+                </div>
+
                 <div
                   role="status"
                   aria-live="polite"
                   aria-label={`Count ${displayCountBalls}-${displayCountStrikes}, ${displayPitchesSeen ?? "—"} pitches, ${displayStrikesThrown ?? "—"} strikes thrown`}
+                  className="mt-2"
                 >
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text)]">
                     {pitchTotalsFromLog ? "Pitch totals (from log)" : "Totals only (no pitch log)"}
@@ -3713,72 +3806,13 @@ export default function RecordPageClient({
                     </span>
                   </div>
                 </div>
-
-                <details className="mt-2">
-                  <summary className="mb-0.5 cursor-pointer list-none text-[9px] text-[var(--text-muted)] underline decoration-dotted underline-offset-2 marker:content-none [&::-webkit-details-marker]:hidden">
-                    Pitch log tips
-                  </summary>
-                  <p className="mt-1 text-[9px] leading-snug text-[var(--text-muted)]">
-                    Tap a pitch — count updates live. At 2 strikes you can still tap Called or Whiff for the putaway strike; Foul stays available for two-strike fouls. If you use a pitch log and save a strikeout, log that putaway pitch before saving. Walk / HBP without a log: use Outcome only; clear the log if not logging pitches.
-                  </p>
-                </details>
-
-                <div className="mt-2 grid w-full min-w-0 max-w-[min(100%,13rem)] grid-cols-3 grid-rows-2 gap-1 sm:gap-1.5">
-                  {PITCH_LOG_BUTTONS.map(({ outcome, label, title }) => {
-                    const lastPitch =
-                      draftPitchLog.length > 0
-                        ? {
-                            balls_before: draftPitchLog[draftPitchLog.length - 1]!.balls_before,
-                            strikes_before: draftPitchLog[draftPitchLog.length - 1]!.strikes_before,
-                            outcome: draftPitchLog[draftPitchLog.length - 1]!.outcome,
-                          }
-                        : null;
-                    const countBlocked = isPitchOutcomeBlockedByFullCount(
-                      pitchLogEndCount.balls,
-                      pitchLogEndCount.strikes,
-                      outcome,
-                      lastPitch
-                    );
-                    const blockHint =
-                      outcome === "ball"
-                        ? "3 balls already — choose Walk (BB) as outcome."
-                        : "Putaway strike already logged at 2 strikes — Undo to change.";
-                    return (
-                      <button
-                        key={outcome}
-                        type="button"
-                        title={countBlocked ? blockHint : title}
-                        disabled={countBlocked}
-                        onClick={() => appendDraftPitch(outcome)}
-                        className="flex min-h-[40px] w-full items-center justify-center rounded-md border border-[var(--border)] bg-[var(--bg-input)] px-1 py-1.5 text-[11px] font-semibold leading-tight text-[var(--text)] transition hover:border-[var(--accent)]/60 hover:bg-[var(--bg-elevated)] touch-manipulation disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[var(--border)] disabled:hover:bg-[var(--bg-input)] sm:min-h-[44px] sm:text-xs"
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                  <button
-                    type="button"
-                    onClick={undoLastDraftPitch}
-                    disabled={draftPitchLog.length === 0}
-                    className="flex min-h-[40px] w-full items-center justify-center rounded-md border border-[var(--border)] px-1 py-1.5 text-[11px] font-medium text-[var(--text-muted)] transition hover:bg-[var(--border)]/30 disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-[44px] sm:text-xs"
-                  >
-                    Undo
-                  </button>
-                  <button
-                    type="button"
-                    onClick={clearDraftPitchLog}
-                    disabled={draftPitchLog.length === 0}
-                    className="flex min-h-[40px] w-full items-center justify-center rounded-md border border-[var(--danger)]/40 px-1 py-1.5 text-[11px] font-medium text-[var(--danger)] transition hover:bg-[var(--danger)]/10 disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-[44px] sm:text-xs"
-                  >
-                    Clear
-                  </button>
-                </div>
                 </div>
 
-                <div className="min-w-0 sm:min-h-0">
-                  <span className="mb-1 block font-heading text-xs font-semibold text-[var(--text)]">
+                <div className="flex min-h-0 min-w-0 flex-col sm:order-1 lg:max-h-[min(calc(100dvh-9rem),42rem)]">
+                  <span className="mb-1 shrink-0 font-heading text-xs font-semibold text-[var(--text)]">
                     Sequence
                   </span>
+                  <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain pr-0.5 sm:max-h-[min(50dvh,22rem)] lg:max-h-none">
                   {selectedGameId ? (
                     <PitchTrackerSequence
                       gameId={selectedGameId}
@@ -3801,7 +3835,7 @@ export default function RecordPageClient({
                     />
                   ) : null}
                   {mergedSequenceLength > 0 ? (
-                    <ul className="max-h-40 space-y-1 overflow-y-auto overscroll-contain sm:max-h-[min(28rem,65dvh)]">
+                    <ul className="mt-1 space-y-1">
                       {Array.from({ length: mergedSequenceLength }, (_, i) => {
                         const draftRow = draftPitchLog[i];
                         const coachRow = coachPitchRows.find((p) => p.pitch_number === i + 1);
@@ -3875,11 +3909,20 @@ export default function RecordPageClient({
                         return null;
                       })}
                       {result != null &&
-                        resultImpliesBattedBallInPlay(result) &&
-                        draftPitchLog[draftPitchLog.length - 1]?.outcome !== "in_play" && (
+                        draftPitchLog.length > 0 &&
+                        livePitchSequenceSummary != null &&
+                        livePitchSequenceSummary.pitches_seen > draftPitchLog.length && (
                           <li>
                             <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-dashed border-[var(--accent)]/45 bg-[var(--accent-dim)]/10 px-2 py-1.5 text-[10px] text-[var(--text-muted)]">
-                              <span className="font-medium text-[var(--accent)]">+ In play</span>
+                              <span className="font-medium text-[var(--accent)]">
+                                {resultImpliesBattedBallInPlay(result)
+                                  ? "+ In play"
+                                  : result === "bb" || result === "ibb"
+                                    ? "+ Ball 4"
+                                    : result === "hbp"
+                                      ? "+ HBP"
+                                      : "+ Pitch"}
+                              </span>
                               <span className="truncate">
                                 ({RESULT_OPTIONS.find((o) => o.value === result)?.label ?? result})
                               </span>
@@ -3897,6 +3940,7 @@ export default function RecordPageClient({
                       pad). Use <span className="text-[var(--accent)]">iPad link &amp; tools</span> above.
                     </p>
                   )}
+                  </div>
                 </div>
               </div>
             </section>
@@ -3904,12 +3948,12 @@ export default function RecordPageClient({
 
             {/* Outcome */}
             <section
-              className="rounded border border-[var(--border)] bg-[var(--bg-elevated)] p-2 sm:p-3 lg:sticky lg:top-2 lg:z-20 lg:max-h-[calc(100dvh-5rem)] lg:overflow-y-auto lg:overscroll-contain"
+              className="min-h-0 rounded border border-[var(--border)] bg-[var(--bg-elevated)] p-2 sm:p-3 lg:order-1 lg:sticky lg:top-2 lg:z-20 lg:max-h-[calc(100dvh-5rem)] lg:overflow-y-auto lg:overscroll-contain"
               aria-labelledby="record-h-outcome"
             >
               <h4
                 id="record-h-outcome"
-                className="font-display mb-2 text-[10px] font-semibold uppercase tracking-wider text-white"
+                className="scroll-mt-20 font-display mb-2 text-[10px] font-semibold uppercase tracking-wider text-white"
               >
                 Outcome
               </h4>
@@ -4341,7 +4385,11 @@ export default function RecordPageClient({
               )}
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <nav
+              id="record-pa-primary-actions"
+              className="scroll-mt-4 flex flex-wrap items-center gap-2 max-lg:sticky max-lg:bottom-0 max-lg:z-40 max-lg:-mx-2 max-lg:mt-2 max-lg:border-t max-lg:border-[var(--border)] max-lg:bg-[var(--bg-base)]/92 max-lg:px-2 max-lg:pb-[max(0.75rem,env(safe-area-inset-bottom))] max-lg:pt-3 max-lg:backdrop-blur-md max-lg:shadow-[0_-12px_40px_rgba(0,0,0,0.5)]"
+              aria-label="Primary recording actions"
+            >
               <button
                 type="button"
                 onClick={requestUndoLastPA}
@@ -4396,9 +4444,9 @@ export default function RecordPageClient({
               >
                 {saving ? "Saving…" : "Save PA"}
               </button>
-            </div>
+            </nav>
               </div>
-              <div className="w-full max-w-[280px] shrink-0 self-start lg:min-w-[240px]">
+              <div className="order-2 w-full max-w-[300px] shrink-0 self-start lg:order-1 lg:min-w-[260px]">
                 <section className="rounded border border-[var(--border)] bg-[var(--bg-elevated)] p-1.5">
                   <h4 className="font-display mb-1 text-[10px] font-semibold uppercase tracking-wider text-white">
                     Runners

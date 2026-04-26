@@ -6,7 +6,7 @@ import { fetchCoachPacketAction, fetchHitterReportBundleAction } from "./actions
 import { downloadCoachPacketPdf } from "@/lib/reports/coachPacketPdf";
 import { downloadHitterReportPdf } from "@/lib/reports/playerReportPdf";
 import { formatDateMMDDYYYY } from "@/lib/format";
-import { isPitcherPlayer } from "@/lib/opponentUtils";
+import { isPitcherPlayer, matchupLabelUsFirst } from "@/lib/opponentUtils";
 import type { CoachPacketModel } from "@/lib/reports/coachPacketTypes";
 import type { Game, Player } from "@/lib/types";
 import { analystComparePlayersHref, analystGameLogHref } from "@/lib/analystRoutes";
@@ -233,7 +233,7 @@ export function ReportsPageClient({
                 >
                   {games.map((g) => (
                     <option key={g.id} value={g.id}>
-                      {formatDateMMDDYYYY(g.date)} — {g.away_team} @ {g.home_team}
+                      {formatDateMMDDYYYY(g.date)} — {matchupLabelUsFirst(g, true)}
                     </option>
                   ))}
                 </select>
@@ -259,10 +259,11 @@ export function ReportsPageClient({
             </button>
           </section>
           <PdfOutlineCard title="This PDF includes">
-            <li>Cover line: date and matchup (away @ home).</li>
-            <li>Final score when the game is finalized.</li>
-            <li>Both teams’ lineups (slots, names, positions).</li>
-            <li>Full plate-appearance table for that game (count, bases, result, RBI, etc.).</li>
+            <li>Single redesigned first page (lineup card format).</li>
+            <li>Header with teams shown as our team vs opponent, plus Home/Away.</li>
+            <li>Two-column lineup layout (our lineup + opponent lineup).</li>
+            <li>Each hitter row shows season AVG and OPS next to the name.</li>
+            <li>Jersey number and position listed beneath each hitter name.</li>
           </PdfOutlineCard>
         </div>
       )}

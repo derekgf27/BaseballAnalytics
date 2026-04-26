@@ -6,14 +6,12 @@ import { useRouter } from "next/navigation";
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
-  useSensor,
-  useSensors,
   useDraggable,
   useDroppable,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { useTouchOptimizedDndSensors } from "@/lib/dndTouchSensors";
 import {
   fetchGameLineupForCoach,
   saveGameLineupForCoachAction,
@@ -24,7 +22,7 @@ import type { Game, LineupSide, Player, SavedLineup } from "@/lib/types";
 import type { BattingStats, BattingStatsWithSplits } from "@/lib/types";
 import { lineupAggregateFromBattingStats } from "@/lib/compute/battingStats";
 import { formatPPa } from "@/lib/format";
-import { formatBattingTripleSlash } from "@/lib/format/battingSlash";
+import { matchupLabelUsFirst } from "@/lib/opponentUtils";
 import { comparePlayersByLastNameThenFull } from "@/lib/playerSort";
 
 const LINEUP_POSITIONS = ["P", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"] as const;
@@ -46,11 +44,6 @@ const BATTING_TAIL_LABELS: { key: keyof BattingStats; label: string; format: "av
   { key: "kPct", label: "K%", format: "pct" },
   { key: "pPa", label: "P/PA", format: "avg" },
 ];
-
-function formatSlashCell(s: BattingStats | undefined): string {
-  if (!s) return "—";
-  return formatBattingTripleSlash(s.avg, s.obp, s.slg);
-}
 
 function formatLineupBattingCell(s: BattingStats | undefined, key: keyof BattingStats, format: "avg" | "int" | "pct"): string {
   if (!s) return "—";
@@ -77,20 +70,6 @@ function getStatValue(statsMap: Record<string, BattingStats>, playerId: string, 
   if (!s) return -1;
   const v = (s as unknown as Record<string, unknown>)[key];
   return typeof v === "number" ? v : -1;
-}
-
-/** Label + formatted value for pool cards when sorting by a stat (not name). */
-function poolCardStatLine(
-  poolSortBy: PoolSortKey,
-  stats: BattingStats | undefined
-): { label: string; value: string } | null {
-  if (poolSortBy === "name") {
-    if (!stats) return null;
-    return { label: "AVG/OBP/SLG", value: formatBattingTripleSlash(stats.avg, stats.obp, stats.slg) };
-  }
-  const label = poolSortBy === "avg" ? "AVG" : poolSortBy === "ops" ? "OPS" : "OBP";
-  const key = poolSortBy as keyof BattingStats;
-  return { label, value: formatLineupBattingCell(stats, key, "avg") };
 }
 
 function getStatsForLineupSplit(
@@ -168,39 +147,27 @@ function formatGameLabel(game: Game): string {
   const d = game.date
     ? new Date(game.date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
     : game.date;
-  const vs = game.our_side === "home" ? `vs ${game.away_team}` : `@ ${game.home_team}`;
-  return `${d} ${vs}`;
+  return `${d} ${matchupLabelUsFirst(game, true)}`;
 }
 
 function PlayerCard({
   player,
   isDragging,
-  poolStatLine,
 }: {
   player: Player;
   isDragging?: boolean;
-  /** When sorting the pool by AVG/OPS/OBP, show that stat on the card */
-  poolStatLine?: { label: string; value: string } | null;
 }) {
   const position = player.positions?.[0] ?? "—";
   const handedness = formatHandedness(player.bats, player.throws);
   return (
     <div
-      className={`neo-card flex cursor-grab items-center gap-3 rounded-lg border p-3 active:cursor-grabbing ${
+      className={`neo-card flex cursor-grab touch-none select-none items-center gap-3 rounded-lg border p-3 active:cursor-grabbing ${
         isDragging ? "opacity-50" : ""
       }`}
     >
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center justify-between gap-3">
           <p className="min-w-0 flex-1 truncate font-medium text-[var(--neo-text)]">{player.name}</p>
-          {poolStatLine != null && (
-            <div className="shrink-0 text-right text-sm tabular-nums">
-              <span className="text-xs font-medium uppercase tracking-wide text-white">
-                {poolStatLine.label}
-              </span>{" "}
-              <span className="font-semibold text-[var(--neo-accent)]">{poolStatLine.value}</span>
-            </div>
-          )}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--neo-text-muted)]">
           {player.jersey && <span>#{player.jersey}</span>}
@@ -215,11 +182,9 @@ function PlayerCard({
 function DraggablePlayer({
   player,
   compact,
-  poolStatLine,
 }: {
   player: Player;
   compact?: boolean;
-  poolStatLine?: { label: string; value: string } | null;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: player.id,
@@ -227,7 +192,12 @@ function DraggablePlayer({
   });
   if (compact) {
     return (
-      <div ref={setNodeRef} {...listeners} {...attributes} className="min-w-0 flex-1">
+      <div
+        ref={setNodeRef}
+        {...listeners}
+        {...attributes}
+        className="min-w-0 flex-1 touch-none select-none"
+      >
         <div className={`flex cursor-grab items-center gap-2 active:cursor-grabbing ${isDragging ? "opacity-50" : ""}`}>
           <span className="truncate text-base font-medium text-[var(--text)]">{player.name}</span>
           {player.jersey && <span className="shrink-0 text-sm text-[var(--text-muted)]">#{player.jersey}</span>}
@@ -236,8 +206,8 @@ function DraggablePlayer({
     );
   }
   return (
-    <div ref={setNodeRef} {...listeners} {...attributes}>
-      <PlayerCard player={player} isDragging={isDragging} poolStatLine={poolStatLine} />
+    <div ref={setNodeRef} {...listeners} {...attributes} className="touch-none select-none">
+      <PlayerCard player={player} isDragging={isDragging} />
     </div>
   );
 }
@@ -338,12 +308,6 @@ function CoachPlayerStatsTable({
               <th className="font-display py-1.5 pr-2 text-center text-xs font-semibold uppercase">#</th>
             )}
             <th className="font-display py-1.5 pr-2 text-xs font-semibold uppercase">Player</th>
-            <th
-              className="font-display py-1.5 px-2 text-center text-xs font-semibold uppercase"
-              title="AVG / OBP / SLG"
-            >
-              AVG/OBP/SLG
-            </th>
             {BATTING_TAIL_LABELS.map(({ key, label }) => (
               <th key={key} className="font-display py-1.5 px-2 text-center text-xs font-semibold uppercase">
                 {label}
@@ -363,7 +327,6 @@ function CoachPlayerStatsTable({
                   {player.name}
                   {player.jersey && <span className="ml-1 text-[var(--text-muted)]">#{player.jersey}</span>}
                 </td>
-                <td className="py-1.5 px-2 text-center text-[var(--text)] tabular-nums">{formatSlashCell(s)}</td>
                 {BATTING_TAIL_LABELS.map(({ key, format }) => (
                   <td key={key} className="py-1.5 px-2 text-center text-[var(--text)] tabular-nums">
                     {formatLineupBattingCell(s, key, format)}
@@ -398,14 +361,20 @@ function slotsToLineupState(
 }
 
 function initialLineupToState(initialLineup: CoachLineupSlot[], playerMap: Map<string, Player>): LineupSlotState[] {
-  return Array.from({ length: 9 }, (_, i) => {
-    const s = initialLineup[i];
-    if (!s) return { player: null, position: LINEUP_POSITIONS[0] };
-    return {
-      player: playerMap.get(s.playerId) ?? null,
-      position: s.position || LINEUP_POSITIONS[0],
-    };
-  });
+  const next: LineupSlotState[] = Array.from({ length: 9 }, () => ({
+    player: null,
+    position: LINEUP_POSITIONS[0],
+  }));
+  for (const s of initialLineup) {
+    const idx = Math.trunc(s.order) - 1;
+    if (idx >= 0 && idx < 9) {
+      next[idx] = {
+        player: playerMap.get(s.playerId) ?? null,
+        position: s.position || LINEUP_POSITIONS[0],
+      };
+    }
+  }
+  return next;
 }
 
 /**
@@ -483,7 +452,7 @@ export function CoachLineupClient({
   const lineupQuality =
     lineupBattingStatsNine.length === 9 ? lineupAggregateFromBattingStats(lineupBattingStatsNine) : null;
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  const sensors = useTouchOptimizedDndSensors();
 
   function handleDragStart(event: DragStartEvent) {
     setActiveId(String(event.active.id));
@@ -745,7 +714,12 @@ export function CoachLineupClient({
           </section>
 
           {selectedGameId && (
-            <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+            <DndContext
+              sensors={sensors}
+              autoScroll={false}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+            >
 
               <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
                 {/* Available players */}
@@ -779,10 +753,7 @@ export function CoachLineupClient({
                       ) : (
                         sortedAvailablePlayers.map((player) => (
                           <li key={player.id}>
-                            <DraggablePlayer
-                              player={player}
-                              poolStatLine={poolCardStatLine(poolSortBy, initialBattingStats[player.id])}
-                            />
+                            <DraggablePlayer player={player} />
                           </li>
                         ))
                       )}
@@ -888,7 +859,7 @@ export function CoachLineupClient({
 
               <DragOverlay dropAnimation={null}>
                 {activePlayer ? (
-                  <div className="cursor-grabbing rounded-lg border border-[var(--neo-border)] bg-[var(--neo-bg-card)] shadow-lg">
+                  <div className="will-change-transform cursor-grabbing rounded-lg border border-[var(--neo-border)] bg-[var(--neo-bg-card)] shadow-lg">
                     <PlayerCard player={activePlayer} />
                   </div>
                 ) : null}

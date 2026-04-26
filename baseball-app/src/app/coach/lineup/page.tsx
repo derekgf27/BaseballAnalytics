@@ -45,8 +45,13 @@ export default async function CoachLineupPage() {
   const initialGame = games[0] ?? null;
 
   if (initialGame) {
-    const slots = await getGameLineup(initialGame.id);
-    const ourSlots = slots.filter((s) => s.side === initialGame.our_side);
+    const rows = await getGameLineup(initialGame.id);
+    const ourRows = rows.filter((s) => s.side === initialGame.our_side);
+    const bySlot = new Map<number, (typeof ourRows)[0]>();
+    for (const s of ourRows) {
+      bySlot.set(s.slot, s);
+    }
+    const ourSlots = [...bySlot.values()].sort((a, b) => a.slot - b.slot);
     if (ourSlots.length > 0) {
       initialLineup = buildLineupFromSlots(
         ourSlots.map((s) => ({ slot: s.slot, player_id: s.player_id, position: s.position ?? null })),

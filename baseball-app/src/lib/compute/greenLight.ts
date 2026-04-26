@@ -65,7 +65,6 @@ const SO_RESULTS: PAResult[] = ["so", "so_looking"];
 const WALK_RESULTS: PAResult[] = ["bb", "ibb"];
 
 const MIN_PA_FOR_GREENLIGHT = 10;
-const DEFAULT_CHASE_RATE = 0.25; // used when chase data is missing
 
 // Thresholds are intentionally constants so you can tune later.
 // Units are rates (0..1) over the recent PA sample.
@@ -82,18 +81,18 @@ const STAT_THRESHOLDS = {
   // Hit-and-run
   HAR_MIN_MADE_CONTACT_RATE: 0.72,
   HAR_MIN_QUALITY_CONTACT_RATE: 0.18,
-  HAR_MAX_CHASE_RATE: 0.45,
   HAR_MIN_BB_RATE: 0.03,
+  HAR_MAX_SO_RATE: 0.32,
 
   // Steal
   STEAL_YES_MIN_SB_RATE: 0.08,
   STEAL_NO_MAX_SB_RATE: 0.02,
-  STEAL_MAX_CHASE_RATE: 0.4,
+  STEAL_MAX_SO_RATE: 0.34,
 
   // Bunt
   BUNT_MIN_MADE_CONTACT_RATE: 0.72,
   BUNT_MIN_QUALITY_CONTACT_RATE: 0.18,
-  BUNT_MAX_CHASE_RATE: 0.5,
+  BUNT_MAX_SO_RATE: 0.34,
 };
 
 function clamp01(n: number): number {
@@ -112,10 +111,6 @@ function getStatRates(pas: PlateAppearance[]) {
 
   const hardMedium = pas.filter((pa) => pa.contact_quality === "hard" || pa.contact_quality === "medium").length;
 
-  const chaseNonNull = pas.filter((pa) => pa.chase != null);
-  const chaseTrue = chaseNonNull.filter((pa) => pa.chase === true).length;
-  const chaseRate = chaseNonNull.length > 0 ? chaseTrue / chaseNonNull.length : DEFAULT_CHASE_RATE;
-
   // Proxy for "can they put it in play": treat any non-K as "made contact"
   // (walk/HBP are also non-K, so this slightly overestimates contact ability).
   const madeContactRate = clamp01((safeTotal - strikeouts) / safeTotal);
@@ -129,7 +124,7 @@ function getStatRates(pas: PlateAppearance[]) {
   const sbTotal = pas.reduce((acc, pa) => acc + (pa.stolen_bases ?? 0), 0);
   const sbRate = hasSbData ? clamp01(sbTotal / safeTotal) : null;
 
-  return { total, madeContactRate, soRate, bbRate, hitRate, xbhRate, qualityContactRate, chaseRate, sbRate };
+  return { total, madeContactRate, soRate, bbRate, hitRate, xbhRate, qualityContactRate, sbRate };
 }
 
 function verdictYesNoSituational(yes: boolean, no: boolean): GreenLightVerdict {
@@ -168,36 +163,36 @@ export function greenLightForRecentPAs(
     (r.xbhRate <= STAT_THRESHOLDS.SWING_NO_MAX_XBH_RATE && r.soRate >= STAT_THRESHOLDS.SWING_NO_MIN_SO_RATE);
   const swing_3_0 = verdictYesNoSituational(swingYes, swingNo);
 
-  // Hit-and-run: want to make contact (and preferably quality contact) with a reasonable chase profile.
+  // Hit-and-run: want to make contact (and preferably quality contact) with enough zone control.
   const harYes =
     r.madeContactRate >= STAT_THRESHOLDS.HAR_MIN_MADE_CONTACT_RATE &&
     r.qualityContactRate >= STAT_THRESHOLDS.HAR_MIN_QUALITY_CONTACT_RATE &&
-    (r.chaseRate <= STAT_THRESHOLDS.HAR_MAX_CHASE_RATE || r.bbRate >= STAT_THRESHOLDS.HAR_MIN_BB_RATE);
+    (r.soRate <= STAT_THRESHOLDS.HAR_MAX_SO_RATE || r.bbRate >= STAT_THRESHOLDS.HAR_MIN_BB_RATE);
   const harNo =
     r.madeContactRate <= STAT_THRESHOLDS.HAR_MIN_MADE_CONTACT_RATE - 0.12 ||
     r.qualityContactRate <= STAT_THRESHOLDS.HAR_MIN_QUALITY_CONTACT_RATE - 0.06 ||
-    r.chaseRate >= STAT_THRESHOLDS.HAR_MAX_CHASE_RATE + 0.15;
+    r.soRate >= STAT_THRESHOLDS.HAR_MAX_SO_RATE + 0.12;
   const hit_and_run = verdictYesNoSituational(harYes, harNo);
 
-  // Steal: if SB data exists, use it. Otherwise, fall back to chase quality.
+  // Steal: if SB data exists, use it. Otherwise, fall back to strikeout/contact profile.
   const hasSb = r.sbRate != null;
   const stealYes = hasSb
-    ? r.sbRate! >= STAT_THRESHOLDS.STEAL_YES_MIN_SB_RATE && r.chaseRate <= STAT_THRESHOLDS.STEAL_MAX_CHASE_RATE
-    : r.chaseRate <= STAT_THRESHOLDS.STEAL_MAX_CHASE_RATE;
+    ? r.sbRate! >= STAT_THRESHOLDS.STEAL_YES_MIN_SB_RATE && r.soRate <= STAT_THRESHOLDS.STEAL_MAX_SO_RATE
+    : r.soRate <= STAT_THRESHOLDS.STEAL_MAX_SO_RATE;
   const stealNo = hasSb
     ? r.sbRate! <= STAT_THRESHOLDS.STEAL_NO_MAX_SB_RATE
-    : r.chaseRate >= STAT_THRESHOLDS.STEAL_MAX_CHASE_RATE + 0.2;
+    : r.soRate >= STAT_THRESHOLDS.STEAL_MAX_SO_RATE + 0.2;
   const steal = verdictYesNoSituational(stealYes, stealNo);
 
-  // Bunt: similar to hit-and-run but generally more conservative about chasing.
+  // Bunt: similar to hit-and-run but generally more conservative with strikeout profile.
   const buntYes =
     r.madeContactRate >= STAT_THRESHOLDS.BUNT_MIN_MADE_CONTACT_RATE &&
     r.qualityContactRate >= STAT_THRESHOLDS.BUNT_MIN_QUALITY_CONTACT_RATE &&
-    r.chaseRate <= STAT_THRESHOLDS.BUNT_MAX_CHASE_RATE;
+    r.soRate <= STAT_THRESHOLDS.BUNT_MAX_SO_RATE;
   const buntNo =
     r.madeContactRate <= STAT_THRESHOLDS.BUNT_MIN_MADE_CONTACT_RATE - 0.18 ||
     r.qualityContactRate <= STAT_THRESHOLDS.BUNT_MIN_QUALITY_CONTACT_RATE - 0.06 ||
-    r.chaseRate >= STAT_THRESHOLDS.BUNT_MAX_CHASE_RATE + 0.2;
+    r.soRate >= STAT_THRESHOLDS.BUNT_MAX_SO_RATE + 0.2;
   const bunt = verdictYesNoSituational(buntYes, buntNo);
 
   return { swing_3_0, hit_and_run, steal, bunt };

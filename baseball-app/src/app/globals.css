@@ -21,8 +21,9 @@
   --neo-compare-stat-win: #22C55E;
   --neo-warning: #FFD86F;
   --neo-text: #E6EDF3;
-  --neo-text-muted: #7D8590;
-  --neo-text-faint: #6e7681;
+  /* Same as primary on dark UI — no low-contrast “muted” gray on dark backgrounds */
+  --neo-text-muted: #ffffff;
+  --neo-text-faint: #ffffff;
   --neo-border: rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.2);
   --neo-border-focus: rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.45);
 
@@ -57,7 +58,7 @@
   --decision-red: var(--neo-secondary);
   --decision-red-dim: var(--neo-secondary-dim);
   --decision-gray: var(--neo-text-muted);
-  --decision-gray-dim: rgba(125, 133, 144, 0.2);
+  --decision-gray-dim: rgba(255, 255, 255, 0.14);
 
   /* Type scale — IBM Plex Sans (loaded via next/font, variable set on html) */
   --font-sans: var(--font-ibm-plex-sans), "IBM Plex Sans", system-ui, sans-serif;
@@ -498,8 +499,12 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   display: none;
 }
 @media (max-width: 640px) {
-  .sidebar { width: 3.5rem; }
-  .sidebar .sidebar-link .sidebar-label { display: none; }
+  .sidebar {
+    width: 3.5rem;
+  }
+  .sidebar:not([data-collapsed="true"]) {
+    width: 14rem;
+  }
 }
 .sidebar-link {
   display: flex;
@@ -550,6 +555,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     --bg-input: #f1f5f9;
     --border: #cbd5e1;
     --text: #0f172a;
+    --neo-text-muted: #475569;
+    --neo-text-faint: #64748b;
     --text-muted: #475569;
     --text-faint: #64748b;
     --accent: #a16207;
@@ -566,6 +573,60 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   }
 
   .reports-print-area [class*="text-white"] {
+    color: #0f172a !important;
+  }
+
+  .charts-print-hide {
+    display: none !important;
+  }
+
+  .charts-page {
+    --bg-base: #ffffff;
+    --bg-card: #ffffff;
+    --bg-elevated: #f8fafc;
+    --border: #cbd5e1;
+    --text: #0f172a;
+    --neo-text-muted: #475569;
+    --neo-text-faint: #64748b;
+    --text-muted: #475569;
+    --text-faint: #64748b;
+    --neo-accent: #a16207;
+    --accent: #a16207;
+    background: #ffffff !important;
+    color: var(--text) !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .charts-page .card-tech {
+    background: #f8fafc !important;
+    border-color: #cbd5e1 !important;
+  }
+
+  .charts-page [class*="text-white"] {
+    color: #0f172a !important;
+  }
+
+  .charts-print-area {
+    --bg-base: #ffffff;
+    --bg-card: #ffffff;
+    --bg-elevated: #f1f5f9;
+    --bg-input: #f1f5f9;
+    --border: #cbd5e1;
+    --text: #0f172a;
+    --neo-text-muted: #475569;
+    --neo-text-faint: #64748b;
+    --text-muted: #475569;
+    --text-faint: #64748b;
+    --neo-accent: #a16207;
+    background: #ffffff !important;
+    color: var(--text) !important;
+    border-color: #cbd5e1 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .charts-print-area [class*="text-white"] {
     color: #0f172a !important;
   }
 }

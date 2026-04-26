@@ -5,14 +5,12 @@ import Link from "next/link";
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
-  useSensor,
-  useSensors,
   useDraggable,
   useDroppable,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { useTouchOptimizedDndSensors } from "@/lib/dndTouchSensors";
 import { isClubRosterPlayer, isPitcherPlayer } from "@/lib/opponentUtils";
 import type { Player } from "@/lib/types";
 import { comparePlayersByLastNameThenFull } from "@/lib/playerSort";
@@ -112,7 +110,7 @@ function DraggablePlayer({ player }: { player: Player }) {
     data: { player },
   });
   return (
-    <div ref={setNodeRef} {...listeners} {...attributes} className="min-w-0 flex-1">
+    <div ref={setNodeRef} {...listeners} {...attributes} className="min-w-0 flex-1 touch-none select-none">
       <div className={`flex cursor-grab items-center gap-2 active:cursor-grabbing ${isDragging ? "opacity-50" : ""}`}>
         <span className="truncate text-sm font-medium text-[var(--text)]">{player.name}</span>
         {player.jersey && <span className="shrink-0 text-xs text-[var(--text-muted)]">#{player.jersey}</span>}
@@ -243,7 +241,7 @@ export function OpponentLineupModal({
   const inLineupIds = new Set(lineup.filter((s) => s.player != null).map((s) => s.player!.id));
   const availablePlayers = [...pool.filter((p) => !inLineupIds.has(p.id))].sort(comparePlayersByLastNameThenFull);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  const sensors = useTouchOptimizedDndSensors();
 
   function handleDragStart(event: DragStartEvent) {
     setActiveId(String(event.active.id));
@@ -443,7 +441,12 @@ export function OpponentLineupModal({
           )}
 
           {nameOk && !poolEmpty && (
-            <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+            <DndContext
+              sensors={sensors}
+              autoScroll={false}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+            >
               <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
                 <PlayerPoolDroppable>
                   <div className="card-tech flex min-h-[16rem] flex-col rounded-lg border border-[var(--border)] p-3">
@@ -496,9 +499,9 @@ export function OpponentLineupModal({
                   </table>
                 </div>
               </div>
-              <DragOverlay>
+              <DragOverlay dropAnimation={null}>
                 {activePlayer ? (
-                  <div className="rounded border border-[var(--accent)] bg-[var(--bg-card)] px-3 py-2 shadow-lg">
+                  <div className="will-change-transform rounded border border-[var(--accent)] bg-[var(--bg-card)] px-3 py-2 shadow-lg">
                     <span className="font-medium text-[var(--text)]">{activePlayer.name}</span>
                   </div>
                 ) : null}

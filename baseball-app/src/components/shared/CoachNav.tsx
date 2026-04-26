@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { guardNavUntilSidebarExpanded } from "@/lib/sidebarCollapsedNav";
 
 const STORAGE_KEY = "coach-sidebar-collapsed";
 
@@ -11,8 +12,7 @@ const LINKS = [
   { href: "/coach/pitch-tracker", label: "Pitch tracker", icon: "\u{1F3AF}", exact: false },
   { href: "/coach/players", label: "Players", icon: "\u{1F464}", exact: false },
   { href: "/coach/lineup", label: "Lineup", icon: "\u{1F4DD}", exact: false },
-  { href: "/coach/green-light", label: "Green light", icon: "\u{1F7E2}", exact: false },
-  { href: "/coach/situation", label: "Situation", icon: "\u{26BE}", exact: false },
+  { href: "/coach/stats", label: "Stats", icon: "\u{1F4C8}", exact: false },
 ] as const;
 
 export function CoachNav() {
@@ -28,47 +28,50 @@ export function CoachNav() {
     }
   }, []);
 
-  const leaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleMouseEnter = () => {
-    if (leaveTimeoutRef.current) {
-      clearTimeout(leaveTimeoutRef.current);
-      leaveTimeoutRef.current = null;
+  const persistCollapsed = (next: boolean) => {
+    setCollapsed(next);
+    try {
+      localStorage.setItem(STORAGE_KEY, String(next));
+    } catch {
+      // ignore
     }
-    if (collapsed) setCollapsed(false);
   };
 
-  const handleMouseLeave = () => {
-    if (collapsed) return;
-    leaveTimeoutRef.current = setTimeout(() => {
-      leaveTimeoutRef.current = null;
-      setCollapsed(true);
-      try {
-        localStorage.setItem(STORAGE_KEY, "true");
-      } catch {
-        // ignore
-      }
-    }, 200);
-  };
+  const expandOnly = () => persistCollapsed(false);
 
   return (
     <aside
       className="sidebar"
       aria-label="Coach navigation"
       data-collapsed={collapsed ? "true" : undefined}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
     >
-      <div className="border-b border-[var(--border)] p-2">
+      <div className="flex items-center gap-0.5 border-b border-[var(--border)] p-2">
+        <button
+          type="button"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[var(--text)] hover:bg-white/[0.06]"
+          onClick={() => persistCollapsed(!collapsed)}
+          aria-expanded={collapsed ? "false" : "true"}
+          aria-controls="coach-sidebar-nav"
+          aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+          title={collapsed ? "Expand navigation" : "Collapse navigation"}
+        >
+          <span className="text-base leading-none" aria-hidden>
+            {collapsed ? "\u203A" : "\u2039"}
+          </span>
+        </button>
         <Link
           href="/coach"
-          className="font-orbitron flex items-center gap-2 py-2 pl-2 text-sm font-semibold tracking-tight text-[var(--text)]"
+          title={collapsed ? "Open menu — tap again to go to Coach home" : undefined}
+          onClick={(e) => guardNavUntilSidebarExpanded(e, collapsed, expandOnly)}
+          className="font-orbitron flex min-w-0 flex-1 items-center py-2 pl-0.5 text-sm font-semibold tracking-tight text-[var(--text)]"
         >
-          <span className="sidebar-icon shrink-0 opacity-90">{"\u{1F45F}"}</span>
           <span className="sidebar-label truncate text-[var(--accent-coach)]">Coach</span>
         </Link>
       </div>
-      <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto py-3">
+      <nav
+        id="coach-sidebar-nav"
+        className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto py-3"
+      >
         {LINKS.map((link) => {
           const { href, label, icon } = link;
           const exact = "exact" in link && link.exact;
@@ -77,6 +80,8 @@ export function CoachNav() {
             <Link
               key={href}
               href={href}
+              title={collapsed ? `Open menu — tap again for ${label}` : undefined}
+              onClick={(e) => guardNavUntilSidebarExpanded(e, collapsed, expandOnly)}
               className={`sidebar-link sidebar-link-coach ${active ? "[data-active=true]" : ""}`}
               data-active={active ? "true" : undefined}
             >
@@ -91,7 +96,10 @@ export function CoachNav() {
           <Link
             href="/"
             className="sidebar-link sidebar-link-coach opacity-70"
-            title="Exit to home"
+            title={
+              collapsed ? "Open menu — tap again to exit to home" : "Exit to home"
+            }
+            onClick={(e) => guardNavUntilSidebarExpanded(e, collapsed, expandOnly)}
           >
             <span className="sidebar-icon" aria-hidden>
               &larr;

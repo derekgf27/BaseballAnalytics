@@ -83,13 +83,27 @@ export function getOpponentRosterTag(
 }
 
 /** Opposing team name for a game (the team that is not "us"). */
-export function opponentTeamName(game: Game): string {
+export function opponentTeamName(game: Pick<Game, "home_team" | "away_team" | "our_side">): string {
   return game.our_side === "home" ? game.away_team : game.home_team;
 }
 
 /** Our club name in this game. */
-export function ourTeamName(game: Game): string {
+export function ourTeamName(game: Pick<Game, "home_team" | "away_team" | "our_side">): string {
   return game.our_side === "home" ? game.home_team : game.away_team;
+}
+
+/** Human-readable venue label from our perspective. */
+export function ourVenueLabel(game: Pick<Game, "our_side">): "Home" | "Away" {
+  return game.our_side === "home" ? "Home" : "Away";
+}
+
+/** Standard matchup display: our team first, then opponent. */
+export function matchupLabelUsFirst(
+  game: Pick<Game, "home_team" | "away_team" | "our_side">,
+  includeVenue = false
+): string {
+  const base = `${ourTeamName(game)} vs ${opponentTeamName(game)}`;
+  return includeVenue ? `${base} (${ourVenueLabel(game)})` : base;
 }
 
 /** Side the opponent occupies in the ballpark. */

@@ -1,11 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
-import { fetchCoachGamePasAction } from "@/app/coach/actions";
-import { BattingPitchMixCard } from "@/components/analyst/BattingPitchMixCard";
-import { pitchingStatsFromPAs } from "@/lib/compute/pitchingStats";
-import type { PitchEvent, PitchingStats, Player, PlateAppearance } from "@/lib/types";
+import type { PitchingStats } from "@/lib/types";
 
 export type StarterCompareDisplay = {
   name: string;
@@ -14,13 +10,12 @@ export type StarterCompareDisplay = {
 } | null;
 
 export interface StartingPitchersCompareCardProps {
-  gameId: string;
-  initialGamePas: PlateAppearance[];
-  /** Same pitch log as Record PA (enables Sw%, BIP mix, etc. in pitch data cards). */
-  initialGamePitchEvents: PitchEvent[];
-  coachPitchPlayers: Player[];
   club: { display: StarterCompareDisplay };
   opponent: { display: StarterCompareDisplay };
+  /** Our starter: all PAs in the app (left column). */
+  clubSeasonPitching: PitchingStats | null;
+  /** Opponent starter: PAs vs our lineup side only (cumulative). */
+  opponentVsOurClubPitching: PitchingStats | null;
 }
 
 function hasPitchingLine(s: PitchingStats | null): boolean {
@@ -145,173 +140,20 @@ function starterTitle(d: StarterCompareDisplay) {
   );
 }
 
-function pitchingStatsForPitcherFromGamePAs(
-  allPas: PlateAppearance[],
-  pitcherId: string | null
-): PitchingStats | null {
-  if (!pitcherId) return null;
-  const filtered = allPas.filter((p) => p.pitcher_id === pitcherId);
-  const withSplits = pitchingStatsFromPAs(filtered, new Set(), new Map(), new Map(), {
-    allPasForRunCharges: allPas,
-  });
-  return withSplits?.overall ?? null;
-}
-
-/** Same three blocks as Record PA pitch data, with placeholders when there is no sample yet. */
-function EmptyPitchDataPreview({ caption }: { caption: string }) {
-  const grid =
-    "grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px] leading-tight sm:text-xs text-zinc-400";
-  const lab = (t: string) => (
-    <span className="shrink-0 font-semibold text-zinc-500" title={t}>
-      {t}
-    </span>
-  );
-  const dash = <span className="tabular-nums text-zinc-600">—</span>;
-  const mini = (title: string, children: ReactNode) => (
-    <div className="rounded-md border border-zinc-800/90 bg-zinc-900/35 px-2 py-1.5 sm:px-2.5 sm:py-2">
-      <p className="mb-0.5 font-display text-[8px] font-semibold uppercase tracking-wider text-white/75">{title}</p>
-      {children}
-    </div>
-  );
-  return (
-    <div className="min-w-0 rounded-lg border border-zinc-800 bg-zinc-950/45 px-2 py-2 sm:px-2.5 sm:py-2.5">
-      <p className="font-display text-[9px] font-semibold uppercase tracking-wider text-zinc-500">Pitch data</p>
-      <p className="mt-0.5 text-[10px] leading-snug text-zinc-600">{caption}</p>
-      <div className="mt-2 grid grid-cols-1 gap-2 lg:grid-cols-3">
-        {mini(
-          "Rates",
-          <div className={grid} role="group" aria-label="Rates (empty)">
-            {lab("FPS:")}
-            {dash}
-            {lab("Strike %:")}
-            {dash}
-            {lab("Balls:")}
-            {dash}
-            {lab("Strikes:")}
-            {dash}
-            {lab("Pitches:")}
-            {dash}
-            {lab("P/PA:")}
-            {dash}
-            {lab("LOB:")}
-            {dash}
-          </div>
-        )}
-        {mini(
-          "Contact",
-          <div className={`${grid} min-h-[2.75rem] items-center`} role="group" aria-label="Contact (empty)">
-            <span className="col-span-2 text-center font-medium tabular-nums text-zinc-600">—</span>
-          </div>
-        )}
-        {mini(
-          "2 strikes",
-          <div className={`${grid} items-center`} role="group" aria-label="Two strikes (empty)">
-            <span className="col-span-2 text-center font-medium tabular-nums text-zinc-600">—</span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-const LIVE_POLL_MS = 25_000;
-
-function StartingPitchersLiveSection({
-  gameId,
-  clubStarterId,
-  oppStarterId,
-  clubDisplay,
-  oppDisplay,
-  initialPas,
-  gamePitchEvents,
-  players,
-}: {
-  gameId: string;
-  clubStarterId: string | null;
-  oppStarterId: string | null;
-  clubDisplay: StarterCompareDisplay;
-  oppDisplay: StarterCompareDisplay;
-  initialPas: PlateAppearance[];
-  gamePitchEvents: PitchEvent[];
-  players: Player[];
-}) {
-  const [pas, setPas] = useState<PlateAppearance[]>(initialPas);
-
-  useEffect(() => {
-    setPas(initialPas);
-  }, [initialPas]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const tick = async () => {
-      try {
-        const next = await fetchCoachGamePasAction(gameId);
-        if (!cancelled && next) setPas(next);
-      } catch {
-        /* keep last known PAS */
-      }
-    };
-    const id = setInterval(tick, LIVE_POLL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [gameId]);
-
-  const ls = pitchingStatsForPitcherFromGamePAs(pas, clubStarterId);
-  const rs = pitchingStatsForPitcherFromGamePAs(pas, oppStarterId);
-
-  return (
-    <>
-      <CompareStatTable clubDisplay={clubDisplay} oppDisplay={oppDisplay} clubStats={ls} oppStats={rs} />
-      <div className="mt-4 min-h-0 space-y-3 border-t border-[var(--neo-border)] pt-4">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-          Pitch data (this game)
-        </p>
-        <div className="grid min-h-0 min-w-0 gap-3 lg:grid-cols-2">
-          {clubStarterId ? (
-            <div className="min-w-0 overflow-x-auto">
-              <BattingPitchMixCard
-                pas={pas}
-                players={players}
-                pitchEvents={gamePitchEvents}
-                compact
-                currentPitcherId={clubStarterId}
-              />
-            </div>
-          ) : (
-            <EmptyPitchDataPreview caption="Set our starter on Analyst → Games to link this column to a pitcher." />
-          )}
-          {oppStarterId ? (
-            <div className="min-w-0 overflow-x-auto">
-              <BattingPitchMixCard
-                pas={pas}
-                players={players}
-                pitchEvents={gamePitchEvents}
-                compact
-                currentPitcherId={oppStarterId}
-              />
-            </div>
-          ) : (
-            <EmptyPitchDataPreview caption="Set the opponent starter on Analyst → Games." />
-          )}
-        </div>
-      </div>
-    </>
-  );
-}
-
 /** Side-by-side stat grid (one pair of pitchers). */
 function CompareStatTable({
   clubDisplay,
   oppDisplay,
   clubStats,
   oppStats,
+  highlightCompare = true,
 }: {
   clubDisplay: StarterCompareDisplay;
   oppDisplay: StarterCompareDisplay;
   clubStats: PitchingStats | null;
   oppStats: PitchingStats | null;
+  /** When false, do not bold "better" cells (e.g. different sample bases). */
+  highlightCompare?: boolean;
 }) {
   const ls = clubStats;
   const rs = oppStats;
@@ -319,11 +161,21 @@ function CompareStatTable({
   return (
     <>
       <div className="grid shrink-0 grid-cols-[1fr_auto_1fr] gap-x-2 border-b border-[var(--neo-border)] pb-3 text-center text-sm">
-        <div className="min-w-0 font-semibold leading-snug">{starterTitle(clubDisplay)}</div>
-        <div className="w-[4.25rem] shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--neo-accent)] sm:w-[4.5rem]">
+        <div className="min-w-0 font-semibold leading-snug">
+          {starterTitle(clubDisplay)}
+          <p className="mt-1 text-[9px] font-medium uppercase tracking-wide text-zinc-500">
+            Season (all games)
+          </p>
+        </div>
+        <div className="w-[4.25rem] shrink-0 self-end pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--neo-accent)] sm:w-[4.5rem]">
           Stat
         </div>
-        <div className="min-w-0 font-semibold leading-snug">{starterTitle(oppDisplay)}</div>
+        <div className="min-w-0 font-semibold leading-snug">
+          {starterTitle(oppDisplay)}
+          <p className="mt-1 text-[9px] font-medium uppercase tracking-wide text-zinc-500">
+            Vs our team (cumulative)
+          </p>
+        </div>
       </div>
       <div className="mt-0 flex min-h-0 flex-1 flex-col">
         <div className="divide-y divide-[var(--neo-border)]">
@@ -331,7 +183,7 @@ function CompareStatTable({
             const leftStr = ls && hasPitchingLine(ls) ? row.left(ls) : "—";
             const rightStr = rs && hasPitchingLine(rs) ? row.right(rs) : "—";
             const { boldLeft, boldRight } =
-              ls && rs && hasPitchingLine(ls) && hasPitchingLine(rs)
+              highlightCompare && ls && rs && hasPitchingLine(ls) && hasPitchingLine(rs)
                 ? parseCompare(leftStr, rightStr, row.better)
                 : { boldLeft: false, boldRight: false };
             const zebra = i % 2 === 1 ? "bg-[var(--accent-coach)]/[0.06]" : "bg-transparent";
@@ -368,30 +220,22 @@ function CompareStatTable({
 }
 
 export function StartingPitchersCompareCard({
-  gameId,
-  initialGamePas,
-  initialGamePitchEvents,
-  coachPitchPlayers,
   club,
   opponent,
+  clubSeasonPitching,
+  opponentVsOurClubPitching,
 }: StartingPitchersCompareCardProps) {
-  const clubStarterId = club.display?.playerId ?? null;
-  const oppStarterId = opponent.display?.playerId ?? null;
-
   return (
     <div className="neo-card flex h-full min-h-0 min-w-0 flex-col overflow-y-auto overflow-x-hidden p-4 lg:p-5">
       <div className="section-label mb-3">Starting pitchers</div>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <StartingPitchersLiveSection
-          gameId={gameId}
-          clubStarterId={clubStarterId}
-          oppStarterId={oppStarterId}
+        <CompareStatTable
           clubDisplay={club.display}
           oppDisplay={opponent.display}
-          initialPas={initialGamePas}
-          gamePitchEvents={initialGamePitchEvents}
-          players={coachPitchPlayers}
+          clubStats={clubSeasonPitching}
+          oppStats={opponentVsOurClubPitching}
+          highlightCompare={false}
         />
       </div>
     </div>

@@ -6,6 +6,10 @@ export interface CoachPacketLineupRow {
   position: string;
   jersey: string;
   bats: string;
+  /** Season batting average for this hitter (from logged PAs), null when unavailable. */
+  avg: number | null;
+  /** Season OPS for this hitter (from logged PAs), null when unavailable. */
+  ops: number | null;
 }
 
 export interface CoachPacketPaRow {

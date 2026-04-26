@@ -26,6 +26,7 @@ import { pitchingStatsFromPAs } from "@/lib/compute/pitchingStats";
 import { isDemoId } from "@/lib/db/mockData";
 import { formatDateMMDDYYYY, formatPPa } from "@/lib/format";
 import { isGameFinalized } from "@/lib/gameRecord";
+import { matchupLabelUsFirst } from "@/lib/opponentUtils";
 import {
   PITCH_TRACKER_TYPES,
   pitchTrackerAbbrev,
@@ -67,7 +68,6 @@ function coachLiveAbSyntheticPa(
     count_strikes: 0,
     result: "other",
     contact_quality: null,
-    chase: null,
     hit_direction: null,
     batted_ball_type: null,
     pitches_seen: null,
@@ -337,6 +337,8 @@ function CoachPitchPad({
     Record<string, number>
   >({});
   const [opponentLineupLoading, setOpponentLineupLoading] = useState(false);
+  /** Player ids on our lineup for this game; `null` while resolving (block pitch types until known). */
+  const [ourLineupPlayerIds, setOurLineupPlayerIds] = useState<Set<string> | null>(null);
   /** Completed PAs in this game: this batter vs current mound pitcher (Record). */
   const [batterIntelPas, setBatterIntelPas] = useState<PlateAppearance[]>([]);
   const [batterIntelEvents, setBatterIntelEvents] = useState<PitchEvent[]>([]);
@@ -354,18 +356,24 @@ function CoachPitchPad({
     if (!supabase || !gameId || isDemoId(gameId)) {
       setOpponentLineupByPlayerId({});
       setLineupBattingOrderByPlayerId({});
+      setOurLineupPlayerIds(new Set());
       setOpponentLineupLoading(false);
       return;
     }
     setOpponentLineupLoading(true);
+    setOurLineupPlayerIds(null);
     try {
       const { data: allLineupRows, error: allErr } = await supabase
         .from("game_lineups")
-        .select("slot, player_id")
+        .select("slot, player_id, side")
         .eq("game_id", gameId);
       const orderByPlayer: Record<string, number> = {};
       if (!allErr && allLineupRows?.length) {
-        for (const r of allLineupRows as { slot: number | string; player_id: string }[]) {
+        for (const r of allLineupRows as {
+          slot: number | string;
+          player_id: string;
+          side?: string;
+        }[]) {
           const slotNum = Number(r.slot);
           if (Number.isFinite(slotNum) && r.player_id) {
             orderByPlayer[r.player_id] = Math.trunc(slotNum);
@@ -381,13 +389,23 @@ function CoachPitchPad({
         .maybeSingle();
       if (gErr || !gameRow) {
         setOpponentLineupByPlayerId({});
+        setOurLineupPlayerIds(new Set());
         return;
       }
       const our = (gameRow as { our_side?: string }).our_side;
       if (our !== "home" && our !== "away") {
         setOpponentLineupByPlayerId({});
+        setOurLineupPlayerIds(new Set());
         return;
       }
+      const ourIds = new Set<string>();
+      if (!allErr && allLineupRows?.length) {
+        for (const r of allLineupRows as { player_id?: string; side?: string }[]) {
+          if (r.side === our && r.player_id) ourIds.add(r.player_id);
+        }
+      }
+      setOurLineupPlayerIds(ourIds);
+
       const oppSide = our === "home" ? "away" : "home";
       const { data: slots, error: sErr } = await supabase
         .from("game_lineups")
@@ -773,6 +791,9 @@ function CoachPitchPad({
     [batterId, opponentLineupByPlayerId]
   );
 
+  const lineupGuardLoading = ourLineupPlayerIds === null;
+  const isOurTeamBatting = !!(batterId && ourLineupPlayerIds && ourLineupPlayerIds.has(batterId));
+
   const atBatPanel = useMemo(() => {
     type Segment = { key: string; text: string; className: string };
     if (!batterId) {
@@ -785,6 +806,18 @@ function CoachPitchPad({
       return {
         title: undefined as string | undefined,
         segments: [{ key: "load", text: "…", className: "text-zinc-500" }] as Segment[],
+      };
+    }
+    if (isOurTeamBatting) {
+      return {
+        title: "Our team is hitting — opponent pitcher on the mound",
+        segments: [
+          {
+            key: "our-ab",
+            text: "Our lineup (not shown)",
+            className: "text-zinc-400 italic",
+          },
+        ] as Segment[],
       };
     }
     /** Always prefer `players` for the synced batter id — lineup card can be wrong-side if `our_side`/lineups mismatch. */
@@ -835,6 +868,7 @@ function CoachPitchPad({
     lineupBattingOrderByPlayerId,
     opponentLineupLoading,
     batterProfileLoading,
+    isOurTeamBatting,
   ]);
 
   const opposingLineupBoard = useMemo(() => {
@@ -873,7 +907,9 @@ function CoachPitchPad({
     [sequenceRowsThisBatter]
   );
   const pitchTypesLocked = pitchTypeBlockReason != null;
-  const canLogPitchType = canLogPitch && !pitchTypesLocked;
+  /** Pitch-type pad is only for when we're on defense (opponent batting). */
+  const pitchDefenseOnlyBlocked = lineupGuardLoading || isOurTeamBatting;
+  const canLogPitchType = canLogPitch && !pitchTypesLocked && !pitchDefenseOnlyBlocked;
 
   useEffect(() => {
     if (pitchTypesLocked) return;
@@ -974,6 +1010,7 @@ function CoachPitchPad({
   /** Pitch type only — ball/strike outcomes live on the analyst PA form. Fills first typeless row if Record created it. */
   const logPitch = async (pitch_type: PitchTrackerPitchType) => {
     if (!supabase || !gameId || !groupId || !batterId) return;
+    if (pitchDefenseOnlyBlocked) return;
     const batterRows = batterId ? rows.filter((r) => r.batter_id === batterId) : rows;
     const block = coachPitchCountNewPitchTypeBlockReason(
       [...batterRows].sort((a, b) => a.pitch_number - b.pitch_number)
@@ -1127,7 +1164,24 @@ function CoachPitchPad({
 
       <main className="flex min-h-0 flex-1 flex-col gap-2 p-3 pb-[env(safe-area-inset-bottom)] sm:gap-3 sm:p-4 md:flex-row md:items-stretch">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 md:pr-1">
-          {pitchTypesLocked ? (
+          {lineupGuardLoading ? (
+            <p
+              className="shrink-0 rounded-lg border border-sky-700/50 bg-sky-950/30 px-3 py-2 text-center text-sm leading-snug text-sky-100/95"
+              role="status"
+            >
+              Loading lineups… Pitch-type buttons stay off until we know who is at bat.
+            </p>
+          ) : null}
+          {!lineupGuardLoading && isOurTeamBatting ? (
+            <p
+              className="shrink-0 rounded-lg border border-zinc-600/60 bg-zinc-900/80 px-3 py-2 text-center text-sm leading-snug text-zinc-200"
+              role="status"
+            >
+              We&apos;re hitting — pitch-type tracking is only when we&apos;re on defense. Log balls and strikes on
+              Record for this PA.
+            </p>
+          ) : null}
+          {pitchTypesLocked && !pitchDefenseOnlyBlocked ? (
             <p
               className="shrink-0 rounded-lg border border-amber-600/50 bg-amber-950/35 px-3 py-2 text-center text-sm leading-snug text-amber-100/95"
               role="status"
@@ -1273,6 +1327,11 @@ function CoachPitchPad({
                   Set the pitcher on Record (mound pitcher on the PA form) to see how this batter has
                   fared against them today.
                 </p>
+              ) : isOurTeamBatting ? (
+                <p className="mt-2 text-xs leading-snug text-zinc-500">
+                  Pitch mix for this spot is hidden while we hit. It shows again when an opponent batter
+                  is synced from Record.
+                </p>
               ) : batterIntelLoading ? (
                 <p className="mt-2 text-xs text-zinc-500">Loading matchup…</p>
               ) : (
@@ -1334,7 +1393,11 @@ function CoachPitchPad({
           </h2>
           {sequenceRowsThisBatter.length === 0 ? (
             <p className="px-3 py-3 text-sm leading-snug text-zinc-500 sm:px-4">
-              No pitches yet — tap a pitch type. Log ball/strike on the PA form in Record.
+              {pitchDefenseOnlyBlocked
+                ? lineupGuardLoading
+                  ? "…"
+                  : "No pitch types while we bat. When the opponent is up, tap pitch types here."
+                : "No pitches yet — tap a pitch type. Log ball/strike on the PA form in Record."}
             </p>
           ) : (
             <ol className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain px-2.5 py-2.5 sm:gap-2 sm:px-3 sm:py-3">
@@ -1667,7 +1730,7 @@ export default function CoachPitchTrackerClient({
               <option value="">{gamesLoading ? "Loading games…" : "Select game"}</option>
               {games.map((g) => (
                 <option key={g.id} value={g.id}>
-                  {formatDateMMDDYYYY(g.date)} — {g.away_team} @ {g.home_team}
+                  {formatDateMMDDYYYY(g.date)} — {matchupLabelUsFirst(g, true)}
                 </option>
               ))}
             </select>

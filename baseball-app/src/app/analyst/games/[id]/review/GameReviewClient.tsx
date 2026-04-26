@@ -15,6 +15,7 @@ import { isDemoId } from "@/lib/db/mockData";
 import { formatDateMMDDYYYY } from "@/lib/format";
 import { analystGameLogHref, analystRecordHref } from "@/lib/analystRoutes";
 import { isGameFinalized } from "@/lib/gameRecord";
+import { matchupLabelUsFirst } from "@/lib/opponentUtils";
 import { sanitizeGameReviewPdfFilename } from "@/lib/gameReviewPdfInsights";
 import type { Game, PitchEvent, PlateAppearance, Player } from "@/lib/types";
 
@@ -181,7 +182,7 @@ export function GameReviewClient({
 }: GameReviewClientProps) {
   const router = useRouter();
   const printRef = useRef<HTMLDivElement>(null);
-  const gameLabel = `${formatDateMMDDYYYY(game.date)} ${game.away_team} @ ${game.home_team}`;
+  const gameLabel = `${formatDateMMDDYYYY(game.date)} ${matchupLabelUsFirst(game, true)}`;
   const [teamView, setTeamView] = useState<"away" | "home">("away");
   const showingAway = teamView === "away";
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -385,7 +386,7 @@ export function GameReviewClient({
         open={deleteConfirmOpen}
         onClose={() => !deleting && setDeleteConfirmOpen(false)}
         title="Delete this game?"
-        description={`${formatDateMMDDYYYY(game.date)} — ${game.away_team} @ ${game.home_team}. This removes the game and related data. This cannot be undone.`}
+        description={`${formatDateMMDDYYYY(game.date)} — ${matchupLabelUsFirst(game, true)}. This removes the game and related data. This cannot be undone.`}
         confirmLabel="Delete game"
         pendingLabel="Deleting…"
         pending={deleting}
@@ -603,8 +604,8 @@ export function GameReviewClient({
           aria-hidden
         >
           {printFooterStamp
-            ? `Exported ${printFooterStamp} · ${game.away_team} @ ${game.home_team}`
-            : `${game.away_team} @ ${game.home_team}`}
+            ? `Exported ${printFooterStamp} · ${matchupLabelUsFirst(game, true)}`
+            : matchupLabelUsFirst(game, true)}
         </div>
       </div>
 
