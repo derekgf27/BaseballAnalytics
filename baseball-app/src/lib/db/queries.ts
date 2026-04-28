@@ -1883,9 +1883,10 @@ export async function getPlayerDeletionPreview(playerId: string): Promise<Player
 }
 
 /**
- * Deletes a player when they have no plate appearances as batter.
- * Clears `game_lineups` and `saved_lineup_slots` rows for this player first.
- * Pitching-only PAs (`pitcher_id`) null out automatically; baserunning as runner cascades.
+ * Removes a player from active roster usage.
+ * - If they have no batting PAs, hard-delete the player row.
+ * - If they have batting PAs, archive the player (keep historical logs intact).
+ * In both cases, clears `game_lineups` and `saved_lineup_slots` rows for this player first.
  */
 export async function deletePlayer(playerId: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const supabase = await getSupabase();
@@ -1894,13 +1895,6 @@ export async function deletePlayer(playerId: string): Promise<{ ok: true } | { o
   const preview = await getPlayerDeletionPreview(playerId);
   if (!preview) return { ok: false, error: "Could not verify player data." };
 
-  if (preview.batterPlateAppearances > 0) {
-    return {
-      ok: false,
-      error: `This player has ${preview.batterPlateAppearances} plate appearance(s) as batter. Remove or change those PAs in game logs before deleting.`,
-    };
-  }
-
   if (preview.gameLineups > 0) {
     const { error: e1 } = await supabase.from("game_lineups").delete().eq("player_id", playerId);
     if (e1) return { ok: false, error: e1.message };
@@ -1908,6 +1902,17 @@ export async function deletePlayer(playerId: string): Promise<{ ok: true } | { o
   if (preview.savedLineupSlots > 0) {
     const { error: e2 } = await supabase.from("saved_lineup_slots").delete().eq("player_id", playerId);
     if (e2) return { ok: false, error: e2.message };
+  }
+
+  // Keep historical PA integrity: if this player appears as a batter in past logs,
+  // archive them off the club roster instead of hard-deleting the row.
+  if (preview.batterPlateAppearances > 0) {
+    const { error } = await supabase
+      .from("players")
+      .update({ opponent_team: "__archived__" })
+      .eq("id", playerId);
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
   }
 
   const { error } = await supabase.from("players").delete().eq("id", playerId);

@@ -287,27 +287,27 @@ export function PlayerProfileClient({
     info.age && { label: "Age", value: info.age },
   ].filter(Boolean) as { label: string; value: string }[];
 
-  const deleteConfirmBlocked =
-    deletePreview != null && deletePreview.batterPlateAppearances > 0;
   const profileDeleteDescription =
     !deleteOpen || !deletePreview
       ? deleteOpen
         ? "Loading…"
         : ""
-      : deletePreview.batterPlateAppearances > 0
-        ? `This player has ${deletePreview.batterPlateAppearances} plate appearance(s) as batter. Remove or edit those PAs in game logs before deleting.`
-        : [
-            `Permanently delete ${player.name}?`,
-            deletePreview.gameLineups > 0
-              ? `${deletePreview.gameLineups} game lineup slot(s) will be removed.`
-              : null,
-            deletePreview.savedLineupSlots > 0
-              ? `${deletePreview.savedLineupSlots} saved lineup template slot(s) will be removed.`
-              : null,
-            "Credits as pitcher on old PAs will be cleared. Baserunning events where they were the runner will be removed. This cannot be undone.",
-          ]
-            .filter(Boolean)
-            .join(" ");
+      : [
+          deletePreview.batterPlateAppearances > 0
+            ? `${player.name} has ${deletePreview.batterPlateAppearances} plate appearance(s) as batter. They will be removed from the active roster but kept in historical game logs.`
+            : `Permanently delete ${player.name}?`,
+          deletePreview.gameLineups > 0
+            ? `${deletePreview.gameLineups} game lineup slot(s) will be removed.`
+            : null,
+          deletePreview.savedLineupSlots > 0
+            ? `${deletePreview.savedLineupSlots} saved lineup template slot(s) will be removed.`
+            : null,
+          deletePreview.batterPlateAppearances > 0
+            ? "This keeps past stats/history intact."
+            : "Credits as pitcher on old PAs will be cleared. Baserunning events where they were the runner will be removed. This cannot be undone.",
+        ]
+          .filter(Boolean)
+          .join(" ");
 
   return (
     <div className="space-y-6">
@@ -363,8 +363,8 @@ export function PlayerProfileClient({
             Remove player
           </h2>
           <p className="mt-2 text-sm text-[var(--text-muted)]">
-            Delete this profile from the database. You cannot delete a player who still has plate appearances recorded
-            as the batter.
+            Delete this profile from the database. If the player has historical batting plate appearances, we remove
+            them from the active roster while preserving past game logs.
           </p>
           <button
             type="button"
@@ -389,9 +389,9 @@ export function PlayerProfileClient({
             confirmLabel="Delete player"
             pending={deletePending}
             pendingLabel="Deleting…"
-            confirmDisabled={deletePreview == null || deleteConfirmBlocked}
+            confirmDisabled={deletePreview == null}
             onConfirm={async () => {
-              if (deleteConfirmBlocked || deletePreview == null) return;
+              if (deletePreview == null) return;
               setDeletePending(true);
               setDeleteError(null);
               const result = await deletePlayerAction(player.id);

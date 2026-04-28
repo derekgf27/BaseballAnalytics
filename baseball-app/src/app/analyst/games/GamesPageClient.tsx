@@ -13,7 +13,7 @@ import {
   replaceOurGameLineupAction,
 } from "./actions";
 import { isGameFinalized, ourTeamOutcomeFromFinalScore } from "@/lib/gameRecord";
-import { isClubRosterPlayer, matchupLabelUsFirst, pitchersForGameTeamSide } from "@/lib/opponentUtils";
+import { isActiveRosterPlayer, isClubRosterPlayer, matchupLabelUsFirst, pitchersForGameTeamSide } from "@/lib/opponentUtils";
 import { formatDateMMDDYYYY } from "@/lib/format";
 import { StyledDatePicker } from "@/components/shared/StyledDatePicker";
 import type { Game, Player, SavedLineup } from "@/lib/types";
@@ -420,6 +420,7 @@ function GameForm({
     () => [...trackedOpponentNames].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })),
     [trackedOpponentNames]
   );
+  const activePlayers = useMemo(() => players.filter(isActiveRosterPlayer), [players]);
   const trimmedOpp = opponent.trim();
   const isInTrackedList = trackedSorted.includes(trimmedOpp);
   /** Dropdown only when we have tracked names and the opponent is a list pick (or new game). Legacy edits use text input. */
@@ -437,7 +438,7 @@ function GameForm({
       };
     }
     if (lineupId === "") {
-      const club = players.filter((p) => isClubRosterPlayer(p));
+      const club = activePlayers.filter((p) => isClubRosterPlayer(p));
       return {
         ordered: club.slice(0, 9).map((p) => ({ player_id: p.id, position: p.positions?.[0] ?? null })),
         title: "Club roster (first 9)",
@@ -768,7 +769,7 @@ function GameForm({
         open={ourLineupModalOpen}
         onClose={() => setOurLineupModalOpen(false)}
         opponentName=""
-        players={players}
+        players={activePlayers}
         initialOrderedSlots={ourModalInitialSlots}
         lineupTitle={ourLineupModalTitle}
         onConfirm={(slots) => {
@@ -780,7 +781,7 @@ function GameForm({
         open={opponentModalOpen}
         onClose={() => setOpponentModalOpen(false)}
         opponentName={opponent}
-        players={players}
+        players={activePlayers}
         initialOrderedSlots={opponentOrderedSlots}
         onConfirm={setOpponentOrderedSlots}
       />

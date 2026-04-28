@@ -11,6 +11,11 @@ export function isClubRosterPlayer(p: Player): boolean {
   return !p.opponent_team?.trim();
 }
 
+/** True when player is available for selection (not marked inactive/injured). */
+export function isActiveRosterPlayer(p: Player): boolean {
+  return p.is_active !== false;
+}
+
 /** True if `positions` includes P — excluded from batting stats views and batter selection in Record PAs. */
 export function isPitcherPlayer(p: Player): boolean {
   return p.positions.some((pos) => pos.trim().toUpperCase() === "P");

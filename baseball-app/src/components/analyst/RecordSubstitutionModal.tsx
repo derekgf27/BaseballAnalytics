@@ -10,7 +10,11 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { useTouchOptimizedDndSensors } from "@/lib/dndTouchSensors";
-import { isPitcherPlayer, playersForGameSideWhenNoLineup } from "@/lib/opponentUtils";
+import {
+  isActiveRosterPlayer,
+  isPitcherPlayer,
+  playersForGameSideWhenNoLineup,
+} from "@/lib/opponentUtils";
 import type { Game, LineupSide, Player } from "@/lib/types";
 import { comparePlayersByLastNameThenFull } from "@/lib/playerSort";
 
@@ -232,7 +236,9 @@ export function RecordSubstitutionModal({
 
   const pool = useMemo(
     () =>
-      playersForGameSideWhenNoLineup(game, side, players).filter((p) => !isPitcherPlayer(p)),
+      playersForGameSideWhenNoLineup(game, side, players).filter(
+        (p) => isActiveRosterPlayer(p) && !isPitcherPlayer(p)
+      ),
     [game, side, players]
   );
 

@@ -1346,8 +1346,15 @@ export default function RecordPageClient({
       ? "home"
       : "away"
     : battingSide;
-  /** Pitching box + pitch mix: defensive team (`plateAppearancesForPitchingSide`), not the batting column / peek. */
-  const pitchingSideForBox = pitchingSide;
+  /**
+   * Pitching box + pitch mix: defensive team for the batting column.
+   * When peeking the other lineup, flip so pitchers stay paired with the batters shown (same as live inning logic).
+   */
+  const pitchingSideForBox = battingTablePeekOther
+    ? displayBattingSide === "away"
+      ? "home"
+      : "away"
+    : pitchingSide;
   const lineupForBattingTable =
     displayBattingSide === "away" ? lineupAway : lineupHome;
   const pasForBattingTable = useMemo(
@@ -1485,6 +1492,12 @@ export default function RecordPageClient({
     : "";
   const pitchingTableTeamName = selectedGame
     ? pitchingSideForBox === "home"
+      ? selectedGame.home_team
+      : selectedGame.away_team
+    : "";
+  /** Live mound team — stays tied to the inning half (recording / ROE), not batting-table peek. */
+  const livePitchingTeamName = selectedGame
+    ? pitchingSide === "home"
       ? selectedGame.home_team
       : selectedGame.away_team
     : "";
@@ -4731,7 +4744,7 @@ export default function RecordPageClient({
 
       {errorFielderModalMode != null && selectedGameId && selectedGame ? (
         <ReachedOnErrorFielderModal
-          pitchingTeamName={pitchingTableTeamName}
+          pitchingTeamName={livePitchingTeamName}
           fielders={fieldersForErrorPicker}
           positionByPlayerId={positionByPlayerIdForRoeModal}
           moundPitcherId={pitcherId}
@@ -4739,7 +4752,7 @@ export default function RecordPageClient({
           title={errorFielderModalMode === "hit" ? "Error on the bases" : undefined}
           description={
             errorFielderModalMode === "hit"
-              ? `The batter still gets credit for the hit (${RESULT_OPTIONS.find((o) => o.value === result)?.label ?? "1B–3B"}). Choose the ${pitchingTableTeamName} fielder charged with the error (e.g. misplay or bad throw for an extra base).`
+              ? `The batter still gets credit for the hit (${RESULT_OPTIONS.find((o) => o.value === result)?.label ?? "1B–3B"}). Choose the ${livePitchingTeamName} fielder charged with the error (e.g. misplay or bad throw for an extra base).`
               : undefined
           }
           onCancel={handleErrorFielderModalCancel}

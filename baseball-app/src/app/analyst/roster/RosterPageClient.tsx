@@ -105,23 +105,22 @@ export function RosterPageClient({
     deleteTarget &&
     (deletePreview == null
       ? "Loading…"
-      : deletePreview.batterPlateAppearances > 0
-        ? `This player has ${deletePreview.batterPlateAppearances} plate appearance(s) as batter. Remove or edit those PAs in game logs before deleting.`
-        : [
-            `Permanently delete ${deleteTarget.name}?`,
-            deletePreview.gameLineups > 0
-              ? `${deletePreview.gameLineups} game lineup slot(s) will be removed.`
-              : null,
-            deletePreview.savedLineupSlots > 0
-              ? `${deletePreview.savedLineupSlots} saved lineup template slot(s) will be removed.`
-              : null,
-            "Credits as pitcher on old PAs will be cleared. Baserunning events where they were the runner will be removed. This cannot be undone.",
-          ]
-            .filter(Boolean)
-            .join(" "));
-
-  const deleteConfirmBlocked =
-    deletePreview != null && deletePreview.batterPlateAppearances > 0;
+      : [
+          deletePreview.batterPlateAppearances > 0
+            ? `${deleteTarget.name} has ${deletePreview.batterPlateAppearances} plate appearance(s) as batter. They will be removed from the active roster but kept in historical game logs.`
+            : `Permanently delete ${deleteTarget.name}?`,
+          deletePreview.gameLineups > 0
+            ? `${deletePreview.gameLineups} game lineup slot(s) will be removed.`
+            : null,
+          deletePreview.savedLineupSlots > 0
+            ? `${deletePreview.savedLineupSlots} saved lineup template slot(s) will be removed.`
+            : null,
+          deletePreview.batterPlateAppearances > 0
+            ? "This keeps past stats/history intact."
+            : "Credits as pitcher on old PAs will be cleared. Baserunning events where they were the runner will be removed. This cannot be undone.",
+        ]
+          .filter(Boolean)
+          .join(" "));
 
   const handleSavePlayer = async (player: Omit<Player, "id" | "created_at">) => {
     if (!canEdit) {
@@ -293,6 +292,11 @@ export function RosterPageClient({
                     {p.positions.join(", ")}
                   </span>
                 )}
+                {p.is_active === false && (
+                  <span className="rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-200">
+                    Injured
+                  </span>
+                )}
                 {isDemoId(p.id) && (
                   <span className="rounded px-2 py-0.5 text-xs" style={{ background: "var(--warning-dim)", color: "var(--warning)" }}>
                     Demo
@@ -341,16 +345,22 @@ export function RosterPageClient({
         confirmLabel="Delete player"
         pending={deletePending}
         pendingLabel="Deleting…"
-        confirmDisabled={deleteTarget == null || deletePreview == null || deleteConfirmBlocked}
+        confirmDisabled={deleteTarget == null || deletePreview == null}
         onConfirm={async () => {
-          if (!deleteTarget || deleteConfirmBlocked || deletePreview == null) return;
+          if (!deleteTarget || deletePreview == null) return;
           setDeletePending(true);
           const result = await deletePlayerAction(deleteTarget.id);
           setDeletePending(false);
           if (result.ok) {
             setDeleteTarget(null);
             setPlayers((prev) => prev.filter((x) => x.id !== deleteTarget.id));
-            setMessage({ type: "delete", text: `${deleteTarget.name} was deleted.` });
+            setMessage({
+              type: "delete",
+              text:
+                deletePreview.batterPlateAppearances > 0
+                  ? `${deleteTarget.name} was removed from the active roster (history kept).`
+                  : `${deleteTarget.name} was deleted.`,
+            });
             refresh();
           } else {
             setMessage({ type: "err", text: result.error });
@@ -392,6 +402,7 @@ function PlayerForm({
   const [opponent_team, setOpponentTeam] = useState<string>(
     player?.opponent_team ?? defaultOpponentTeam ?? ""
   );
+  const [isActive, setIsActive] = useState<boolean>(player?.is_active !== false);
   const [saving, setSaving] = useState(false);
 
   const isEditing = !!player;
@@ -424,6 +435,7 @@ function PlayerForm({
       hometown: hometown.trim() || null,
       birth_date: birth_date.trim() || null,
       opponent_team: opponent_team.trim() || null,
+      is_active: isActive,
     });
     setSaving(false);
   };
@@ -451,6 +463,22 @@ function PlayerForm({
             />
             <span className="mt-1 block text-[10px] text-white/60">
               Set when this player is on an opposing roster (scouting / opponent stats).
+            </span>
+          </label>
+        </div>
+        <div className="rounded-lg border border-[var(--border)]/80 bg-[var(--bg-elevated)]/25 p-3">
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              checked={isActive}
+              onChange={(e) => setIsActive(e.target.checked)}
+              className="mt-1 h-4 w-4"
+            />
+            <span>
+              <span className="text-sm font-medium text-white">Active roster player</span>
+              <span className="mt-0.5 block text-xs text-[var(--text-muted)]">
+                Turn off for injured/inactive players so they do not appear on lineup builders or coach bench.
+              </span>
             </span>
           </label>
         </div>

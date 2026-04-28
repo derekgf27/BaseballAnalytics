@@ -792,38 +792,67 @@ export function CoachLineupClient({
                   {loadingLineup ? (
                     <p className="py-6 text-center text-sm text-[var(--neo-text-muted)]">Loading lineup…</p>
                   ) : (
-                    <div className="overflow-hidden rounded-lg border border-[var(--neo-border)] bg-[#0f141a]">
-                      <table className="w-full border-collapse text-left text-sm">
-                        <thead>
-                          <tr className="bg-[#151b21]">
-                            <th className="font-display border-b border-r border-[var(--neo-border)] px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
-                              #
-                            </th>
-                            <th className="font-display border-b border-r border-[var(--neo-border)] px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
-                              POS
-                            </th>
-                            <th className="font-display border-b border-r border-[var(--neo-border)] px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
-                              Player
-                            </th>
-                            <th className="font-display border-b border-[var(--neo-border)] px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
-                              Bats
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-                            <CoachLineupRow
-                              key={i}
-                              slotIndex={i}
-                              player={lineup[i]?.player ?? null}
-                              position={lineup[i]?.position ?? LINEUP_POSITIONS[0]}
-                              positionsTakenByOthers={positionsTakenByOthers(i)}
-                              onPositionChange={setSlotPosition}
-                              rowStriped={i % 2 === 0}
-                            />
-                          ))}
-                        </tbody>
-                      </table>
+                    <div className="space-y-4">
+                      <div className="overflow-hidden rounded-lg border border-[var(--neo-border)] bg-[#0f141a]">
+                        <table className="w-full border-collapse text-left text-sm">
+                          <thead>
+                            <tr className="bg-[#151b21]">
+                              <th className="font-display border-b border-r border-[var(--neo-border)] px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
+                                #
+                              </th>
+                              <th className="font-display border-b border-r border-[var(--neo-border)] px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
+                                POS
+                              </th>
+                              <th className="font-display border-b border-r border-[var(--neo-border)] px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
+                                Player
+                              </th>
+                              <th className="font-display border-b border-[var(--neo-border)] px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
+                                Bats
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                              <CoachLineupRow
+                                key={i}
+                                slotIndex={i}
+                                player={lineup[i]?.player ?? null}
+                                position={lineup[i]?.position ?? LINEUP_POSITIONS[0]}
+                                positionsTakenByOthers={positionsTakenByOthers(i)}
+                                onPositionChange={setSlotPosition}
+                                rowStriped={i % 2 === 0}
+                              />
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="rounded-lg border border-[var(--neo-border)] bg-[#0f141a] p-3">
+                        <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
+                          Bench players
+                        </h3>
+                        {availablePlayers.length > 0 ? (
+                          <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                            {availablePlayers.map((p) => {
+                              const primaryPos = p.positions?.[0] ?? "—";
+                              return (
+                                <li
+                                  key={`bench-${p.id}`}
+                                  className="rounded border border-[var(--neo-border)]/70 bg-[#11161d] px-2.5 py-2 text-sm"
+                                >
+                                  <div className="truncate font-medium text-[var(--neo-text)]">{p.name}</div>
+                                  <div className="mt-0.5 text-xs text-[var(--neo-text-muted)]">
+                                    {p.jersey ? `#${p.jersey} · ` : ""}
+                                    {primaryPos} · {batsShort(p.bats)}
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        ) : (
+                          <p className="mt-2 text-sm text-[var(--neo-text-muted)]">No bench players (all are in lineup).</p>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

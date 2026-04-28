@@ -1,6 +1,7 @@
 import {
   getGamesForCoachDashboard,
   getGameLineup,
+  getPlayers,
   getPlayersByIds,
   getBattingStatsWithSplitsForPlayers,
   getPlateAppearancesByBatters,
@@ -9,10 +10,11 @@ import {
   getPitchingStatsForPitcherVsOurClub,
 } from "@/lib/db/queries";
 import { formatGameTime } from "@/lib/format";
-import type { PitchingStats, PlateAppearance } from "@/lib/types";
+import type { Game, PitchingStats, PlateAppearance } from "@/lib/types";
 import { battingStatsFromPAs } from "@/lib/compute/battingStats";
 import { trendFromRecentPAs, TREND_RECENT_PA_COUNT } from "@/lib/compute/trends";
 import { platoonFromSplits } from "@/lib/compute/platoon";
+import { isActiveRosterPlayer } from "@/lib/opponentUtils";
 import { CoachTodayClient } from "./CoachTodayClient";
 
 /**
@@ -21,13 +23,46 @@ import { CoachTodayClient } from "./CoachTodayClient";
 export const dynamic = "force-dynamic";
 // Demo presentation mode: force a visible hot/cold mix in lineup intelligence.
 const DEMO_FORCE_TRENDS = true;
+const PITCHER_POSITIONS = new Set(["P", "SP", "RP", "CP"]);
+
+function todayIsoDate(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function gameTimeSortValue(time: string | null | undefined): string {
+  const raw = (time ?? "").trim();
+  return raw === "" ? "99:99:99" : raw;
+}
+
+function pickCoachDashboardGame(games: Game[]): Game | null {
+  if (games.length === 0) return null;
+  const today = todayIsoDate();
+  const upcoming = games
+    .filter((g) => g.date >= today)
+    .sort((a, b) => {
+      if (a.date !== b.date) return a.date.localeCompare(b.date);
+      return gameTimeSortValue(a.game_time).localeCompare(gameTimeSortValue(b.game_time));
+    });
+  if (upcoming.length > 0) return upcoming[0] ?? null;
+
+  const recentPast = [...games].sort((a, b) => {
+    if (a.date !== b.date) return b.date.localeCompare(a.date);
+    return gameTimeSortValue(b.game_time).localeCompare(gameTimeSortValue(a.game_time));
+  });
+  return recentPast[0] ?? null;
+}
 
 export default async function CoachPage() {
   const games = await getGamesForCoachDashboard();
-  const game = games[0] ?? null;
+  const game = pickCoachDashboardGame(games);
 
   let gameInfo: Parameters<typeof CoachTodayClient>[0]["game"] = null;
   let recommendedLineup: Parameters<typeof CoachTodayClient>[0]["recommendedLineup"] = [];
+  let benchPlayers: Parameters<typeof CoachTodayClient>[0]["benchPlayers"] = [];
   let starterCompare: Parameters<typeof CoachTodayClient>[0]["starterCompare"] = null;
   let initialGamePas: PlateAppearance[] = [];
   let clubStarterSeasonPitching: PitchingStats | null = null;
@@ -157,6 +192,24 @@ export default async function CoachPage() {
           };
         });
 
+      const clubRoster = (await getPlayers()).filter((p) => !p.opponent_team && isActiveRosterPlayer(p));
+      const lineupIds = new Set(recommendedLineup.map((slot) => slot.playerId));
+      benchPlayers = clubRoster
+        .filter((p) => {
+          if (lineupIds.has(p.id)) return false;
+          const positions = p.positions ?? [];
+          if (positions.length === 0) return false;
+          return positions.some((pos) => !PITCHER_POSITIONS.has((pos ?? "").toUpperCase()));
+        })
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((p) => ({
+          id: p.id,
+          name: p.name,
+          jersey: p.jersey ?? null,
+          position: p.positions?.[0] ?? null,
+          bats: p.bats ?? null,
+        }));
+
       if (DEMO_FORCE_TRENDS && recommendedLineup.length > 0) {
         // Keep it deterministic for demos: first two hot, next two cold, rest neutral.
         recommendedLineup = recommendedLineup.map((slot, idx) => {
@@ -208,6 +261,7 @@ export default async function CoachPage() {
     <CoachTodayClient
       game={gameInfo}
       recommendedLineup={recommendedLineup}
+      benchPlayers={benchPlayers}
       starterCompare={starterCompare}
       initialGamePas={initialGamePas}
       clubStarterSeasonPitching={clubStarterSeasonPitching}

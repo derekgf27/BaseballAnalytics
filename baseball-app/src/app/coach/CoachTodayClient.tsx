@@ -67,6 +67,7 @@ export interface TodayLineupSlot {
 interface CoachTodayClientProps {
   game: TodayGameInfo | null;
   recommendedLineup: TodayLineupSlot[];
+  benchPlayers: Array<{ id: string; name: string; jersey?: string | null; position?: string | null; bats?: string | null }>;
   starterCompare: StarterComparePayload | null;
   /** Plate appearances for current game (linescore); refreshed on client. */
   initialGamePas: PlateAppearance[];
@@ -83,6 +84,7 @@ interface CoachTodayClientProps {
 export function CoachTodayClient({
   game,
   recommendedLineup,
+  benchPlayers,
   starterCompare,
   initialGamePas,
   clubStarterSeasonPitching,
@@ -107,10 +109,11 @@ export function CoachTodayClient({
           )}
         </section>
 
-        {/* Lineup + starting pitchers | Trends full width | Intel / bench below trends */}
+        {/* Lineup + bench on left, starting pitchers on right; trends and insights below */}
         <section className="grid gap-6 lg:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)] lg:items-stretch">
-          <div className="flex min-h-0 min-w-0 flex-col self-start w-full">
+          <div className="flex min-h-0 min-w-0 w-full flex-col gap-4 self-start">
             <CoachLineupTable lineup={orderedLineup} />
+            <BenchPanel benchPlayers={benchPlayers} />
           </div>
 
           <aside className="flex h-full min-h-0 min-w-0 flex-col">
@@ -135,7 +138,6 @@ export function CoachTodayClient({
 
           <div className="flex min-w-0 flex-col gap-4 lg:col-span-2">
             <LineupInsightsCard recommendedLineup={recommendedLineup} variant="neo" />
-            <BenchPanel />
           </div>
         </section>
       </div>

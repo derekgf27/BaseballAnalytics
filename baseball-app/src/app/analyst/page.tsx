@@ -9,8 +9,7 @@ import {
   getTeamBattingStatsRisp,
   getTeamPitchingStats,
 } from "@/lib/db/queries";
-import { isDemoId } from "@/lib/db/mockData";
-import { buildRosterPreviewWatchRows, selectPlayersToWatch } from "@/lib/playersToWatch";
+import { selectPlayersToWatch } from "@/lib/playersToWatch";
 import { computeTeamRecordFromGames, formatTeamRecordString } from "@/lib/gameRecord";
 import { formatDateMMDDYYYY, formatGameTime, formatPPa } from "@/lib/format";
 import { ScheduleCalendar } from "./ScheduleCalendar";
@@ -102,10 +101,6 @@ export default async function AnalystDashboard() {
     getPlayersToWatchInput(),
   ]);
   const watchRows = selectPlayersToWatch(watchInput);
-  const rosterNonDemo = clubPlayers.filter((p) => !isDemoId(p.id));
-  const watchDisplayRows =
-    watchRows.length > 0 ? watchRows : buildRosterPreviewWatchRows(clubPlayers);
-  const watchIsPreview = watchRows.length === 0 && rosterNonDemo.length > 0;
 
   return (
     <div className="space-y-6">
@@ -337,7 +332,7 @@ export default async function AnalystDashboard() {
 
       {/* Players to watch + schedule */}
       <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
-        <PlayersToWatchCard rows={watchDisplayRows} isPreview={watchIsPreview} />
+        <PlayersToWatchCard rows={watchRows} />
         <div className="min-w-0 w-full lg:max-w-none">
           <ScheduleCalendar games={games} />
         </div>

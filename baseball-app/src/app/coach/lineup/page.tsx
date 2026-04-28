@@ -5,7 +5,7 @@ import {
   getSavedLineups,
   getBattingStatsWithSplitsForPlayers,
 } from "@/lib/db/queries";
-import { isClubRosterPlayer, isPitcherPlayer } from "@/lib/opponentUtils";
+import { isActiveRosterPlayer, isClubRosterPlayer, isPitcherPlayer } from "@/lib/opponentUtils";
 import { CoachLineupClientGate } from "./CoachLineupClientGate";
 import type { CoachLineupSlot } from "./CoachLineupClient";
 
@@ -37,7 +37,9 @@ export default async function CoachLineupPage() {
     getGames(),
     getSavedLineups(),
   ]);
-  const players = allPlayers.filter((p) => isClubRosterPlayer(p) && !isPitcherPlayer(p));
+  const players = allPlayers.filter(
+    (p) => isClubRosterPlayer(p) && isActiveRosterPlayer(p) && !isPitcherPlayer(p)
+  );
   const playerIds = players.map((p) => p.id);
   const battingStatsWithSplits = await getBattingStatsWithSplitsForPlayers(playerIds);
 
