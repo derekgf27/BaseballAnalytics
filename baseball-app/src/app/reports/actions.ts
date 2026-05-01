@@ -1,6 +1,6 @@
 "use server";
 
-import { battingStatsFromPAs } from "@/lib/compute/battingStats";
+import { battingStatsFromPAs, isRisp } from "@/lib/compute/battingStats";
 import { buildPostGameSnapshot, pasOurTeamBatting } from "@/lib/reports/postGameSnapshot";
 import { buildTeamTrendSeries } from "@/lib/reports/teamTrendsSnapshot";
 import { isGameFinalized, ourTeamOutcomeFromFinalScore } from "@/lib/gameRecord";
@@ -18,7 +18,7 @@ import {
   getPlateAppearancesForGames,
   getPlayersByIds,
 } from "@/lib/db/queries";
-import { buildPreGameReport, type PreGameReportSections } from "@/lib/reports/preGameReportBuild";
+import { buildPreGameReport, flatOurTeamBatting, type PreGameReportSections } from "@/lib/reports/preGameReportBuild";
 import type {
   PreGameOurStarterSummary,
   PreGamePriorMeeting,
@@ -26,7 +26,7 @@ import type {
 } from "@/lib/reports/preGameReportTypes";
 import type { PostGameSnapshot } from "@/lib/reports/postGameSnapshot";
 import type { TeamTrendPoint } from "@/lib/reports/teamTrendsSnapshot";
-import type { BattingStatsWithSplits, Game, PlateAppearance, Player } from "@/lib/types";
+import type { BattingStats, BattingStatsWithSplits, Game, PlateAppearance, Player } from "@/lib/types";
 
 const PREGAME_RECENT_GAMES = 5;
 const PREGAME_PRIOR_MEETINGS = 5;
@@ -76,6 +76,11 @@ export type PreGameOverviewPayload = {
   opponentStarterSummary: { playerId: string | null; name: string | null; seasonEra: string | null } | null;
   /** Structured scouting-style sections for the coach pre-game tab. */
   report: PreGameReportSections;
+  /**
+   * RISP batting line per player in the same completed-team-games window as `report.hittingTrends.season`,
+   * so PDF team RISP totals match the sum of individual RISP PAs.
+   */
+  pregameWindowRispStatsByPlayerId: Record<string, BattingStats>;
 };
 
 function recentHitterLineFromPas(pas: PlateAppearance[]): PreGameRecentHitterLine | null {
@@ -254,6 +259,21 @@ export async function fetchPreGameOverview(
   }
 
   const pasForTeamWindow = bulkPas.filter((p) => p.game_id && teamMetricsGameIds.has(p.game_id));
+  const seasonChrono = [...teamMetricsGames].reverse();
+  const seasonOurPas = flatOurTeamBatting(seasonChrono, pasForTeamWindow);
+  const pregameWindowRispStatsByPlayerId: Record<string, BattingStats> = {};
+  const rispPasByBatter = new Map<string, PlateAppearance[]>();
+  for (const pa of seasonOurPas) {
+    if (!isRisp(pa.base_state)) continue;
+    const list = rispPasByBatter.get(pa.batter_id) ?? [];
+    list.push(pa);
+    rispPasByBatter.set(pa.batter_id, list);
+  }
+  for (const [pid, rispList] of rispPasByBatter) {
+    const st = battingStatsFromPAs(rispList);
+    if (st && (st.pa ?? 0) >= 1) pregameWindowRispStatsByPlayerId[pid] = st;
+  }
+
   const ourStarterPasIds =
     ourSpId && !isDemoId(ourSpId)
       ? pasForTeamWindow.filter((p) => p.pitcher_id === ourSpId).map((p) => p.id)
@@ -293,6 +313,7 @@ export async function fetchPreGameOverview(
     ourStarterSummary,
     opponentStarterSummary,
     report,
+    pregameWindowRispStatsByPlayerId,
   };
 }
 

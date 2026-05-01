@@ -9,6 +9,7 @@ export type BreadcrumbItem = { label: string; href: string | null };
 
 const STATIC_LABELS: Record<string, string> = {
   games: "Games",
+  assistant: "AI Assistant",
   reports: "Reports",
   roster: "Roster",
   "compare-players": "Compare players",

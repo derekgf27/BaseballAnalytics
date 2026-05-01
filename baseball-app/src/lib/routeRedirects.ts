@@ -6,7 +6,7 @@
  * - `/`, `/login`
  * - `/reports` (Reports hub), `/analyst`, `/analyst/roster`, `/analyst/roster/[id]`, `/analyst/stats`, `/analyst/games`,
  *   `/analyst/games/[id]/log`, `/analyst/games/[id]/review`, `/analyst/opponents`, `/analyst/opponents/[slug]`,
- *   `/analyst/lineup`, `/analyst/charts`, `/analyst/record`, `/analyst/run-expectancy`, `/analyst/compare-players`
+ *   `/analyst/lineup`, `/analyst/charts`, `/analyst/record`, `/analyst/run-expectancy`, `/analyst/compare-players`, `/analyst/assistant`
  * - `/coach`, `/coach/stats`, `/coach/lineup`, `/coach/players`, `/coach/players/[id]`, `/coach/pitch-tracker`
  * - `/coach/today` → redirects to `/coach` (see `app/coach/today/page.tsx`)
  * - `/auth/callback`, API routes under `/api/*`

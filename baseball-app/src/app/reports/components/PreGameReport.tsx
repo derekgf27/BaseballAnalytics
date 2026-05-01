@@ -1,7 +1,9 @@
 "use client";
 
 import type { PreGameOverviewPayload, PreGameRecentHitterLine } from "@/app/reports/actions";
+import type { PreGameCoachHittingNotes, PreGameContactProfile } from "@/lib/reports/preGameReportBuild";
 import {
+  isActiveRosterPlayer,
   isPitcherPlayer,
   matchupLabelUsFirst,
   opponentTeamName,
@@ -100,6 +102,7 @@ function rispCompactRow(player: Player, splits: BattingStatsWithSplits | undefin
   bats: string;
   pa: number;
   hAbDisplay: string;
+  ppaDisplay: string;
   opsDisplay: string;
   slash: string;
   kPctDisplay: string;
@@ -116,6 +119,7 @@ function rispCompactRow(player: Player, splits: BattingStatsWithSplits | undefin
     bats: batsAbbr(player.bats),
     pa: r.pa ?? 0,
     hAbDisplay: fmtHitsAb(r),
+    ppaDisplay: fmtPpa(r),
     opsDisplay: fmtSeason(r.ops),
     slash: formatBattingTripleSlash(r.avg, r.obp, r.slg),
     kPctDisplay: kb.kPct,
@@ -261,6 +265,261 @@ function HitterNameCell({
   );
 }
 
+function SituationalTeamCard({
+  title,
+  line,
+}: {
+  title: string;
+  line: { pa: number; ops: number; woba: number; kPct: number } | null;
+}) {
+  return (
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)]/25 p-3">
+      <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">{title}</div>
+      {line ? (
+        <p className="mt-2 font-display text-sm tabular-nums text-[var(--text)]">
+          {line.pa} PA · OPS {fmt3(line.ops)} · wOBA {fmt3(line.woba)} · K% {pct1(line.kPct)}
+        </p>
+      ) : (
+        <p className="mt-2 text-xs text-[var(--text-muted)]">Sample too small.</p>
+      )}
+    </div>
+  );
+}
+
+function TwoStrikeTeamPrintTiles({ line }: { line: PreGameCoachHittingNotes["twoStrikeTeam"] }) {
+  if (!line) {
+    return (
+      <p className="mt-4 rounded-lg border-2 border-dashed border-[var(--border)] p-4 text-sm text-[var(--text-muted)]">
+        Not enough team PAs with a final count of 2+ strikes in this window.
+      </p>
+    );
+  }
+  const tiles = [
+    { label: "PA", value: String(line.pa) },
+    { label: "OPS", value: fmt3(line.ops) },
+    { label: "wOBA", value: fmt3(line.woba) },
+    { label: "K%", value: pct1(line.kPct) },
+  ] as const;
+  return (
+    <div
+      className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 print:gap-4"
+      style={{ breakInside: "avoid" as const }}
+    >
+      {tiles.map(({ label, value }) => (
+        <div
+          key={label}
+          className="rounded-lg border-2 border-[var(--border)] bg-[var(--bg-elevated)]/50 px-3 py-3 text-center print:px-4 print:py-4"
+        >
+          <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--text-muted)] print:text-xs">
+            {label}
+          </div>
+          <div className="mt-1 font-display text-xl font-bold tabular-nums leading-none text-[var(--text)] print:text-3xl print:mt-2">
+            {value}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ContactMixStrip({
+  contact,
+  forPrint = false,
+}: {
+  contact: PreGameContactProfile;
+  forPrint?: boolean;
+}) {
+  const tiles = [
+    {
+      label: "GB%",
+      pct: contact.gbPct,
+      screen:
+        "border-l-emerald-600 dark:border-l-emerald-400 bg-emerald-100/85 dark:bg-emerald-950/40 text-emerald-950 dark:text-emerald-100",
+      printAccent: "print:border-l-emerald-700 print:bg-emerald-50 print:text-slate-900",
+    },
+    {
+      label: "LD%",
+      pct: contact.ldPct,
+      screen:
+        "border-l-amber-600 dark:border-l-amber-400 bg-amber-100/85 dark:bg-amber-950/40 text-amber-950 dark:text-amber-100",
+      printAccent: "print:border-l-amber-700 print:bg-amber-50 print:text-slate-900",
+    },
+    {
+      label: "FB%",
+      pct: contact.fbPct,
+      screen: "border-l-sky-600 dark:border-l-sky-400 bg-sky-100/85 dark:bg-sky-950/40 text-sky-950 dark:text-sky-100",
+      printAccent: "print:border-l-sky-700 print:bg-sky-50 print:text-slate-900",
+    },
+    {
+      label: "IFF%",
+      pct: contact.iffPct,
+      screen:
+        "border-l-violet-600 dark:border-l-violet-400 bg-violet-100/85 dark:bg-violet-950/40 text-violet-950 dark:text-violet-100",
+      printAccent: "print:border-l-violet-700 print:bg-violet-50 print:text-slate-900",
+    },
+  ] as const;
+
+  return (
+    <div
+      className={`mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 ${forPrint ? "print:mt-4 print:gap-3" : ""}`}
+      style={forPrint ? { breakInside: "avoid" as const } : undefined}
+    >
+      {tiles.map((t) => (
+        <div
+          key={t.label}
+          className={`rounded-lg border border-[var(--border)] border-l-4 px-3 py-2.5 text-center ${t.screen} ${forPrint ? `${t.printAccent} print:px-4 print:py-3 print:border-2 print:border-slate-300` : ""}`}
+        >
+          <div
+            className={`text-[10px] font-bold uppercase tracking-wide opacity-90 ${forPrint ? "print:text-xs" : ""}`}
+          >
+            {t.label}
+          </div>
+          <div
+            className={`mt-1 font-display text-lg font-bold tabular-nums leading-none ${forPrint ? "print:text-2xl print:mt-1.5" : ""}`}
+          >
+            {pct1(t.pct)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SituationalHittersTable({
+  title,
+  rows,
+  forPrint = false,
+}: {
+  title: string;
+  rows: PreGameCoachHittingNotes["twoStrikeHitters"];
+  forPrint?: boolean;
+}) {
+  if (rows.length === 0) {
+    return (
+      <div
+        className={`rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)]/20 p-3 ${forPrint ? "print:p-4" : ""}`}
+      >
+        <div
+          className={`font-bold uppercase tracking-wider text-[var(--text-muted)] ${forPrint ? "text-xs print:text-sm" : "text-[10px]"}`}
+        >
+          {title}
+        </div>
+        <p className={`mt-2 text-[var(--text-muted)] ${forPrint ? "text-sm print:text-base" : "text-xs"}`}>
+          No hitter met the PA threshold in this split.
+        </p>
+      </div>
+    );
+  }
+  const th = forPrint
+    ? "px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wide text-[var(--text)] print:px-4 print:py-3 print:text-xs"
+    : "py-1 pr-2 font-semibold uppercase tracking-wider";
+  const td = forPrint
+    ? "px-3 py-2.5 text-[var(--text)] print:px-4 print:py-2.5 print:text-sm"
+    : "py-1 pr-2";
+  return (
+    <div
+      className={`min-w-0 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)]/20 p-3 ${forPrint ? "print:p-4 print:max-w-4xl" : ""}`}
+      style={forPrint ? { breakInside: "avoid" as const } : undefined}
+    >
+      <div
+        className={`font-bold uppercase tracking-wider text-[var(--text-muted)] ${forPrint ? "text-xs print:text-sm print:mb-3" : "text-[10px]"}`}
+      >
+        {title}
+      </div>
+      <div className="mt-2 overflow-x-auto print:overflow-visible">
+        <table className={`w-full border-collapse text-left ${forPrint ? "text-sm print:text-[15px]" : "text-xs"}`}>
+          <thead>
+            <tr className={`border-b-2 border-[var(--border)] ${forPrint ? "bg-[var(--bg-elevated)]" : ""}`}>
+              <th className={`${th} text-left`}>Hitter</th>
+              <th className={`${th} text-right tabular-nums`}>PA</th>
+              <th className={`${th} text-right font-display tabular-nums`}>OPS</th>
+              <th className={`${th} text-right font-display tabular-nums`}>wOBA</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr
+                key={`${r.name}-${i}`}
+                className={`border-b border-[var(--border)] ${forPrint ? "even:bg-[var(--bg-elevated)]/35" : "border-b border-[var(--border)]/80"}`}
+              >
+                <td className={`${td} font-semibold text-[var(--text)] print:font-bold`}>{r.name}</td>
+                <td className={`${td} text-right tabular-nums`}>{r.pa}</td>
+                <td className={`${td} text-right font-display tabular-nums font-semibold`}>{fmt3(r.ops)}</td>
+                <td className={`${td} text-right font-display tabular-nums`}>{fmt3(r.woba)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function CoachHittingNotesSection({ notes, forPrint = false }: { notes: PreGameCoachHittingNotes; forPrint?: boolean }) {
+  return (
+    <section
+      className={`scroll-mt-6 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6 ${forPrint ? "print:rounded-lg print:border-2 print:p-8 print:shadow-none" : ""}`}
+    >
+      <h3
+        className={`font-display font-semibold text-[var(--text)] ${forPrint ? "text-base print:text-2xl print:tracking-tight" : "text-base"}`}
+      >
+        Two-strike approach & contact
+      </h3>
+      <p className={`mt-1 text-[var(--text-faint)] ${forPrint ? "text-sm print:text-base print:text-[var(--text-muted)]" : "text-xs"}`}>
+        {notes.windowLabel}
+      </p>
+
+      <div className={`mt-4 ${forPrint ? "" : "max-w-md"}`}>
+        {forPrint ? (
+          <>
+            <p className="text-xs font-bold uppercase tracking-wide text-[var(--accent)] print:text-sm print:mb-2">
+              Team · final count 2+ strikes
+            </p>
+            <TwoStrikeTeamPrintTiles line={notes.twoStrikeTeam} />
+          </>
+        ) : (
+          <SituationalTeamCard title="Team · final count 2+ strikes" line={notes.twoStrikeTeam} />
+        )}
+      </div>
+      <p
+        className={`mt-3 leading-snug text-[var(--text-muted)] ${forPrint ? "text-sm print:text-base print:max-w-3xl print:leading-relaxed" : "text-[10px]"}`}
+      >
+        Two-strike uses the PA&apos;s final ball–strike count (includes 3-2 strikeouts and two-strike balls in play).
+      </p>
+
+      <div className={`mt-5 ${forPrint ? "" : "max-w-xl"}`}>
+        <SituationalHittersTable
+          title="Hitters · most two-strike PAs (sample)"
+          rows={notes.twoStrikeHitters}
+          forPrint={forPrint}
+        />
+      </div>
+
+      {notes.contact ? (
+        <div
+          className={`mt-5 border-t border-[var(--border)] pt-5 ${forPrint ? "print:mt-8 print:pt-8 print:border-t-2" : ""}`}
+          style={forPrint ? { breakInside: "avoid" as const } : undefined}
+        >
+          <h4
+            className={`font-display font-semibold text-[var(--text)] ${forPrint ? "text-sm print:text-xl" : "text-sm"}`}
+          >
+            Contact
+          </h4>
+          <p
+            className={`mt-2 text-[var(--text-muted)] ${forPrint ? "text-sm print:text-base print:leading-relaxed" : "mt-1 text-[11px]"}`}
+          >
+            {notes.contact.teamPa} team PA in window
+            {notes.contact.gidp > 0 ? ` · ${notes.contact.gidp} GIDP` : ""}
+            {notes.contact.bipWithType > 0 ? ` · ${notes.contact.bipWithType} BIP with type` : ""}
+            .
+          </p>
+          <ContactMixStrip contact={notes.contact} forPrint={forPrint} />
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function PreGameReport({
   game,
   roster,
@@ -313,7 +572,7 @@ export function PreGameReport({
 
   const lineupPlayerIds = new Set(ourLineup.map((r) => r.player_id));
   const ourBench = roster
-    .filter((p) => !lineupPlayerIds.has(p.id))
+    .filter((p) => isActiveRosterPlayer(p) && !lineupPlayerIds.has(p.id))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 
   const platoonPrintRows = batters
@@ -328,8 +587,16 @@ export function PreGameReport({
       return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
     });
 
+  const windowRispById = overview?.pregameWindowRispStatsByPlayerId;
   const rispAllRows = batters
-    .map((p) => rispCompactRow(p, statsByPlayerId[p.id] ?? seasonStatsById[p.id]))
+    .map((p) => {
+      if (windowRispById) {
+        const wr = windowRispById[p.id];
+        if (!wr) return null;
+        return rispCompactRow(p, { risp: wr } as BattingStatsWithSplits);
+      }
+      return rispCompactRow(p, statsByPlayerId[p.id] ?? seasonStatsById[p.id]);
+    })
     .filter((row): row is NonNullable<typeof row> => Boolean(row));
   const rispSortedRows = [...rispAllRows].sort((a, b) => {
     const ao = Number.isFinite(Number(a.opsDisplay)) ? Number(a.opsDisplay) : -1;
@@ -338,7 +605,6 @@ export function PreGameReport({
     if (b.pa !== a.pa) return b.pa - a.pa;
     return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
   });
-  const rispBackupRows = rispSortedRows.slice(0, 10);
 
   const seasonAvgOps = (playerId: string): { avg: string; ops: string } => {
     const s = statsByPlayerId[playerId]?.overall ?? seasonStatsById[playerId]?.overall;
@@ -486,16 +752,50 @@ export function PreGameReport({
       <section className="hidden print:block print:break-before-page rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6">
         <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--text)]">RISP and situational hitting</h2>
         <p className="mt-1 text-xs text-[var(--text-muted)]">
-          Compact RISP snapshot and quick hitter list.
+          Team row: plate appearances with runners in scoring position only (rates below use that sample).
         </p>
 
         <div className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)]/25 px-3 py-2">
           <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Team RISP (season)</div>
           <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
-            <span className="text-[var(--text-muted)]">PA <span className="font-semibold text-[var(--text)]">{rep?.hittingTrends?.season?.rispSlash.match(/\((\d+)\sPA\)/)?.[1] ?? "—"}</span></span>
+            <span className="text-[var(--text-muted)]">
+              PA{" "}
+              <span className="font-semibold text-[var(--text)]">
+                {rep?.hittingTrends?.season != null &&
+                typeof rep.hittingTrends.season.rispPa === "number" &&
+                Number.isFinite(rep.hittingTrends.season.rispPa)
+                  ? rep.hittingTrends.season.rispPa
+                  : "—"}
+              </span>
+            </span>
             <span className="text-[var(--text-muted)]">H-AB <span className="font-semibold text-[var(--text)]">{rep?.hittingTrends?.season?.rispHab ?? "—"}</span></span>
-            <span className="text-[var(--text-muted)]">OPS <span className="font-semibold text-[var(--text)]">{rep?.hittingTrends?.season ? fmtSeason(rep.hittingTrends.season.ops) : "—"}</span></span>
+            <span className="text-[var(--text-muted)]">
+              P/PA{" "}
+              <span className="font-semibold text-[var(--text)]">
+                {rep?.hittingTrends?.season?.rispPpa != null && Number.isFinite(rep.hittingTrends.season.rispPpa)
+                  ? rep.hittingTrends.season.rispPpa.toFixed(1)
+                  : "—"}
+              </span>
+            </span>
+            <span className="text-[var(--text-muted)]">
+              OPS{" "}
+              <span className="font-semibold text-[var(--text)]">
+                {rep?.hittingTrends?.season?.rispOps != null ? fmtSeason(rep.hittingTrends.season.rispOps) : "—"}
+              </span>
+            </span>
             <span className="text-[var(--text-muted)]">Slash <span className="font-semibold text-[var(--text)]">{rispSlashDisplay(rep?.hittingTrends?.season?.rispSlash ?? "—").replace(/\s*\(\d+\sPA\)\s*$/, "")}</span></span>
+            <span className="text-[var(--text-muted)]">
+              K%{" "}
+              <span className="font-semibold text-[var(--text)]">
+                {rep?.hittingTrends?.season?.rispKPct != null ? pct1(rep.hittingTrends.season.rispKPct) : "—"}
+              </span>
+            </span>
+            <span className="text-[var(--text-muted)]">
+              BB%{" "}
+              <span className="font-semibold text-[var(--text)]">
+                {rep?.hittingTrends?.season?.rispBbPct != null ? pct1(rep.hittingTrends.season.rispBbPct) : "—"}
+              </span>
+            </span>
           </div>
         </div>
 
@@ -508,30 +808,45 @@ export function PreGameReport({
                     <th className="px-2 py-1.5 font-semibold uppercase tracking-wider text-[var(--text-muted)]">Hitter</th>
                     <th className="px-2 py-1.5 text-right font-semibold uppercase tracking-wider text-[var(--text-muted)]">PA</th>
                     <th className="px-2 py-1.5 text-right font-semibold uppercase tracking-wider text-[var(--text-muted)]">H-AB</th>
+                    <th className="px-2 py-1.5 text-right font-semibold uppercase tracking-wider text-[var(--text-muted)]">P/PA</th>
                     <th className="px-2 py-1.5 text-right font-semibold uppercase tracking-wider text-[var(--text-muted)]">OPS</th>
+                    <th className="px-2 py-1.5 text-right font-semibold uppercase tracking-wider text-[var(--text-muted)]">Slash</th>
                     <th className="px-2 py-1.5 text-right font-semibold uppercase tracking-wider text-[var(--text-muted)]">K%</th>
+                    <th className="px-2 py-1.5 text-right font-semibold uppercase tracking-wider text-[var(--text-muted)]">BB%</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rispBackupRows.map((row) => (
+                  {rispSortedRows.map((row) => (
                     <tr key={`print-risp-backup-${row.playerId}`} className="border-b border-[var(--border)]">
                       <td className="px-2 py-1.5 font-medium text-[var(--text)]">{row.name}</td>
                       <td className="px-2 py-1.5 text-right tabular-nums text-[var(--text)]">{row.pa}</td>
                       <td className="px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">{row.hAbDisplay}</td>
+                      <td className="px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">{row.ppaDisplay}</td>
                       <td className="px-2 py-1.5 text-right font-display tabular-nums font-semibold text-[var(--text)]">
                         {row.opsDisplay}
                       </td>
+                      <td className="px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">{row.slash}</td>
                       <td className="px-2 py-1.5 text-right tabular-nums text-[var(--text)]">{row.kPctDisplay}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums text-[var(--text)]">{row.bbPctDisplay}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            <p className="mt-2 text-[10px] text-[var(--text-muted)]">
+              Every roster batter with at least one RISP PA in this window (same as the team row), sorted by RISP OPS then PA.
+            </p>
           </>
         ) : (
           <p className="mt-4 text-sm text-[var(--text-muted)]">No logged RISP plate appearances yet.</p>
         )}
       </section>
+
+      {rep?.coachHittingNotes ? (
+        <div className="hidden print:block print:break-before-page">
+          <CoachHittingNotesSection notes={rep.coachHittingNotes} forPrint />
+        </div>
+      ) : null}
 
       <div className="space-y-8 print:hidden">
       <section id="pre-overview" className="scroll-mt-6 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6">
@@ -639,6 +954,11 @@ export function PreGameReport({
                       </p>
                       <p className="mt-2 text-xs text-[var(--text-faint)]">
                         RISP slash: {rep.hittingTrends.season.rispSlash}
+                        {rep.hittingTrends.season.rispPpa != null && Number.isFinite(rep.hittingTrends.season.rispPpa)
+                          ? ` · P/PA ${rep.hittingTrends.season.rispPpa.toFixed(1)}`
+                          : ""}
+                        {rep.hittingTrends.season.rispKPct != null ? ` · K% ${pct1(rep.hittingTrends.season.rispKPct)}` : ""}
+                        {rep.hittingTrends.season.rispBbPct != null ? ` · BB% ${pct1(rep.hittingTrends.season.rispBbPct)}` : ""}
                         {rep.hittingTrends.season.fpsPct != null ? ` · FPS ${pct1(rep.hittingTrends.season.fpsPct)}` : ""}
                       </p>
                     </div>
@@ -653,7 +973,14 @@ export function PreGameReport({
                         {rep.hittingTrends.recent.pa} PA · K% {pct1(rep.hittingTrends.recent.kPct)} · BB%{" "}
                         {pct1(rep.hittingTrends.recent.bbPct)}
                       </p>
-                      <p className="mt-2 text-xs text-[var(--text-faint)]">RISP: {rep.hittingTrends.recent.rispSlash}</p>
+                      <p className="mt-2 text-xs text-[var(--text-faint)]">
+                        RISP: {rep.hittingTrends.recent.rispSlash}
+                        {rep.hittingTrends.recent.rispPpa != null && Number.isFinite(rep.hittingTrends.recent.rispPpa)
+                          ? ` · P/PA ${rep.hittingTrends.recent.rispPpa.toFixed(1)}`
+                          : ""}
+                        {rep.hittingTrends.recent.rispKPct != null ? ` · K% ${pct1(rep.hittingTrends.recent.rispKPct)}` : ""}
+                        {rep.hittingTrends.recent.rispBbPct != null ? ` · BB% ${pct1(rep.hittingTrends.recent.rispBbPct)}` : ""}
+                      </p>
                     </div>
                   ) : null}
                 </div>
@@ -664,6 +991,12 @@ export function PreGameReport({
                     ))}
                   </ul>
                 ) : null}
+              </div>
+            ) : null}
+
+            {rep.coachHittingNotes ? (
+              <div id="pre-coach-approach" className="print:hidden">
+                <CoachHittingNotesSection notes={rep.coachHittingNotes} />
               </div>
             ) : null}
 

@@ -24,7 +24,11 @@ const MIN_RISP_PA = 5;
 const MIN_HOT_COLD_RECENT = 4;
 const MIN_HOT_COLD_SEASON = 8;
 const HOT_COLD_OPS_DELTA = 0.12;
-
+/** Min team PAs for situational rate lines (two-strike, late inning). */
+const MIN_SITUATIONAL_TEAM_PA = 10;
+/** Min PAs in split for a hitter to appear in situational leader lists. */
+const MIN_SITUATIONAL_PLAYER_PA = 5;
+const SITUATIONAL_HITTER_ROWS = 5;
 export type PreGamePitchMixRow = {
   label: string;
   usagePct: number;
@@ -40,7 +44,49 @@ export type PreGameHittingSnapshot = {
   bbPct: number;
   rispSlash: string;
   rispHab: string;
+  /** Mean pitches/PA on RISP plate appearances when pitch counts exist in that split. */
+  rispPpa: number | null;
+  /** RISP PA count in this window (includes PAs that only qualify for “insufficient for slash”). */
+  rispPa: number;
+  /** Team RISP OPS when slash stats exist for the split. */
+  rispOps: number | null;
+  rispKPct: number | null;
+  rispBbPct: number | null;
   fpsPct: number | null;
+};
+
+export type PreGameSituationalLine = {
+  pa: number;
+  ops: number;
+  woba: number;
+  kPct: number;
+};
+
+export type PreGameSituationalHitterRow = {
+  name: string;
+  pa: number;
+  ops: number;
+  woba: number;
+};
+
+/** Batted-ball mix on all team PAs in the metrics window (rates sum to ~100% of tagged BIP). */
+export type PreGameContactProfile = {
+  teamPa: number;
+  bipWithType: number;
+  /** Share of tagged BIP; 0 when no BIP has type (tiles still show 0%). */
+  gbPct: number;
+  ldPct: number;
+  fbPct: number;
+  iffPct: number;
+  gidp: number;
+};
+
+export type PreGameCoachHittingNotes = {
+  windowLabel: string;
+  /** Final count had 2+ strikes (includes 3-2, strikeouts, two-strike BIP). */
+  twoStrikeTeam: PreGameSituationalLine | null;
+  twoStrikeHitters: PreGameSituationalHitterRow[];
+  contact: PreGameContactProfile | null;
 };
 
 export type PreGameReportSections = {
@@ -67,9 +113,11 @@ export type PreGameReportSections = {
   opponentObservations: string[];
   matchupInsights: string[];
   gamePlan: string[];
+  coachHittingNotes: PreGameCoachHittingNotes | null;
 };
 
-function flatOurTeamBatting(games: Game[], pasAll: PlateAppearance[]): PlateAppearance[] {
+/** Our club’s batting PAs in `games`, in chronological game order (same input `pasInSeasonWindow` as {@link buildPreGameReport}). */
+export function flatOurTeamBatting(games: Game[], pasAll: PlateAppearance[]): PlateAppearance[] {
   const byGame = new Map<string, PlateAppearance[]>();
   for (const p of pasAll) {
     const list = byGame.get(p.game_id) ?? [];
@@ -82,6 +130,91 @@ function flatOurTeamBatting(games: Game[], pasAll: PlateAppearance[]): PlateAppe
     if (chunk?.length) out.push(...pasOurTeamBatting(g, chunk));
   }
   return out;
+}
+
+function paFinalCountTwoStrikes(pa: PlateAppearance): boolean {
+  return (pa.count_strikes ?? 0) >= 2;
+}
+
+function situationalTeamLine(pas: PlateAppearance[], minPa: number): PreGameSituationalLine | null {
+  if (pas.length < minPa) return null;
+  const st = battingStatsFromPAs(pas);
+  if (!st) return null;
+  return {
+    pa: st.pa ?? pas.length,
+    ops: st.ops,
+    woba: st.woba,
+    kPct: st.kPct ?? 0,
+  };
+}
+
+function topSituationalHitters(
+  seasonOur: PlateAppearance[],
+  filterPa: (pa: PlateAppearance) => boolean,
+  playersById: Record<string, Player>,
+  preferredIds: readonly string[],
+  minPlayerPa: number,
+  topN: number
+): PreGameSituationalHitterRow[] {
+  const byBatter = new Map<string, PlateAppearance[]>();
+  for (const pa of seasonOur) {
+    if (!filterPa(pa)) continue;
+    const id = pa.batter_id;
+    const list = byBatter.get(id) ?? [];
+    list.push(pa);
+    byBatter.set(id, list);
+  }
+  const order = new Map(preferredIds.map((id, i) => [id, i]));
+  const rows: { id: string; pa: number; ops: number; woba: number }[] = [];
+  for (const [id, list] of byBatter) {
+    if (list.length < minPlayerPa) continue;
+    const st = battingStatsFromPAs(list);
+    if (!st) continue;
+    rows.push({ id, pa: st.pa ?? list.length, ops: st.ops, woba: st.woba });
+  }
+  rows.sort((a, b) => {
+    if (b.pa !== a.pa) return b.pa - a.pa;
+    return (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999);
+  });
+  return rows.slice(0, topN).map((r) => ({
+    name: playersById[r.id]?.name ?? "Unknown",
+    pa: r.pa,
+    ops: r.ops,
+    woba: r.woba,
+  }));
+}
+
+function buildContactProfileFromTeamPas(teamPas: PlateAppearance[]): PreGameContactProfile | null {
+  if (teamPas.length < MIN_TEAM_PA) return null;
+  const st = battingStatsFromPAs(teamPas);
+  const gidp = st?.gidp ?? 0;
+
+  let typed = 0;
+  let gb = 0;
+  let ld = 0;
+  let fb = 0;
+  let iff = 0;
+
+  for (const pa of teamPas) {
+    const t = pa.batted_ball_type;
+    if (t) {
+      typed += 1;
+      if (t === "ground_ball") gb += 1;
+      else if (t === "line_drive") ld += 1;
+      else if (t === "fly_ball") fb += 1;
+      else if (t === "infield_fly") iff += 1;
+    }
+  }
+
+  return {
+    teamPa: teamPas.length,
+    bipWithType: typed,
+    gbPct: typed > 0 ? gb / typed : 0,
+    ldPct: typed > 0 ? ld / typed : 0,
+    fbPct: typed > 0 ? fb / typed : 0,
+    iffPct: typed > 0 ? iff / typed : 0,
+    gidp,
+  };
 }
 
 function hittingSnapshotFromPas(pas: PlateAppearance[]): PreGameHittingSnapshot | null {
@@ -100,6 +233,12 @@ function hittingSnapshotFromPas(pas: PlateAppearance[]): PreGameHittingSnapshot 
     rSt && (rSt.pa ?? 0) >= 1
       ? `${rSt.h ?? 0}-${rSt.ab ?? 0}`
       : "—";
+  const rispPpa =
+    rSt && (rSt.pa ?? 0) >= 1 && rSt.pPa != null && Number.isFinite(rSt.pPa) ? rSt.pPa : null;
+  const rispPaCount = rSt && (rSt.pa ?? 0) >= 1 ? rSt.pa ?? 0 : risp.length;
+  const rispOps = rSt && (rSt.pa ?? 0) >= 1 ? rSt.ops : null;
+  const rispKPct = rSt && (rSt.pa ?? 0) >= 1 ? rSt.kPct ?? null : null;
+  const rispBbPct = rSt && (rSt.pa ?? 0) >= 1 ? rSt.bbPct ?? null : null;
 
   const fpsDenom = pas.filter((p) => p.first_pitch_strike != null).length;
   const fpsPct = fpsDenom > 0 ? pas.filter((p) => p.first_pitch_strike === true).length / fpsDenom : null;
@@ -111,6 +250,11 @@ function hittingSnapshotFromPas(pas: PlateAppearance[]): PreGameHittingSnapshot 
     bbPct: st.bbPct ?? 0,
     rispSlash,
     rispHab,
+    rispPpa,
+    rispPa: rispPaCount,
+    rispOps,
+    rispKPct,
+    rispBbPct,
     fpsPct,
   };
 }
@@ -255,6 +399,25 @@ export function buildPreGameReport(input: {
     seasonGamesNewestFirst.length > 0
       ? `Last ${seasonGamesNewestFirst.length} completed team games before this one`
       : "No completed games before this date";
+
+  const twoStrikePas = seasonOur.filter(paFinalCountTwoStrikes);
+
+  const coachHittingNotes: PreGameCoachHittingNotes | null =
+    seasonOur.length >= MIN_TEAM_PA
+      ? {
+          windowLabel,
+          twoStrikeTeam: situationalTeamLine(twoStrikePas, MIN_SITUATIONAL_TEAM_PA),
+          twoStrikeHitters: topSituationalHitters(
+            seasonOur,
+            paFinalCountTwoStrikes,
+            playersById,
+            ourLineupIds,
+            MIN_SITUATIONAL_PLAYER_PA,
+            SITUATIONAL_HITTER_ROWS
+          ),
+          contact: buildContactProfileFromTeamPas(seasonOur),
+        }
+      : null;
 
   let pitchingPlan: PreGameReportSections["pitchingPlan"] = null;
   if (ourStarterSummary || ourStarterId) {
@@ -402,5 +565,6 @@ export function buildPreGameReport(input: {
     opponentObservations: opponentObservations.slice(0, 5),
     matchupInsights: matchupInsights.slice(0, 5),
     gamePlan: gamePlanDedup,
+    coachHittingNotes,
   };
 }

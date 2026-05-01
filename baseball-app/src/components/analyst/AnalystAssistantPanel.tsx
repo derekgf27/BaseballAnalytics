@@ -1,57 +1,52 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { PreGameOverviewPayload } from "@/app/reports/actions";
-import type { Game } from "@/lib/types";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
-const SUGGESTIONS = [
-  "Give me a pre-game summary for this game",
+const DEFAULT_SUGGESTIONS = [
+  "How do I open pre-game scouting and team trends?",
   "What are our OPS, K%, and BB% trends?",
-  "What's the pitching plan and top pitch mix?",
-  "Give me matchup insights and game plan",
+  "How do I record plate appearances in this app?",
+  "How do I build or edit lineups for a game?",
+  "Where are matchup notes and game plan in Reports?",
 ];
 
-export function ReportsAssistantPanel({
-  selectedGame,
-  preGameOverview,
-  teamTrendInsights,
-}: {
-  selectedGame: Game | null;
-  preGameOverview: PreGameOverviewPayload | null;
+export type AnalystAssistantPanelProps = {
   teamTrendInsights: string[];
-}) {
+  /** Main heading */
+  title?: string;
+  /** Small badge next to title */
+  badgeLabel?: string;
+  /** First assistant bubble */
+  introMessage?: string;
+  /** Quick-prompt chips */
+  suggestions?: string[];
+  inputPlaceholder?: string;
+  /** Tailwind max-height class for the transcript area */
+  chatMaxHeightClass?: string;
+};
+
+export function AnalystAssistantPanel({
+  teamTrendInsights,
+  title = "Analyst Assistant",
+  badgeLabel = "Context-grounded",
+  introMessage = "Ask how to use the app or about team trends when they’re loaded. For scouting numbers tied to one game, use Reports or name the matchup in your message.",
+  suggestions = DEFAULT_SUGGESTIONS,
+  inputPlaceholder = "Ask a question…",
+  chatMaxHeightClass = "max-h-[min(32rem,55vh)]",
+}: AnalystAssistantPanelProps) {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
-  const [messages, setMessages] = useState<Msg[]>([
-    {
-      role: "assistant",
-      content:
-        "Ask for pre-game summary, OPS/K%/BB%/RISP trends, pitching plan, matchup insights, or game plan. I answer from your loaded report context.",
-    },
-  ]);
+  const [messages, setMessages] = useState<Msg[]>([{ role: "assistant", content: introMessage }]);
 
   const context = useMemo(
     () => ({
-      game: selectedGame
-        ? {
-            id: selectedGame.id,
-            date: selectedGame.date,
-            home_team: selectedGame.home_team,
-            away_team: selectedGame.away_team,
-            our_side: selectedGame.our_side,
-          }
-        : null,
-      preGameOverview: preGameOverview
-        ? {
-            report: preGameOverview.report,
-            recentGamesCount: preGameOverview.recentGamesCount,
-          }
-        : null,
+      game: null,
+      preGameOverview: null,
       teamTrendInsights,
     }),
-    [preGameOverview, selectedGame, teamTrendInsights]
+    [teamTrendInsights]
   );
 
   async function send(q: string) {
@@ -85,14 +80,14 @@ export function ReportsAssistantPanel({
   return (
     <section className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-orbitron text-base font-semibold text-[var(--text)]">Reports Assistant (v1)</h2>
+        <h2 className="font-orbitron text-base font-semibold text-[var(--text)]">{title}</h2>
         <span className="rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text)]">
-          Context-grounded
+          {badgeLabel}
         </span>
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">
-        {SUGGESTIONS.map((s) => (
+        {suggestions.map((s) => (
           <button
             key={s}
             type="button"
@@ -105,7 +100,9 @@ export function ReportsAssistantPanel({
         ))}
       </div>
 
-      <div className="mt-4 max-h-64 space-y-2 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--bg-base)] p-3">
+      <div
+        className={`mt-4 space-y-2 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--bg-base)] p-3 ${chatMaxHeightClass}`}
+      >
         {messages.map((m, i) => (
           <div key={`${m.role}-${i}`} className="space-y-1">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text)]">
@@ -127,7 +124,7 @@ export function ReportsAssistantPanel({
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Ask a stats/report question…"
+          placeholder={inputPlaceholder}
           className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
         />
         <button
