@@ -10,7 +10,10 @@ import {
   deleteGameAction,
   fetchCurrentGameLineupName,
   fetchGameLineupSlots,
+  fetchOpponentGameLineupSlots,
   replaceOurGameLineupAction,
+  replaceOpponentGameLineupAction,
+  fetchLineupSlotsForBallparkSideAction,
 } from "./actions";
 import { isGameFinalized, ourTeamOutcomeFromFinalScore } from "@/lib/gameRecord";
 import { isActiveRosterPlayer, isClubRosterPlayer, matchupLabelUsFirst, pitchersForGameTeamSide } from "@/lib/opponentUtils";
@@ -23,8 +26,13 @@ import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
 import {
   analystGameLogHref,
   analystGameReviewHref,
+  analystOpponentDetailHref,
   analystRecordHref,
 } from "@/lib/analystRoutes";
+import { defaultClubTeamNameFromGames } from "@/lib/defaultClubTeamName";
+
+/** Select value that switches opponent field to free text (tracked-opponents dropdown). */
+const OPP_CUSTOM_SENTINEL = "__custom_opponent__";
 
 interface GamesPageClientProps {
   initialGames: Game[];
@@ -50,6 +58,8 @@ export function GamesPageClient({
   const [messageDismissing, setMessageDismissing] = useState(false);
 
   const isFormOpen = editingGame !== null || showAddForm;
+
+  const defaultClubTeamName = useMemo(() => defaultClubTeamNameFromGames(games), [games]);
 
   const refresh = () => router.refresh();
 
@@ -88,17 +98,26 @@ export function GamesPageClient({
     }
     const ourCustom = ourSlotsOverride && ourSlotsOverride.length > 0 ? ourSlotsOverride : null;
     if (editingGame) {
+      const sideFlipped = editingGame.our_side !== game.our_side;
+      let ourSlotsToWrite: { player_id: string; position?: string | null }[] | null = null;
+      if (sideFlipped) {
+        ourSlotsToWrite = ourCustom ?? (await fetchLineupSlotsForBallparkSideAction(editingGame.id, editingGame.our_side));
+      } else if (ourCustom) {
+        ourSlotsToWrite = ourCustom;
+      }
+
       const updated = await updateGameOnlyAction(editingGame.id, game);
       if (updated) {
-        if (ourCustom) {
-          await replaceOurGameLineupAction(editingGame.id, ourCustom);
+        if (ourSlotsToWrite !== null) {
+          await replaceOurGameLineupAction(editingGame.id, ourSlotsToWrite);
         }
+        await replaceOpponentGameLineupAction(editingGame.id, opponentSlots ?? []);
         setGames((prev) => prev.map((g) => (g.id === updated.id ? updated : g)));
         setEditingGame(null);
         setShowAddForm(false);
         setMessage({
           type: "ok",
-          text: ourCustom ? "Game updated with lineup changes." : "Game updated.",
+          text: "Game updated.",
         });
         refresh();
       } else {
@@ -210,6 +229,7 @@ export function GamesPageClient({
             setMessage({ type: "err", text: "Could not delete game." });
           }
         }}
+        defaultClubTeamName={defaultClubTeamName}
         canEdit={canEdit}
       />
       )}
@@ -314,6 +334,7 @@ function GameForm({
   onCancel,
   onAddNew,
   onDelete,
+  defaultClubTeamName,
   canEdit,
 }: {
   game: Game | null;
@@ -329,13 +350,15 @@ function GameForm({
   onCancel: () => void;
   onAddNew: () => void;
   onDelete: (gameId: string) => Promise<void>;
+  /** Pre-filled club name for new games (env or latest game). */
+  defaultClubTeamName: string;
   canEdit: boolean;
 }) {
   const isEditing = !!game;
   const [date, setDate] = useState(game?.date ?? new Date().toISOString().slice(0, 10));
   const [our_side, setOurSide] = useState<"home" | "away">(game?.our_side ?? "home");
   const [our_team, setOurTeam] = useState<string>(() =>
-    game ? (game.our_side === "home" ? game.home_team : game.away_team) : ""
+    game ? (game.our_side === "home" ? game.home_team : game.away_team) : defaultClubTeamName.trim()
   );
   const [opponent, setOpponent] = useState<string>(() =>
     game ? (game.our_side === "home" ? game.away_team : game.home_team) : ""
@@ -360,8 +383,22 @@ function GameForm({
   const [ourOrderedSlots, setOurOrderedSlots] = useState<{ player_id: string; position: string | null }[]>([]);
   const [opponentModalOpen, setOpponentModalOpen] = useState(false);
   const [opponentOrderedSlots, setOpponentOrderedSlots] = useState<{ player_id: string; position: string | null }[]>([]);
-  const [spHome, setSpHome] = useState<string>(() => game?.starting_pitcher_home_id ?? "");
-  const [spAway, setSpAway] = useState<string>(() => game?.starting_pitcher_away_id ?? "");
+  /** Our club vs opponent starters (stable columns); mapped to home/away IDs on save. */
+  const [spOur, setSpOur] = useState<string>(() =>
+    game
+      ? (game.our_side === "home" ? game.starting_pitcher_home_id : game.starting_pitcher_away_id) ?? ""
+      : ""
+  );
+  const [spOpp, setSpOpp] = useState<string>(() =>
+    game
+      ? (game.our_side === "home" ? game.starting_pitcher_away_id : game.starting_pitcher_home_id) ?? ""
+      : ""
+  );
+  /** Our club’s credited save (optional); stored on `games.save_pitcher_id`. */
+  const [savePitcherOur, setSavePitcherOur] = useState<string>(() => game?.save_pitcher_id ?? "");
+  const [formError, setFormError] = useState<string | null>(null);
+  /** When tracked opponents exist, user can still type a name not in the list. */
+  const [opponentUseCustom, setOpponentUseCustom] = useState(false);
 
   const matchupGame = useMemo(
     (): Pick<Game, "home_team" | "away_team" | "our_side"> => ({
@@ -371,24 +408,38 @@ function GameForm({
     }),
     [our_side, our_team, opponent]
   );
-  const homePitchers = useMemo(
-    () => pitchersForGameTeamSide(matchupGame, "home", players),
-    [matchupGame, players]
+  const ourBallparkSide = our_side === "home" ? "home" : "away";
+  const oppBallparkSide = our_side === "home" ? "away" : "home";
+  const ourPitchers = useMemo(
+    () => pitchersForGameTeamSide(matchupGame, ourBallparkSide, players),
+    [matchupGame, ourBallparkSide, players]
   );
-  const awayPitchers = useMemo(
-    () => pitchersForGameTeamSide(matchupGame, "away", players),
-    [matchupGame, players]
+  const oppPitchers = useMemo(
+    () => pitchersForGameTeamSide(matchupGame, oppBallparkSide, players),
+    [matchupGame, oppBallparkSide, players]
   );
 
   useEffect(() => {
     if (game) {
-      setSpHome(game.starting_pitcher_home_id ?? "");
-      setSpAway(game.starting_pitcher_away_id ?? "");
+      setSpOur(
+        (game.our_side === "home" ? game.starting_pitcher_home_id : game.starting_pitcher_away_id) ?? ""
+      );
+      setSpOpp(
+        (game.our_side === "home" ? game.starting_pitcher_away_id : game.starting_pitcher_home_id) ?? ""
+      );
+      setSavePitcherOur(game.save_pitcher_id ?? "");
     } else {
-      setSpHome("");
-      setSpAway("");
+      setSpOur("");
+      setSpOpp("");
+      setSavePitcherOur("");
     }
-  }, [game?.id, game?.starting_pitcher_home_id, game?.starting_pitcher_away_id]);
+  }, [
+    game?.id,
+    game?.our_side,
+    game?.starting_pitcher_home_id,
+    game?.starting_pitcher_away_id,
+    game?.save_pitcher_id,
+  ]);
 
   useEffect(() => {
     if (!game?.id) return;
@@ -415,6 +466,28 @@ function GameForm({
   useEffect(() => {
     setOurOrderedSlots([]);
   }, [lineupId]);
+
+  useEffect(() => {
+    setOpponentUseCustom(false);
+    setFormError(null);
+  }, [game?.id]);
+
+  useEffect(() => {
+    if (!game?.id) {
+      setOpponentOrderedSlots([]);
+      return;
+    }
+    let cancelled = false;
+    fetchOpponentGameLineupSlots(game.id).then((rows) => {
+      if (cancelled) return;
+      setOpponentOrderedSlots(
+        rows.map((s) => ({ player_id: s.player_id, position: s.position ?? null }))
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [game?.id]);
 
   const trackedSorted = useMemo(
     () => [...trackedOpponentNames].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })),
@@ -473,9 +546,23 @@ function GameForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSaving(true);
     const home_team = our_side === "home" ? our_team.trim() : opponent.trim();
     const away_team = our_side === "home" ? opponent.trim() : our_team.trim();
+    const problems: string[] = [];
+    if (!our_team.trim()) problems.push("Enter your club’s team name.");
+    if (!opponent.trim()) {
+      problems.push(
+        useOpponentSelect && !opponentUseCustom
+          ? "Choose an opponent from the list or use “Other / not listed…”."
+          : "Enter the other team’s name."
+      );
+    }
+    if (problems.length) {
+      setFormError(problems.join(" "));
+      return;
+    }
+    setFormError(null);
+    setSaving(true);
     const ourOverride = ourOrderedSlots.length > 0 ? ourOrderedSlots : null;
     await onSave(
       {
@@ -484,13 +571,23 @@ function GameForm({
         away_team,
         our_side,
         game_time: game_time.trim() || null,
-        final_score_home: null,
-        final_score_away: null,
-        starting_pitcher_home_id: spHome || null,
-        starting_pitcher_away_id: spAway || null,
+        final_score_home: isEditing && game ? game.final_score_home : null,
+        final_score_away: isEditing && game ? game.final_score_away : null,
+        our_sp_plan_notes: isEditing && game ? game.our_sp_plan_notes ?? null : null,
+        winning_pitcher_id: isEditing && game ? game.winning_pitcher_id ?? null : null,
+        losing_pitcher_id: isEditing && game ? game.losing_pitcher_id ?? null : null,
+        starting_pitcher_home_id:
+          our_side === "home" ? spOur || null : spOpp || null,
+        starting_pitcher_away_id:
+          our_side === "home" ? spOpp || null : spOur || null,
+        save_pitcher_id: savePitcherOur.trim() ? savePitcherOur : null,
       },
       isEditing ? lineupId : (lineupId || null),
-      isEditing ? undefined : opponentOrderedSlots.length > 0 ? opponentOrderedSlots : null,
+      isEditing
+        ? opponentOrderedSlots
+        : opponentOrderedSlots.length > 0
+          ? opponentOrderedSlots
+          : null,
       ourOverride
     );
     setSaving(false);
@@ -498,255 +595,359 @@ function GameForm({
 
   if (!canEdit) return null;
 
+  const fieldLabel = "mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]";
+  const sectionKicker = "text-[9px] font-bold uppercase tracking-[0.18em] text-[var(--accent)]";
+  const lineupColumnShell =
+    "space-y-2 rounded-lg border border-[var(--border)]/70 bg-[var(--bg-elevated)]/20 p-3";
+  const bothTeamsNamed =
+    matchupGame.home_team.trim().length > 0 && matchupGame.away_team.trim().length > 0;
+
   return (
-    <form onSubmit={handleSubmit} className="card-tech p-5">
-      <h3 className="text-sm font-semibold uppercase tracking-wider text-white">{isEditing ? "Edit game" : "Add game"}</h3>
+    <form onSubmit={handleSubmit} className="card-tech overflow-hidden p-0">
+      <header className="border-b border-[var(--border)]/80 bg-[var(--bg-elevated)]/15 px-4 py-2.5 sm:px-4">
+        <h3 className="font-orbitron text-sm font-semibold uppercase tracking-wide text-white sm:text-base">
+          {isEditing ? "Edit game" : "Add game"}
+        </h3>
+      </header>
 
-      {/* When */}
-      <div className="mt-4">
-        <span className="text-xs font-medium uppercase tracking-wider text-white">When</span>
-        <div className="mt-2 grid gap-3 sm:grid-cols-2">
-          <label>
-            <span className="text-xs text-[var(--text-muted)]">Date</span>
-            <StyledDatePicker
-              value={date}
-              onChange={setDate}
-              className="input-tech mt-1 block w-full px-3 py-2"
-              required
-            />
-          </label>
-          <label>
-            <span className="text-xs text-[var(--text-muted)]">Time (optional)</span>
-            <input
-              type="time"
-              value={game_time}
-              onChange={(e) => setGameTime(e.target.value)}
-              className="input-tech mt-1 block w-full px-3 py-2"
-            />
-          </label>
-        </div>
-      </div>
+      <div className="space-y-4 px-4 py-3 sm:py-4">
+        {formError ? (
+          <p
+            className="rounded-md border border-[var(--danger)] bg-[var(--danger-dim)] px-3 py-2 text-sm text-[var(--danger)]"
+            role="alert"
+          >
+            {formError}
+          </p>
+        ) : null}
 
-      {/* Matchup */}
-      <div className="mt-6">
-        <span className="text-xs font-medium uppercase tracking-wider text-white">Matchup</span>
-        <div className="mt-2 space-y-3">
-          <div>
-            <span className="text-xs text-white block mb-1">Side</span>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setOurSide("home")}
-                className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition ${
-                  our_side === "home"
-                    ? "border-[var(--accent)] bg-[var(--accent)] text-black"
-                    : "border-[var(--border)] bg-[var(--bg-input)] text-[var(--text-muted)] hover:border-[var(--border-focus)] hover:text-[var(--text)]"
-                }`}
-              >
-                Home
-              </button>
-              <button
-                type="button"
-                onClick={() => setOurSide("away")}
-                className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition ${
-                  our_side === "away"
-                    ? "border-[var(--accent)] bg-[var(--accent)] text-black"
-                    : "border-[var(--border)] bg-[var(--bg-input)] text-[var(--text-muted)] hover:border-[var(--border-focus)] hover:text-[var(--text)]"
-                }`}
-              >
-                Away
-              </button>
-            </div>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label>
-              <span className="text-xs text-[var(--text-muted)]">
-                {our_side === "home" ? "Home" : "Away"}
-              </span>
-              <input
-                type="text"
-                value={our_team}
-                onChange={(e) => setOurTeam(e.target.value)}
+        {/* When */}
+        <section aria-labelledby="game-form-when">
+          <h4 id="game-form-when" className={`${sectionKicker} mb-2`}>
+            When
+          </h4>
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            <label className="min-w-0">
+              <span className={fieldLabel}>Date</span>
+              <StyledDatePicker
+                value={date}
+                onChange={(v) => {
+                  setFormError(null);
+                  setDate(v);
+                }}
                 className="input-tech mt-1 block w-full px-3 py-2"
-                placeholder="Team name"
                 required
               />
             </label>
-            <label className="block">
-              <span className="text-xs text-[var(--text-muted)]">
-                {our_side === "home" ? "Away" : "Home"}
-              </span>
-              {useOpponentSelect ? (
-                <select
-                  value={opponent}
-                  onChange={(e) => setOpponent(e.target.value)}
-                  className="input-tech mt-1 block w-full px-3 py-2"
-                  required
-                  aria-label="Other team name"
-                >
-                  <option value="">Select team…</option>
-                  {trackedSorted.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  value={opponent}
-                  onChange={(e) => setOpponent(e.target.value)}
-                  className="input-tech mt-1 block w-full px-3 py-2"
-                  placeholder="Team name"
-                  required
-                  aria-label="Other team name"
-                />
-              )}
+            <label className="min-w-0">
+              <span className={fieldLabel}>Time (optional)</span>
+              <input
+                type="time"
+                value={game_time}
+                onChange={(e) => setGameTime(e.target.value)}
+                className="input-tech mt-1 block w-full px-3 py-2"
+              />
             </label>
           </div>
-        </div>
-      </div>
+        </section>
 
-      {/* Starting pitchers */}
-      <div className="mt-6">
-        <span className="text-xs font-medium uppercase tracking-wider text-white block">
-          Starting pitchers
-        </span>
-        
-        <div className="mt-2 grid gap-3 sm:grid-cols-2">
-          <label>
-            <span className="text-xs text-[var(--text-muted)]">
-              Home{matchupGame.home_team ? ` (${matchupGame.home_team})` : ""}
-            </span>
-            <select
-              value={spHome}
-              onChange={(e) => setSpHome(e.target.value)}
-              className="input-tech mt-1 block w-full px-3 py-2"
-              aria-label="Starting pitcher, home team"
-            >
-              <option value="">—</option>
-              {homePitchers.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                  {p.jersey ? ` #${p.jersey}` : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span className="text-xs text-[var(--text-muted)]">
-              Away{matchupGame.away_team ? ` (${matchupGame.away_team})` : ""}
-            </span>
-            <select
-              value={spAway}
-              onChange={(e) => setSpAway(e.target.value)}
-              className="input-tech mt-1 block w-full px-3 py-2"
-              aria-label="Starting pitcher, away team"
-            >
-              <option value="">—</option>
-              {awayPitchers.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                  {p.jersey ? ` #${p.jersey}` : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      </div>
-
-      {/* Two lineup columns when adding a game */}
-      <div
-        className={`mt-6 grid items-start gap-6 ${!isEditing ? "lg:grid-cols-2" : ""}`}
-      >
-        <div>
-          <span className="text-xs font-medium uppercase tracking-wider text-white block">
-            Lineup
-          </span>
-          <div className="mt-2 space-y-2">
-            <button
-              type="button"
-              onClick={() => void openOurLineupModal()}
-              disabled={ourModalOpening}
-              className="w-full rounded-lg border border-[var(--accent)]/50 bg-[var(--bg-elevated)] px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm transition hover:border-[var(--accent)] hover:bg-[var(--bg-card)] disabled:opacity-60"
-            >
-              {ourModalOpening ? "Opening…" : `View ${our_team.trim() || (our_side === "home" ? "Home" : "Away")} lineup`}
-            </button>
-            {ourOrderedSlots.length > 0 ? (
-              <span className="block text-sm text-[var(--text-muted)]">{ourOrderedSlots.length} in lineup</span>
-            ) : (
-              <span className="block text-sm text-[var(--text-muted)]">Not set</span>
-            )}
-            <select
-              value={lineupId}
-              onChange={(e) => setLineupId(e.target.value)}
-              className="input-tech min-w-[14rem] max-w-full px-3 py-2"
-              aria-label="Lineup template"
-            >
-              {isEditing ? (
-                <>
-                  <option value="__keep__">{currentLineupName}</option>
-                  {savedLineups.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name}
-                    </option>
-                  ))}
-                </>
-              ) : (
-                <>
-                  {savedLineups.length === 0 ? (
-                    <option value="">No saved lineups</option>
-                  ) : null}
-                  {savedLineups.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name}
-                    </option>
-                  ))}
-                </>
-              )}
-            </select>
+        {/* Matchup */}
+        <section aria-labelledby="game-form-matchup">
+          <h4 id="game-form-matchup" className={`${sectionKicker} mb-2`}>
+            Matchup
+          </h4>
+          <div className="space-y-3">
+            <div className="w-full min-w-0">
+              <span className={`${fieldLabel} text-[var(--text)]`}>We are the</span>
+              <div className="mt-1 flex w-full min-w-0 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormError(null);
+                    setOurSide("home");
+                  }}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                    our_side === "home"
+                      ? "border-[var(--accent)] bg-[var(--accent)] text-black"
+                      : "border-[var(--border)] bg-[var(--bg-input)] text-[var(--text-muted)] hover:border-[var(--border-focus)] hover:text-[var(--text)]"
+                  }`}
+                >
+                  Home team
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormError(null);
+                    setOurSide("away");
+                  }}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                    our_side === "away"
+                      ? "border-[var(--accent)] bg-[var(--accent)] text-black"
+                      : "border-[var(--border)] bg-[var(--bg-input)] text-[var(--text-muted)] hover:border-[var(--border-focus)] hover:text-[var(--text)]"
+                  }`}
+                >
+                  Away team
+                </button>
+              </div>
+            </div>
+            <div className="grid gap-2.5 sm:grid-cols-2">
+              <label className="min-w-0">
+                <span className={fieldLabel}>Our club</span>
+                <input
+                  type="text"
+                  value={our_team}
+                  onChange={(e) => {
+                    setFormError(null);
+                    setOurTeam(e.target.value);
+                  }}
+                  className="input-tech mt-1 block w-full px-3 py-2"
+                  placeholder={defaultClubTeamName.trim() ? defaultClubTeamName.trim() : "Your club name"}
+                  autoComplete="organization"
+                  aria-required="true"
+                />
+              </label>
+              <div className="min-w-0">
+                <span className={fieldLabel}>Opponent</span>
+                {useOpponentSelect && !opponentUseCustom ? (
+                  <>
+                    <select
+                      value={opponent}
+                      onChange={(e) => {
+                        setFormError(null);
+                        const v = e.target.value;
+                        if (v === OPP_CUSTOM_SENTINEL) {
+                          setOpponentUseCustom(true);
+                          setOpponent("");
+                        } else {
+                          setOpponent(v);
+                        }
+                      }}
+                      className="input-tech mt-1 block w-full px-3 py-2"
+                      aria-label="Other team name"
+                      aria-required="true"
+                    >
+                      <option value="">Select team…</option>
+                      {trackedSorted.map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                      <option value={OPP_CUSTOM_SENTINEL}>Other / not listed…</option>
+                    </select>
+                  </>
+                ) : useOpponentSelect && opponentUseCustom ? (
+                  <>
+                    <input
+                      id="game-form-opponent-custom"
+                      type="text"
+                      value={opponent}
+                      onChange={(e) => {
+                        setFormError(null);
+                        setOpponent(e.target.value);
+                      }}
+                      className="input-tech mt-1 block w-full px-3 py-2"
+                      placeholder="Opponent team name"
+                      aria-label="Other team name"
+                      aria-required="true"
+                      autoComplete="off"
+                    />
+                    <button
+                      type="button"
+                      className="mt-1.5 text-[11px] font-medium text-[var(--accent)] hover:underline"
+                      onClick={() => {
+                        setFormError(null);
+                        setOpponentUseCustom(false);
+                        setOpponent("");
+                      }}
+                    >
+                      Choose from tracked opponents instead
+                    </button>
+                  </>
+                ) : (
+                  <input
+                    type="text"
+                    value={opponent}
+                    onChange={(e) => {
+                      setFormError(null);
+                      setOpponent(e.target.value);
+                    }}
+                    className="input-tech mt-1 block w-full px-3 py-2"
+                    placeholder="Opponent team name"
+                    aria-label="Other team name"
+                    aria-required="true"
+                  />
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+        </section>
 
-        {!isEditing && (
-          <div>
-            <span className="text-xs font-medium uppercase tracking-wider text-white block">
-              {our_side === "home" ? "Away" : "Home"} lineup
-            </span>
-            <div className="mt-2 space-y-2">
+        {/* Starting pitchers */}
+        <section aria-labelledby="game-form-sp-heading">
+          <h4 id="game-form-sp-heading" className={`${sectionKicker} mb-2`}>
+            Starting pitchers
+          </h4>
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            <label className="min-w-0" htmlFor="game-form-sp-our">
+              <span className={fieldLabel}>
+                Our club{our_team.trim() ? ` (${our_team.trim()})` : ""}
+              </span>
+              <select
+                id="game-form-sp-our"
+                value={spOur}
+                onChange={(e) => setSpOur(e.target.value)}
+                className="input-tech mt-1 block w-full px-3 py-2 disabled:cursor-not-allowed disabled:opacity-45"
+                aria-label="Starting pitcher, our club"
+                disabled={!bothTeamsNamed}
+              >
+                <option value="">—</option>
+                {ourPitchers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                    {p.jersey ? ` #${p.jersey}` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="min-w-0" htmlFor="game-form-sp-opp">
+              <span className={fieldLabel}>
+                Opponent{opponent.trim() ? ` (${opponent.trim()})` : ""}
+              </span>
+              <select
+                id="game-form-sp-opp"
+                value={spOpp}
+                onChange={(e) => setSpOpp(e.target.value)}
+                className="input-tech mt-1 block w-full px-3 py-2 disabled:cursor-not-allowed disabled:opacity-45"
+                aria-label="Starting pitcher, opponent"
+                disabled={!bothTeamsNamed}
+              >
+                <option value="">—</option>
+                {oppPitchers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                    {p.jersey ? ` #${p.jersey}` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label className="mt-3 block min-w-0" htmlFor="game-form-save-pitcher">
+            <span className={fieldLabel}>Save pitcher (our club)</span>
+            <select
+              id="game-form-save-pitcher"
+              value={savePitcherOur}
+              onChange={(e) => setSavePitcherOur(e.target.value)}
+              className="input-tech mt-1 block w-full px-3 py-2 disabled:cursor-not-allowed disabled:opacity-45"
+              aria-label="Save pitcher, our club"
+              disabled={!bothTeamsNamed}
+            >
+              <option value="">—</option>
+              {ourPitchers.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                  {p.jersey ? ` #${p.jersey}` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        </section>
+
+        {/* Lineups */}
+        <section aria-labelledby="game-form-lineup-heading">
+          <h4 id="game-form-lineup-heading" className={`${sectionKicker} mb-2`}>
+            Lineups
+          </h4>
+          <div className="grid items-start gap-4 lg:grid-cols-2">
+            <div className={lineupColumnShell}>
+              <span className={`${fieldLabel} text-[var(--text)]`}>Our club</span>
+              <button
+                type="button"
+                onClick={() => void openOurLineupModal()}
+                disabled={ourModalOpening}
+                className="w-full rounded-lg border border-[var(--accent)]/50 bg-[var(--bg-elevated)] px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm transition hover:border-[var(--accent)] hover:bg-[var(--bg-card)] disabled:opacity-60"
+              >
+                {ourModalOpening
+                  ? "Opening…"
+                  : `Preview / edit ${our_team.trim() || "club"} lineup`}
+              </button>
+              {ourOrderedSlots.length > 0 ? (
+                <span className="block text-sm text-[var(--text-muted)]">{ourOrderedSlots.length} in lineup</span>
+              ) : null}
+              <label className="block min-w-0" htmlFor="game-form-lineup-template">
+                <span className={fieldLabel}>Our lineup template (optional)</span>
+                <select
+                  id="game-form-lineup-template"
+                  value={lineupId}
+                  onChange={(e) => setLineupId(e.target.value)}
+                  className="input-tech mt-1 min-w-0 max-w-full px-3 py-2"
+                  aria-label="Our lineup template"
+                >
+                  {isEditing ? (
+                    <>
+                      <option value="__keep__">{currentLineupName}</option>
+                      {savedLineups.map((l) => (
+                        <option key={l.id} value={l.id}>
+                          {l.name}
+                        </option>
+                      ))}
+                    </>
+                  ) : (
+                    <>
+                      {savedLineups.length === 0 ? (
+                        <option value="">No saved lineups</option>
+                      ) : null}
+                      {savedLineups.map((l) => (
+                        <option key={l.id} value={l.id}>
+                          {l.name}
+                        </option>
+                      ))}
+                    </>
+                  )}
+                </select>
+              </label>
+            </div>
+
+            <div className={lineupColumnShell}>
+              <span className={`${fieldLabel} text-[var(--text)]`}>Opponent</span>
               <button
                 type="button"
                 onClick={() => setOpponentModalOpen(true)}
-                className="w-full rounded-lg border border-[var(--accent)]/50 bg-[var(--bg-elevated)] px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm transition hover:border-[var(--accent)] hover:bg-[var(--bg-card)]"
+                disabled={!bothTeamsNamed}
+                className="w-full rounded-lg border border-[var(--accent)]/50 bg-[var(--bg-elevated)] px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm transition hover:border-[var(--accent)] hover:bg-[var(--bg-card)] disabled:cursor-not-allowed disabled:opacity-45"
               >
-                View {opponent.trim() || (our_side === "home" ? "Away" : "Home")} lineup
+                Preview / edit {opponent.trim() || "opponent"} lineup
               </button>
               {opponentOrderedSlots.length > 0 ? (
                 <span className="block text-sm text-[var(--text-muted)]">
                   {opponentOrderedSlots.length} in lineup
                 </span>
-              ) : (
-                <span className="block text-sm text-[var(--text-muted)]">Not set</span>
-              )}
+              ) : null}
             </div>
           </div>
-        )}
+        </section>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
+      <div className="sticky bottom-0 z-10 mt-1 flex flex-col gap-3 border-t border-[var(--border)]/70 bg-[var(--bg-base)]/92 px-4 py-3 backdrop-blur-sm sm:flex-row sm:flex-wrap sm:items-center supports-[backdrop-filter]:bg-[var(--bg-base)]/80">
         <button
           type="submit"
           disabled={saving}
-          className="font-display rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold tracking-wide text-[var(--bg-base)] disabled:opacity-50"
+          className="font-orbitron order-1 w-full rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold tracking-wide text-[var(--bg-base)] shadow-[0_0_16px_rgba(214,186,72,0.12)] transition hover:opacity-95 disabled:opacity-50 sm:order-none sm:w-auto"
         >
           {saving ? "Saving…" : isEditing ? "Update game" : "Add game"}
         </button>
         {isEditing && (
           <>
-            <button type="button" onClick={onCancel} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--text-muted)]">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="order-2 rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--text-muted)] sm:order-none"
+            >
               Cancel
             </button>
-            <button type="button" onClick={onAddNew} className="text-sm text-[var(--text-muted)] hover:text-[var(--text)]">
+            <button
+              type="button"
+              onClick={onAddNew}
+              className="order-3 text-sm text-[var(--text-muted)] hover:text-[var(--text)] sm:order-none"
+            >
               Add new instead
             </button>
             <button
@@ -756,7 +957,7 @@ function GameForm({
                 setDeleteGameConfirmOpen(true);
               }}
               disabled={deleting}
-              className="ml-auto rounded-lg border border-[var(--danger)] px-4 py-2 text-sm font-medium text-[var(--danger)] hover:bg-[var(--danger-dim)] disabled:opacity-50"
+              className="order-4 rounded-lg border border-[var(--danger)] px-4 py-2 text-sm font-medium text-[var(--danger)] hover:bg-[var(--danger-dim)] disabled:opacity-50 sm:order-none sm:ml-auto"
             >
               {deleting ? "Deleting…" : "Delete game"}
             </button>

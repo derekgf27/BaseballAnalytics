@@ -92,6 +92,11 @@
     page-break-inside: avoid;
   }
 
+  .game-review-linescore-row {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
   .box-score-print-wrap {
     break-inside: avoid;
     page-break-inside: avoid;

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useReactToPrint } from "react-to-print";
 import { deleteGameAction } from "@/app/analyst/games/actions";
@@ -11,6 +11,7 @@ import { BattingPitchMixCard } from "@/components/analyst/BattingPitchMixCard";
 import { plateAppearancesForPitchingSide } from "@/lib/compute/gamePitchingBox";
 import { GameBattingTable, GameBatterPitchDetailStack } from "@/components/analyst/GameBattingTable";
 import { GamePitchingBoxTable } from "@/components/analyst/GamePitchingBoxTable";
+import type { PitcherOfficialTotals } from "@/lib/db/queries";
 import { isDemoId } from "@/lib/db/mockData";
 import { formatDateMMDDYYYY } from "@/lib/format";
 import { analystGameLogHref, analystRecordHref } from "@/lib/analystRoutes";
@@ -24,6 +25,11 @@ const PDF_PREFS_KEY = "gameReviewPdf.v1";
 const coachNotesStorageKey = (gameId: string) => `gameReviewCoachNotes.v1:${gameId}`;
 
 const COACH_NOTES_MAX_LEN = 6000;
+
+function pitcherCreditLabel(player: Player | undefined): string {
+  if (!player) return "—";
+  return player.name;
+}
 
 const GAME_REVIEW_PRINT_PAGE_STYLE = `
   @page { size: auto; margin: 10mm 10mm 16mm 10mm; }
@@ -164,6 +170,8 @@ interface GameReviewClientProps {
   homeLineupPositionByPlayerId?: Record<string, string>;
   baserunningByPlayerId?: Record<string, { sb: number; cs: number }>;
   pitchEvents?: PitchEvent[];
+  /** Official W–L–SV totals from finalized games (same calendar year as this game’s date). */
+  pitcherOfficialTotals: Record<string, PitcherOfficialTotals>;
 }
 
 export function GameReviewClient({
@@ -179,6 +187,7 @@ export function GameReviewClient({
   homeLineupPositionByPlayerId,
   baserunningByPlayerId,
   pitchEvents = [],
+  pitcherOfficialTotals,
 }: GameReviewClientProps) {
   const router = useRouter();
   const printRef = useRef<HTMLDivElement>(null);
@@ -198,6 +207,45 @@ export function GameReviewClient({
   const skipNextCoachNotesPersist = useRef(false);
 
   const ourSide = game.our_side;
+
+  const pitcherCreditLines = useMemo(() => {
+    const byId = new Map(players.map((p) => [p.id, p]));
+    const line = (id: string | null | undefined) =>
+      pitcherCreditLabel(id?.trim() ? byId.get(id.trim()) : undefined);
+    return {
+      w: line(game.winning_pitcher_id),
+      l: line(game.losing_pitcher_id),
+      sv: line(game.save_pitcher_id),
+    };
+  }, [game.winning_pitcher_id, game.losing_pitcher_id, game.save_pitcher_id, players]);
+
+  const pitcherCreditParenNotes = useMemo(() => {
+    const pid = (id: string | null | undefined) => id?.trim() || null;
+    const row = (id: string | null | undefined): PitcherOfficialTotals | null => {
+      const k = pid(id);
+      if (!k) return null;
+      return pitcherOfficialTotals[k] ?? { wins: 0, losses: 0, saves: 0 };
+    };
+    const wl = (id: string | null | undefined): string | null => {
+      if (!pid(id)) return null;
+      const r = row(id);
+      if (!r) return null;
+      return `(${r.wins}-${r.losses})`;
+    };
+    const sv = (id: string | null | undefined): string | null => {
+      if (!pid(id)) return null;
+      const r = row(id);
+      if (!r) return null;
+      const n = r.saves;
+      return n === 1 ? "(1 save)" : `(${n} saves)`;
+    };
+    return {
+      w: wl(game.winning_pitcher_id),
+      l: wl(game.losing_pitcher_id),
+      sv: sv(game.save_pitcher_id),
+    };
+  }, [game.winning_pitcher_id, game.losing_pitcher_id, game.save_pitcher_id, pitcherOfficialTotals]);
+
   const opponentSide: "away" | "home" = ourSide === "away" ? "home" : "away";
 
   useEffect(() => {
@@ -265,9 +313,14 @@ export function GameReviewClient({
   }, [game, pdfExportMode, includeOpponentInPdf]);
 
   const triggerPrint = useReactToPrint({
-    contentRef: printRef,
     documentTitle,
     pageStyle: GAME_REVIEW_PRINT_PAGE_STYLE,
+    preserveAfterPrint: true,
+    onBeforePrint: async () => {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+    },
   });
 
   const runExportPdf = useCallback(() => {
@@ -278,7 +331,9 @@ export function GameReviewClient({
       })
     );
     window.setTimeout(() => {
-      void triggerPrint();
+      const root = printRef.current;
+      if (!root) return;
+      void triggerPrint(() => root);
     }, 0);
   }, [triggerPrint]);
 
@@ -456,11 +511,54 @@ export function GameReviewClient({
         </div>
 
         <section className="game-review-pdf-linescore">
-          <h2 className="font-display mb-2 text-sm font-semibold uppercase tracking-wider text-[var(--text)]">
-            Linescore
-          </h2>
-          <div className="box-score-print-wrap">
-            <BoxScore game={game} pas={pasAll} />
+          <div className="game-review-linescore-row rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-3 shadow-sm sm:p-5">
+            <h2 className="font-display mb-4 text-base font-semibold uppercase tracking-wider text-[var(--text)] sm:text-lg">
+              Game summary
+            </h2>
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-stretch sm:gap-8 lg:gap-10">
+              <div className="min-w-0 w-max max-w-full shrink-0">
+                <div className="box-score-print-wrap">
+                  <BoxScore game={game} pas={pasAll} large bare />
+                </div>
+              </div>
+              <aside className="min-w-0 w-full flex-1 sm:min-w-[16rem]">
+                <div className="flex h-full w-full flex-col justify-center gap-2.5 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3 text-sm sm:gap-3 sm:px-5 sm:py-4 sm:text-base">
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span className="shrink-0 font-display font-bold text-[var(--accent)]">Win</span>
+                    <span className="min-w-0 font-medium whitespace-normal break-words text-[var(--text)]">
+                      {pitcherCreditLines.w}
+                      {pitcherCreditLines.w !== "—" && pitcherCreditParenNotes.w ? (
+                        <span className="ml-1 whitespace-nowrap text-[var(--text-muted)] tabular-nums">
+                          {pitcherCreditParenNotes.w}
+                        </span>
+                      ) : null}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span className="shrink-0 font-display font-bold text-[var(--accent)]">Loss</span>
+                    <span className="min-w-0 font-medium whitespace-normal break-words text-[var(--text)]">
+                      {pitcherCreditLines.l}
+                      {pitcherCreditLines.l !== "—" && pitcherCreditParenNotes.l ? (
+                        <span className="ml-1 whitespace-nowrap text-[var(--text-muted)] tabular-nums">
+                          {pitcherCreditParenNotes.l}
+                        </span>
+                      ) : null}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span className="shrink-0 font-display font-bold text-[var(--accent)]">Save</span>
+                    <span className="min-w-0 font-medium whitespace-normal break-words text-[var(--text)]">
+                      {pitcherCreditLines.sv}
+                      {pitcherCreditLines.sv !== "—" && pitcherCreditParenNotes.sv ? (
+                        <span className="ml-1 whitespace-nowrap text-[var(--text-muted)] tabular-nums">
+                          {pitcherCreditParenNotes.sv}
+                        </span>
+                      ) : null}
+                    </span>
+                  </div>
+                </div>
+              </aside>
+            </div>
           </div>
         </section>
 

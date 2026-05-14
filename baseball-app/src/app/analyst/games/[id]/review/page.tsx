@@ -2,6 +2,7 @@ import {
   getGame,
   getGameLineup,
   getPitchEventsForGame,
+  getPitcherOfficialTotalsForPlayers,
   getPlateAppearancesByGame,
   getPlayersByIds,
   getBaserunningTotalsForGame,
@@ -22,6 +23,11 @@ function buildLineupMaps(slots: GameLineupSlot[]) {
     if (s.position?.trim()) positionByPlayerId[s.player_id] = s.position.trim();
   }
   return { order, positionByPlayerId };
+}
+
+function calendarYearFromGameDate(date: string): number | undefined {
+  const y = Number(date.slice(0, 4));
+  return Number.isFinite(y) && y >= 1900 && y <= 2100 ? y : undefined;
 }
 
 export default async function GameReviewPage({
@@ -45,13 +51,27 @@ export default async function GameReviewPage({
   const lineupPlayerIds = [...awaySlots, ...homeSlots].map((s) => s.player_id).filter(Boolean);
   const batterIds = [...new Set(pas.map((pa) => pa.batter_id).filter(Boolean))];
   const pitcherIds = [...new Set(pas.map((pa) => pa.pitcher_id).filter(Boolean))] as string[];
-  const allPlayerIds = [...new Set([...batterIds, ...lineupPlayerIds, ...pitcherIds])];
+  const creditPitcherIds = [
+    game.winning_pitcher_id,
+    game.losing_pitcher_id,
+    game.save_pitcher_id,
+  ].filter((id): id is string => Boolean(id?.trim()));
+  const allPlayerIds = [...new Set([...batterIds, ...lineupPlayerIds, ...pitcherIds, ...creditPitcherIds])];
   const players = await getPlayersByIds(allPlayerIds);
   const awayLineup = buildLineupMaps(awaySlots);
   const homeLineup = buildLineupMaps(homeSlots);
 
   const pasAway = pas.filter((p) => p.inning_half === "top");
   const pasHome = pas.filter((p) => p.inning_half === "bottom");
+
+  const uniqueCreditPitchers = [...new Set(creditPitcherIds)];
+  const pitcherOfficialTotals = hasSupabase()
+    ? await getPitcherOfficialTotalsForPlayers(uniqueCreditPitchers, {
+        calendarYear: calendarYearFromGameDate(game.date),
+      })
+    : Object.fromEntries(
+        uniqueCreditPitchers.map((id) => [id, { wins: 0, losses: 0, saves: 0 }])
+      );
 
   return (
     <GameReviewClient
@@ -61,6 +81,7 @@ export default async function GameReviewPage({
       pasAway={pasAway}
       pasHome={pasHome}
       players={players}
+      pitcherOfficialTotals={pitcherOfficialTotals}
       awayLineupOrder={awayLineup.order}
       homeLineupOrder={homeLineup.order}
       awayLineupPositionByPlayerId={awayLineup.positionByPlayerId}

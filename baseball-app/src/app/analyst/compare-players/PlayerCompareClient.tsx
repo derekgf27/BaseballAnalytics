@@ -728,7 +728,7 @@ export function PlayerCompareClient({
   const replaceSprayFilter = useCallback(
     (next: SprayResultFilterKey) => {
       const p = new URLSearchParams(searchParams.toString());
-      if (next === "hits") p.delete("sc");
+      if (next === "both") p.delete("sc");
       else p.set("sc", next);
       const qs = p.toString();
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });

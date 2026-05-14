@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { AnalystPlayerSpraySplits } from "@/lib/analystPlayerSpraySplits";
 import type { HitterReportBundle } from "./playerReportTypes";
+import { fmtDecimalNoLeadingZero } from "@/lib/format";
 import type { BattingStats, BattingStatsWithSplits } from "@/lib/types";
 
 const MARGIN = 14;
@@ -20,7 +21,7 @@ function safeFilenamePart(s: string): string {
 }
 
 function fmt3(n: number): string {
-  return Number.isFinite(n) ? n.toFixed(3) : "—";
+  return Number.isFinite(n) ? fmtDecimalNoLeadingZero(n, 3) : "—";
 }
 
 function battingSplitRows(stats: BattingStatsWithSplits | null | undefined): (string | number)[][] {

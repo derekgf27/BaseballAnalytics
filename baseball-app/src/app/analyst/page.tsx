@@ -11,15 +11,14 @@ import {
 } from "@/lib/db/queries";
 import { selectPlayersToWatch } from "@/lib/playersToWatch";
 import { computeTeamRecordFromGames, formatTeamRecordString } from "@/lib/gameRecord";
-import { formatDateMMDDYYYY, formatGameTime, formatPPa } from "@/lib/format";
+import { fmtDecimalNoLeadingZero, fmtPitchDecimal, formatDateMMDDYYYY, formatGameTime, formatPPa } from "@/lib/format";
 import { ScheduleCalendar } from "./ScheduleCalendar";
 import { isClubRosterPlayer, isPitcherPlayer } from "@/lib/opponentUtils";
 import type { Game } from "@/lib/types";
 import { analystGameLogHref } from "@/lib/analystRoutes";
 
 function formatAvgLike(val: number): string {
-  const s = val.toFixed(3);
-  return s.startsWith("0.") ? s.slice(1) : s;
+  return fmtDecimalNoLeadingZero(val, 3);
 }
 
 /** K% / BB% stored as 0–1 in BattingStats */
@@ -31,7 +30,7 @@ function formatPctRate(val: number | undefined): string {
 /** ERA / WHIP / FIP — hide when no innings pitched. */
 function formatEraLike(val: number, hasIp: boolean): string {
   if (!hasIp || Number.isNaN(val)) return "—";
-  return val.toFixed(2);
+  return fmtPitchDecimal(val, 2);
 }
 
 /** Dashboard team-stats rows: even gaps so labels/values line up across wrapped lines. */
@@ -62,9 +61,17 @@ function getOpponentLabel(game: Game): string {
   return game.our_side === "home" ? `vs ${opponent}` : `@ ${opponent}`;
 }
 
-/** First upcoming game (date >= today), or null. Games from getGames() are desc by date, so we sort asc and take first >= today. */
+/** YYYY-MM-DD in the user's local calendar (game `date` fields are calendar dates, not UTC instants). */
+function localCalendarDateKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** First upcoming game (`date` >= today local), or null. */
 function getNextGame(games: Game[]): Game | null {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localCalendarDateKey(new Date());
   const sorted = [...games].sort((a, b) => a.date.localeCompare(b.date));
   return sorted.find((g) => g.date >= today) ?? null;
 }
@@ -89,7 +96,6 @@ export default async function AnalystDashboard() {
       : null;
   const clubPlayers = players.filter(isClubRosterPlayer);
   const nextGame = getNextGame(games);
-  const latestGame = games[0] ?? null;
   const battingStatsPlayerIds = clubPlayers
     .filter((p) => !isPitcherPlayer(p))
     .map((p) => p.id);
@@ -142,27 +148,11 @@ export default async function AnalystDashboard() {
             <span className="mt-1 text-sm font-medium text-[var(--text)]">
               {formatDateMMDDYYYY(nextGame.date)} — {getOpponentLabel(nextGame)}
             </span>
-            <span className="mt-0.5 text-xs text-[var(--text-muted)]">
-              {formatGameTime(nextGame.game_time)}
-            </span>
-            <span className="mt-1 text-xs text-[var(--text-muted)] group-hover:text-[var(--accent)]">
-              Open game log →
-            </span>
-          </Link>
-        ) : latestGame ? (
-          <Link
-            href={analystGameLogHref(latestGame.id)}
-            className="card-tech card-hover group flex flex-col justify-center rounded-lg border border-[var(--accent)]/40 bg-[var(--accent-dim)]/40 p-4 transition hover:border-[var(--accent)]/70 hover:bg-[var(--accent-dim)]/60"
-          >
-            <span className="text-xs font-medium uppercase tracking-wider text-[var(--accent)]">
-              Last game
-            </span>
-            <span className="mt-1 line-clamp-2 text-sm font-medium text-[var(--text)]">
-              {formatDateMMDDYYYY(latestGame.date)} — {getOpponentLabel(latestGame)}
-            </span>
-            <span className="mt-0.5 text-xs text-[var(--text-muted)]">
-              {formatGameTime(latestGame.game_time)}
-            </span>
+            {nextGame.game_time?.trim() ? (
+              <span className="mt-0.5 text-xs text-[var(--text-muted)]">
+                {formatGameTime(nextGame.game_time)}
+              </span>
+            ) : null}
             <span className="mt-1 text-xs text-[var(--text-muted)] group-hover:text-[var(--accent)]">
               Open game log →
             </span>
@@ -173,10 +163,12 @@ export default async function AnalystDashboard() {
             className="card-tech card-hover flex flex-col justify-center rounded-lg border border-dashed border-[var(--border)] p-4 text-center transition hover:border-[var(--accent)]/50 hover:bg-[var(--accent-dim)]/20"
           >
             <span className="text-sm font-medium text-[var(--text-muted)]">
-              Upcoming game
+              Next game
             </span>
             <span className="mt-1 text-xs text-[var(--accent)]">
-              Add a game to start logging →
+              {games.length === 0
+                ? "Add a game to start logging →"
+                : "No upcoming games on the schedule — add or edit games →"}
             </span>
           </Link>
         )}
@@ -330,7 +322,6 @@ export default async function AnalystDashboard() {
         </div>
       </div>
 
-      {/* Players to watch + schedule */}
       <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
         <PlayersToWatchCard rows={watchRows} />
         <div className="min-w-0 w-full lg:max-w-none">

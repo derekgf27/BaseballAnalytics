@@ -46,6 +46,12 @@ export interface Game {
   starting_pitcher_home_id?: string | null;
   /** Player id — starting pitcher for the away team in this game. */
   starting_pitcher_away_id?: string | null;
+  /** Player credited with the save (our club’s closer / reliever); optional official bookkeeping. */
+  save_pitcher_id?: string | null;
+  /** Player credited with the win (Rule 9.17); optional official bookkeeping. */
+  winning_pitcher_id?: string | null;
+  /** Player credited with the loss (Rule 9.17); optional official bookkeeping. */
+  losing_pitcher_id?: string | null;
   /** Staff notes for our starter (pre-game report, e.g. pitch plan, workload). */
   our_sp_plan_notes?: string | null;
   /** Shared coach iPad ↔ analyst pitch-tracker session (`pitches.tracker_group_id`). */
@@ -488,6 +494,21 @@ export interface PitchingStats {
   era: number;
   hr: number;
   so: number;
+  /**
+   * Official wins (`games.winning_pitcher_id`) when stats are built with game metadata.
+   * Omitted on platoon / situation / final-count splits (not meaningful per split).
+   */
+  w?: number;
+  /**
+   * Official losses (`games.losing_pitcher_id`) when stats are built with game metadata.
+   * Omitted on platoon / situation / final-count splits (not meaningful per split).
+   */
+  l?: number;
+  /**
+   * Saves from `games.save_pitcher_id` when stats are built with game metadata.
+   * Omitted on platoon / situation / final-count splits (not meaningful per split).
+   */
+  sv?: number;
   /** Walks: BB + IBB. */
   bb: number;
   hbp: number;

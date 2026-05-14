@@ -20,6 +20,8 @@ export interface BoxScoreLineProps {
   /** Current inning from the record form (drives “not yet played” dashes). */
   liveInning: number;
   liveInningHalf: "top" | "bottom" | null;
+  /** When false, omit the section title (e.g. embedded in a modal). Default true. */
+  showHeading?: boolean;
 }
 
 function Cell({ value }: { value: number | null }) {
@@ -33,7 +35,13 @@ function Cell({ value }: { value: number | null }) {
   return <span className="tabular-nums text-white">{value}</span>;
 }
 
-export function BoxScoreLine({ game, pas, liveInning, liveInningHalf }: BoxScoreLineProps) {
+export function BoxScoreLine({
+  game,
+  pas,
+  liveInning,
+  liveInningHalf,
+  showHeading = true,
+}: BoxScoreLineProps) {
   const effHalf = effectiveInningHalfForLinescore(liveInning, liveInningHalf, pas);
   const nCols = boxScoreInningColumnCount(pas, liveInning);
   const innings = Array.from({ length: nCols }, (_, i) => i + 1);
@@ -51,9 +59,11 @@ export function BoxScoreLine({ game, pas, liveInning, liveInningHalf }: BoxScore
 
   return (
     <div className="min-w-0">
-      <h3 className="font-display mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-        Box score
-      </h3>
+      {showHeading ? (
+        <h3 className="font-display mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          Box score
+        </h3>
+      ) : null}
       <div
         className="overflow-x-auto rounded-lg border border-[var(--border)] bg-[#0a0d12]"
         role="table"

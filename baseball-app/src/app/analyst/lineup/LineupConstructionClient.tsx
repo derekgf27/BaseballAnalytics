@@ -14,7 +14,7 @@ import { useTouchOptimizedDndSensors } from "@/lib/dndTouchSensors";
 import Link from "next/link";
 import type { BattingStats, BattingStatsWithSplits, Player, SavedLineup } from "@/lib/types";
 import { lineupAggregateFromBattingStats } from "@/lib/compute/battingStats";
-import { formatPPa } from "@/lib/format";
+import { fmtDecimalNoLeadingZero, formatPPa } from "@/lib/format";
 import { formatBattingTripleSlash } from "@/lib/format/battingSlash";
 import { comparePlayersByLastNameThenFull } from "@/lib/playerSort";
 
@@ -61,8 +61,7 @@ function formatLineupBattingCell(s: BattingStats | undefined, key: keyof Batting
 
 function formatStat(value: number, format: "avg" | "int"): string {
   if (format === "int") return String(value);
-  const s = value.toFixed(3);
-  return s.startsWith("0.") ? s.slice(1) : s;
+  return fmtDecimalNoLeadingZero(value, 3);
 }
 
 type PoolSortKey = "name" | "obp" | "ops" | "avg";

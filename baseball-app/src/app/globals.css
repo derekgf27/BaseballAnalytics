@@ -554,17 +554,17 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     --bg-elevated: #f1f5f9;
     --bg-input: #f1f5f9;
     --border: #cbd5e1;
-    --text: #0f172a;
-    --neo-text-muted: #475569;
-    --neo-text-faint: #64748b;
-    --text-muted: #475569;
-    --text-faint: #64748b;
+    --text: #000000;
+    --neo-text-muted: #000000;
+    --neo-text-faint: #000000;
+    --text-muted: #000000;
+    --text-faint: #000000;
     --accent: #a16207;
     --accent-dim: rgba(161, 98, 7, 0.12);
-    --danger: #b91c1c;
-    --danger-dim: rgba(185, 28, 28, 0.08);
-    --success: #15803d;
-    --success-dim: rgba(21, 128, 61, 0.08);
+    --danger: #e11d48;
+    --danger-dim: rgba(225, 29, 72, 0.12);
+    --success: #16a34a;
+    --success-dim: rgba(22, 163, 74, 0.14);
     background: #ffffff !important;
     color: var(--text) !important;
     border-color: #cbd5e1 !important;
@@ -573,7 +573,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   }
 
   .reports-print-area [class*="text-white"] {
-    color: #0f172a !important;
+    color: #000000 !important;
   }
 
   .charts-print-hide {
@@ -585,11 +585,11 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     --bg-card: #ffffff;
     --bg-elevated: #f8fafc;
     --border: #cbd5e1;
-    --text: #0f172a;
-    --neo-text-muted: #475569;
-    --neo-text-faint: #64748b;
-    --text-muted: #475569;
-    --text-faint: #64748b;
+    --text: #000000;
+    --neo-text-muted: #000000;
+    --neo-text-faint: #000000;
+    --text-muted: #000000;
+    --text-faint: #000000;
     --neo-accent: #a16207;
     --accent: #a16207;
     background: #ffffff !important;
@@ -604,7 +604,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   }
 
   .charts-page [class*="text-white"] {
-    color: #0f172a !important;
+    color: #000000 !important;
   }
 
   .charts-print-area {
@@ -613,11 +613,11 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     --bg-elevated: #f1f5f9;
     --bg-input: #f1f5f9;
     --border: #cbd5e1;
-    --text: #0f172a;
-    --neo-text-muted: #475569;
-    --neo-text-faint: #64748b;
-    --text-muted: #475569;
-    --text-faint: #64748b;
+    --text: #000000;
+    --neo-text-muted: #000000;
+    --neo-text-faint: #000000;
+    --text-muted: #000000;
+    --text-faint: #000000;
     --neo-accent: #a16207;
     background: #ffffff !important;
     color: var(--text) !important;
@@ -627,6 +627,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   }
 
   .charts-print-area [class*="text-white"] {
-    color: #0f172a !important;
+    color: #000000 !important;
   }
 }

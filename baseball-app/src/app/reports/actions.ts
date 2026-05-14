@@ -26,7 +26,8 @@ import type {
 } from "@/lib/reports/preGameReportTypes";
 import type { PostGameSnapshot } from "@/lib/reports/postGameSnapshot";
 import type { TeamTrendPoint } from "@/lib/reports/teamTrendsSnapshot";
-import type { BattingStats, BattingStatsWithSplits, Game, PlateAppearance, Player } from "@/lib/types";
+import { formatDateMMDDYYYY } from "@/lib/format";
+import type { BattingStats, BattingStatsWithSplits, Game, PitchingStats, PlateAppearance, Player } from "@/lib/types";
 
 const PREGAME_RECENT_GAMES = 5;
 const PREGAME_PRIOR_MEETINGS = 5;
@@ -41,6 +42,16 @@ function sameMatchup(a: Game, b: Game): boolean {
 
 function opponentNameFromGame(g: Game): string {
   return g.our_side === "home" ? g.away_team : g.home_team;
+}
+
+function formatLastStartStatLine(st: PitchingStats): string {
+  let line = `${st.ipDisplay} IP, ${st.h} H, ${st.r} R, ${st.er} ER, ${st.bb} BB, ${st.so} K, ${st.hr} HR`;
+  if (st.hbp > 0) line += `, ${st.hbp} HBP`;
+  if (st.sv != null && st.sv > 0) line += `, ${st.sv} SV`;
+  const whip = Number.isFinite(st.whip) ? st.whip.toFixed(2) : "—";
+  const era = Number.isFinite(st.era) ? st.era.toFixed(2) : "—";
+  const fip = Number.isFinite(st.fip) ? st.fip.toFixed(2) : "—";
+  return `${line} · ${whip} WHIP · ${era} ERA · ${fip} FIP`;
 }
 
 function ourRunsOppRuns(g: Game): { ours: number | null; opp: number | null } {
@@ -214,21 +225,21 @@ export async function fetchPreGameOverview(
   if (ourSpId && !isDemoId(ourSpId)) {
     const p = playersById[ourSpId];
     const po = pitcherStatsById[ourSpId]?.overall;
-    let lastOutingLine: string | null = null;
+    let lastStartVersus: string | null = null;
+    let lastStartStatLine: string | null = null;
     const last = await getPitcherLastOutingBefore(ourSpId, game.date, game.id);
     if (last) {
       const opp = opponentNameFromGame(last.game);
-      const er = last.overall.er;
-      const r = last.overall.r;
-      const ip = last.overall.ipDisplay;
-      lastOutingLine = `${last.game.date} vs ${opp}: ${ip} IP, ${r} R (${er} ER)`;
+      lastStartVersus = `${formatDateMMDDYYYY(last.game.date)} vs ${opp}`;
+      lastStartStatLine = formatLastStartStatLine(last.overall);
     }
     ourStarterSummary = {
       playerId: ourSpId,
       name: p?.name ?? null,
       seasonIpDisplay: po && po.ip > 0 ? po.ipDisplay : null,
       seasonEra: po && po.ip > 0 && Number.isFinite(po.era) ? po.era.toFixed(2) : null,
-      lastOutingLine,
+      lastStartVersus,
+      lastStartStatLine,
       planNotes,
     };
   } else if (planNotes) {
@@ -237,7 +248,8 @@ export async function fetchPreGameOverview(
       name: null,
       seasonIpDisplay: null,
       seasonEra: null,
-      lastOutingLine: null,
+      lastStartVersus: null,
+      lastStartStatLine: null,
       planNotes,
     };
   }
@@ -284,6 +296,9 @@ export async function fetchPreGameOverview(
   const oppStarterVsOur =
     oppSpId && !isDemoId(oppSpId) ? await getPitchingStatsForPitcherVsOurClub(oppSpId) : null;
 
+  const ourStarterSeasonPitching =
+    ourSpId && !isDemoId(ourSpId) ? pitcherStatsById[ourSpId] ?? null : null;
+
   const report = buildPreGameReport({
     game,
     seasonGamesNewestFirst: teamMetricsGames,
@@ -300,6 +315,7 @@ export async function fetchPreGameOverview(
     recentHitterLineByPlayerId,
     playersById,
     teamTrendInsights: teamTrendInsightsFromHub,
+    ourStarterSeasonPitching,
   });
 
   return {
@@ -320,6 +336,8 @@ export async function fetchPreGameOverview(
 export type ReportsGamePayload = {
   game: Game;
   postGame: PostGameSnapshot;
+  /** Full game PAs (both teams) for linescore and print. */
+  pas: PlateAppearance[];
   playersById: Record<string, Player>;
 };
 
@@ -331,14 +349,25 @@ export async function fetchReportsGamePayload(
   if (!game) return { error: "Game not found." };
 
   const pas = await getPlateAppearancesByGame(gameId);
+  const pitchEvents =
+    pas.length > 0 && !isDemoId(gameId) ? await getPitchEventsForPaIds(pas.map((p) => p.id)) : [];
 
   const batterIds = [...new Set(pas.map((p) => p.batter_id).filter(Boolean))];
-  const players = batterIds.length > 0 ? await getPlayersByIds(batterIds) : [];
+  const starterIds = [game.starting_pitcher_home_id, game.starting_pitcher_away_id].filter(
+    (x): x is string => Boolean(x)
+  );
+  const decisionIds = [
+    game.winning_pitcher_id,
+    game.losing_pitcher_id,
+    game.save_pitcher_id,
+  ].filter((x): x is string => Boolean(x));
+  const playerIds = [...new Set([...batterIds, ...starterIds, ...decisionIds])];
+  const players = playerIds.length > 0 ? await getPlayersByIds(playerIds) : [];
   const playersById = Object.fromEntries(players.map((p) => [p.id, p]));
 
-  const postGame = buildPostGameSnapshot(game, pas, new Map(players.map((p) => [p.id, p])));
+  const postGame = buildPostGameSnapshot(game, pas, new Map(players.map((p) => [p.id, p])), pitchEvents);
 
-  return { game, postGame, playersById };
+  return { game, postGame, pas, playersById };
 }
 
 export async function fetchTeamTrendsPayload(maxGames = 10): Promise<{

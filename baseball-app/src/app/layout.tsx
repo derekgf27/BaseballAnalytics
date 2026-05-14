@@ -26,7 +26,7 @@ const oswald = Oswald({
 
 const orbitron = Orbitron({
   subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  weight: ["500", "600", "700", "800", "900"],
   display: "swap",
   variable: "--font-orbitron",
 });

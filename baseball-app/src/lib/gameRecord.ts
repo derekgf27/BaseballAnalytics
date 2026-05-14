@@ -1,4 +1,5 @@
-import type { Game } from "@/lib/types";
+import { isDemoId } from "@/lib/db/mockData";
+import type { Game, PlateAppearance } from "@/lib/types";
 
 /** Both final scores set on the game row — recording UI is locked; use Log for row edits or clear scores to reopen Record. */
 export function isGameFinalized(game: Game): boolean {
@@ -50,4 +51,38 @@ export function formatTeamRecordString(r: TeamGameRecord): string | null {
   if (r.decided === 0) return null;
   if (r.ties > 0) return `${r.wins}-${r.losses}-${r.ties}`;
   return `${r.wins}-${r.losses}`;
+}
+
+/** Defensive team for this PA (top: home pitches; bottom: away pitches). */
+export function defenseSideFromPaInningHalf(pa: Pick<PlateAppearance, "inning_half">): "home" | "away" | null {
+  if (pa.inning_half === "top") return "home";
+  if (pa.inning_half === "bottom") return "away";
+  return null;
+}
+
+/** Which club won from final runs; null if tied. */
+export function winningSideFromRuns(finalHome: number, finalAway: number): "home" | "away" | null {
+  if (finalHome > finalAway) return "home";
+  if (finalAway > finalHome) return "away";
+  return null;
+}
+
+/**
+ * Pitchers who appeared for `side`: listed starter + anyone on the mound in a PA where that side played defense.
+ */
+export function pitcherIdsForTeamSide(
+  game: Pick<Game, "id" | "starting_pitcher_home_id" | "starting_pitcher_away_id">,
+  pas: PlateAppearance[],
+  side: "home" | "away"
+): string[] {
+  const set = new Set<string>();
+  const sp = side === "home" ? game.starting_pitcher_home_id : game.starting_pitcher_away_id;
+  if (sp && !isDemoId(sp)) set.add(sp);
+  for (const pa of pas) {
+    if (pa.game_id !== game.id) continue;
+    const pid = pa.pitcher_id;
+    if (!pid || isDemoId(pid)) continue;
+    if (defenseSideFromPaInningHalf(pa) === side) set.add(pid);
+  }
+  return [...set];
 }

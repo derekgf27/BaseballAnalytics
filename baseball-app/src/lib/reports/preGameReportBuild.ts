@@ -4,15 +4,26 @@
 
 import { battingStatsFromPAs, isRisp } from "@/lib/compute/battingStats";
 import { groupPitchEventsByPaId } from "@/lib/compute/contactProfileFromPas";
+import {
+  buildPitchingRunnerSituationsForPitcher,
+  buildPitchingStatsByFinalCountForSplits,
+  countSavesInGamesForPitcher,
+  pitchingStatsFromPAs,
+  platoonPitchingPasSplits,
+} from "@/lib/compute/pitchingStats";
 import { aggregatePitchTypeBuckets, normalizePitchTypeBucket } from "@/lib/compute/pitchTypeProfileFromPas";
 import { pitchTrackerTypeLabel } from "@/lib/pitchTrackerUi";
+import { fmtDecimalNoLeadingZero } from "@/lib/format";
+import { formatBattingTripleSlash } from "@/lib/format/battingSlash";
 import { matchupLabelUsFirst, opponentTeamName, ourTeamName } from "@/lib/opponentUtils";
 import { pasOurTeamBatting } from "@/lib/reports/postGameSnapshot";
 import type {
+  Bats,
   BattingStatsWithSplits,
   Game,
   PitchEvent,
   PitchingStats,
+  PitchingStatsWithSplits,
   PitchTrackerPitchType,
   PlateAppearance,
   Player,
@@ -58,7 +69,7 @@ export type PreGameHittingSnapshot = {
 export type PreGameSituationalLine = {
   pa: number;
   ops: number;
-  woba: number;
+  obp: number;
   kPct: number;
 };
 
@@ -66,7 +77,7 @@ export type PreGameSituationalHitterRow = {
   name: string;
   pa: number;
   ops: number;
-  woba: number;
+  obp: number;
 };
 
 /** Batted-ball mix on all team PAs in the metrics window (rates sum to ~100% of tagged BIP). */
@@ -95,10 +106,20 @@ export type PreGameReportSections = {
     starterName: string | null;
     seasonIp: string | null;
     seasonEra: string | null;
-    lastOuting: string | null;
+    lastStartVersus: string | null;
+    lastStartStatLine: string | null;
     planNotes: string | null;
     pitchMix: PreGamePitchMixRow[];
     pitchMixFootnote: string | null;
+    /** Same team-games window as hitting trends; used for starter pitching tables. */
+    metricsWindowLabel: string;
+    /** Our listed starter’s pitching line + splits from PAs in `metricsWindowLabel` games. */
+    starterWindowPitching: PitchingStatsWithSplits | null;
+    /** Full season (all logged PAs as pitcher) for print line table. */
+    seasonStarterLine: PitchingStats | null;
+    /** Season platoon lines (L/R batters only; same rules as roster pitching splits). */
+    seasonStarterVsLHB: PitchingStats | null;
+    seasonStarterVsRHB: PitchingStats | null;
   } | null;
   hittingTrends: {
     windowLabel: string;
@@ -132,6 +153,16 @@ export function flatOurTeamBatting(games: Game[], pasAll: PlateAppearance[]): Pl
   return out;
 }
 
+function starterGameIdsInMetricsWindow(gamesNewestFirst: Game[], pitcherId: string): Set<string> {
+  const out = new Set<string>();
+  for (const g of gamesNewestFirst) {
+    if (g.starting_pitcher_home_id === pitcherId || g.starting_pitcher_away_id === pitcherId) {
+      out.add(g.id);
+    }
+  }
+  return out;
+}
+
 function paFinalCountTwoStrikes(pa: PlateAppearance): boolean {
   return (pa.count_strikes ?? 0) >= 2;
 }
@@ -143,7 +174,7 @@ function situationalTeamLine(pas: PlateAppearance[], minPa: number): PreGameSitu
   return {
     pa: st.pa ?? pas.length,
     ops: st.ops,
-    woba: st.woba,
+    obp: st.obp,
     kPct: st.kPct ?? 0,
   };
 }
@@ -165,12 +196,12 @@ function topSituationalHitters(
     byBatter.set(id, list);
   }
   const order = new Map(preferredIds.map((id, i) => [id, i]));
-  const rows: { id: string; pa: number; ops: number; woba: number }[] = [];
+  const rows: { id: string; pa: number; ops: number; obp: number }[] = [];
   for (const [id, list] of byBatter) {
     if (list.length < minPlayerPa) continue;
     const st = battingStatsFromPAs(list);
     if (!st) continue;
-    rows.push({ id, pa: st.pa ?? list.length, ops: st.ops, woba: st.woba });
+    rows.push({ id, pa: st.pa ?? list.length, ops: st.ops, obp: st.obp });
   }
   rows.sort((a, b) => {
     if (b.pa !== a.pa) return b.pa - a.pa;
@@ -180,7 +211,7 @@ function topSituationalHitters(
     name: playersById[r.id]?.name ?? "Unknown",
     pa: r.pa,
     ops: r.ops,
-    woba: r.woba,
+    obp: r.obp,
   }));
 }
 
@@ -225,7 +256,7 @@ function hittingSnapshotFromPas(pas: PlateAppearance[]): PreGameHittingSnapshot 
   const rSt = risp.length > 0 ? battingStatsFromPAs(risp) : null;
   const rispSlash =
     rSt && (rSt.pa ?? 0) >= 1
-      ? `${(rSt.avg ?? 0).toFixed(3)}/${(rSt.obp ?? 0).toFixed(3)}/${(rSt.slg ?? 0).toFixed(3)} (${rSt.pa ?? 0} PA)`
+      ? `${formatBattingTripleSlash(rSt.avg, rSt.obp, rSt.slg)} (${rSt.pa ?? 0} PA)`
       : risp.length >= 1
         ? `${risp.length} PA (insufficient for slash)`
         : "—";
@@ -342,6 +373,8 @@ export function buildPreGameReport(input: {
   recentHitterLineByPlayerId: Record<string, PreGameRecentHitterLine | null>;
   playersById: Record<string, Player>;
   teamTrendInsights: string[];
+  /** Season pitching for our listed starter (`getPitchingStatsForPlayers`; overall + platoon). */
+  ourStarterSeasonPitching: PitchingStatsWithSplits | null;
 }): PreGameReportSections {
   const {
     game,
@@ -359,6 +392,7 @@ export function buildPreGameReport(input: {
     recentHitterLineByPlayerId,
     playersById,
     teamTrendInsights,
+    ourStarterSeasonPitching,
   } = input;
 
   const us = ourTeamName(game);
@@ -383,13 +417,25 @@ export function buildPreGameReport(input: {
     const rispPas = seasonOur.filter((p) => isRisp(p.base_state));
     if (rispPas.length >= MIN_RISP_PA) {
       const r = battingStatsFromPAs(rispPas);
-      if (r && (r.ops ?? 0) < 0.6) hittingInsights.push(`RISP OPS has been thin (${(r.ops ?? 0).toFixed(3)}) over ${rispPas.length} PA in the sample—pressure situations matter today.`);
-      if (r && (r.ops ?? 0) > 0.85) hittingInsights.push(`RISP production has been a strength (OPS ${(r.ops ?? 0).toFixed(3)} on ${rispPas.length} PA).`);
+      if (r && (r.ops ?? 0) < 0.6)
+        hittingInsights.push(
+          `RISP OPS has been thin (${fmtDecimalNoLeadingZero(r.ops ?? 0, 3)}) over ${rispPas.length} PA in the sample—pressure situations matter today.`
+        );
+      if (r && (r.ops ?? 0) > 0.85)
+        hittingInsights.push(
+          `RISP production has been a strength (OPS ${fmtDecimalNoLeadingZero(r.ops ?? 0, 3)} on ${rispPas.length} PA).`
+        );
     }
   }
   if (recentSnap && seasonSnap && recentSnap.pa >= 8) {
-    if (recentSnap.ops - seasonSnap.ops > 0.08) hittingInsights.push(`Last few games: OPS trending up vs the wider sample (${recentSnap.ops.toFixed(3)} vs ${seasonSnap.ops.toFixed(3)}).`);
-    if (seasonSnap.ops - recentSnap.ops > 0.08) hittingInsights.push(`Recent OPS (${recentSnap.ops.toFixed(3)}) is below the wider sample (${seasonSnap.ops.toFixed(3)})—small window, but worth a conversation.`);
+    if (recentSnap.ops - seasonSnap.ops > 0.08)
+      hittingInsights.push(
+        `Last few games: OPS trending up vs the wider sample (${fmtDecimalNoLeadingZero(recentSnap.ops, 3)} vs ${fmtDecimalNoLeadingZero(seasonSnap.ops, 3)}).`
+      );
+    if (seasonSnap.ops - recentSnap.ops > 0.08)
+      hittingInsights.push(
+        `Recent OPS (${fmtDecimalNoLeadingZero(recentSnap.ops, 3)}) is below the wider sample (${fmtDecimalNoLeadingZero(seasonSnap.ops, 3)})—small window, but worth a conversation.`
+      );
   }
   for (const line of teamTrendInsights.slice(0, 2)) {
     if (!hittingInsights.includes(line)) hittingInsights.push(line);
@@ -425,15 +471,62 @@ export function buildPreGameReport(input: {
       ourStarterId != null
         ? pasInSeasonWindow.filter((p) => p.pitcher_id === ourStarterId)
         : [];
+    const eventsByPaId = groupPitchEventsByPaId(pitchEventsOurStarter);
+    const batterBatsById = new Map<string, Bats | null | undefined>();
+    for (const p of Object.values(playersById)) {
+      batterBatsById.set(p.id, p.bats);
+    }
+
+    let starterWindowPitching: PitchingStatsWithSplits | null = null;
+    if (ourStarterId) {
+      const starterGameIds = starterGameIdsInMetricsWindow(seasonGamesNewestFirst, ourStarterId);
+      const windowSv = countSavesInGamesForPitcher(ourStarterId, seasonGamesNewestFirst);
+      const st = pitchingStatsFromPAs(starterPas, starterGameIds, batterBatsById, eventsByPaId, {
+        pitcherIdForRunCharge: ourStarterId,
+        allPasForRunCharges: pasInSeasonWindow,
+        officialSaves: windowSv,
+      });
+      if (st) {
+        st.runnerSituations = buildPitchingRunnerSituationsForPitcher(
+          starterPas,
+          starterGameIds,
+          batterBatsById,
+          eventsByPaId,
+          ourStarterId,
+          pasInSeasonWindow
+        );
+        const { pasL, pasR } = platoonPitchingPasSplits(starterPas, batterBatsById);
+        st.statsByFinalCount = buildPitchingStatsByFinalCountForSplits(
+          starterPas,
+          pasL,
+          pasR,
+          starterGameIds,
+          batterBatsById,
+          eventsByPaId,
+          { pitcherIdForRunCharge: ourStarterId, allPasForRunCharges: pasInSeasonWindow }
+        );
+        starterWindowPitching = st;
+      }
+    }
+
     const { rows, footnote } = pitchMixRows(starterPas, pitchEventsOurStarter);
+    const seasonOv = ourStarterSeasonPitching?.overall ?? null;
+    const seasonLine =
+      seasonOv && ((seasonOv.rates?.pa ?? 0) >= 1 || seasonOv.ip > 0) ? seasonOv : null;
     pitchingPlan = {
       starterName: ourStarterSummary?.name ?? (ourStarterId ? playersById[ourStarterId]?.name ?? null : null),
       seasonIp: ourStarterSummary?.seasonIpDisplay ?? null,
       seasonEra: ourStarterSummary?.seasonEra ?? null,
-      lastOuting: ourStarterSummary?.lastOutingLine ?? null,
+      lastStartVersus: ourStarterSummary?.lastStartVersus ?? null,
+      lastStartStatLine: ourStarterSummary?.lastStartStatLine ?? null,
       planNotes: ourStarterSummary?.planNotes ?? null,
       pitchMix: rows,
       pitchMixFootnote: footnote,
+      metricsWindowLabel: windowLabel,
+      starterWindowPitching,
+      seasonStarterLine: seasonLine,
+      seasonStarterVsLHB: ourStarterSeasonPitching?.vsLHB ?? null,
+      seasonStarterVsRHB: ourStarterSeasonPitching?.vsRHB ?? null,
     };
   }
 
@@ -451,12 +544,12 @@ export function buildPreGameReport(input: {
     if (d >= HOT_COLD_OPS_DELTA) {
       hot.push({
         name,
-        line: `Recent ${rPa} PA: OPS ${recent!.ops.toFixed(3)} vs season ${(season?.ops ?? 0).toFixed(3)} (${sPa} PA)`,
+        line: `Recent ${rPa} PA: OPS ${fmtDecimalNoLeadingZero(recent!.ops, 3)} vs season ${fmtDecimalNoLeadingZero(season?.ops ?? 0, 3)} (${sPa} PA)`,
       });
     } else if (d <= -HOT_COLD_OPS_DELTA) {
       cold.push({
         name,
-        line: `Recent ${rPa} PA: OPS ${recent!.ops.toFixed(3)} vs season ${(season?.ops ?? 0).toFixed(3)} (${sPa} PA)`,
+        line: `Recent ${rPa} PA: OPS ${fmtDecimalNoLeadingZero(recent!.ops, 3)} vs season ${fmtDecimalNoLeadingZero(season?.ops ?? 0, 3)} (${sPa} PA)`,
       });
     }
   }
@@ -491,7 +584,9 @@ export function buildPreGameReport(input: {
     }
     const dangerous = [...oppoRows].sort((a, b) => b.ops - a.ops)[0]!;
     if (dangerous && dangerous.pa >= 8 && dangerous.ops >= 0.8) {
-      opponentObservations.push(`${dangerous.name} leads this lineup group in logged OPS (${dangerous.ops.toFixed(3)}).`);
+      opponentObservations.push(
+        `${dangerous.name} leads this lineup group in logged OPS (${fmtDecimalNoLeadingZero(dangerous.ops, 3)}).`
+      );
     }
   }
   if (opponentLineupIds.length > 0 && opponentObservations.length === 0) {

@@ -3,7 +3,7 @@
  * (e.g. compare players). Mirrors logic in {@link PitchingStatsSheet} without pulling in the table UI.
  */
 
-import { formatPPa } from "@/lib/format";
+import { fmtDecimalNoLeadingZero, fmtPitchDecimal } from "@/lib/format";
 import { REGULATION_INNINGS } from "@/lib/leagueConfig";
 import { PITCHING_STAT_HEADER_TOOLTIPS } from "@/lib/statHeaderTooltips";
 import type { PitchingStats, PitchingStatsWithSplits } from "@/lib/types";
@@ -13,6 +13,9 @@ const RI = REGULATION_INNINGS;
 export type PitchCompareSortKey =
   | "g"
   | "gs"
+  | "w"
+  | "l"
+  | "sv"
   | "ip"
   | "h"
   | "baa"
@@ -51,6 +54,9 @@ export type PitchCompareColumnDef = {
 export const PITCHING_COMPARE_STANDARD_COLUMNS: PitchCompareColumnDef[] = [
   { key: "g", label: "G", format: "int", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.g },
   { key: "gs", label: "GS", format: "int", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.gs },
+  { key: "w", label: "W", format: "int", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.w },
+  { key: "l", label: "L", format: "int", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.l },
+  { key: "sv", label: "SV", format: "int", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.sv },
   { key: "ip", label: "IP", format: "ip", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.ip },
   { key: "h", label: "H", format: "int", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.h },
   { key: "baa", label: "BAA", format: "avgAgainst", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.baa },
@@ -83,6 +89,7 @@ const LOWER_IS_BETTER = new Set<PitchCompareSortKey>([
   "whip",
   "h",
   "r",
+  "ir",
   "irs",
   "er",
   "hr",
@@ -95,23 +102,18 @@ const LOWER_IS_BETTER = new Set<PitchCompareSortKey>([
   "bbPct",
   "pPa",
   "e",
+  "l",
 ]);
 
-const HIGHER_IS_BETTER = new Set<PitchCompareSortKey>(["so", "k7", "kPct"]);
-
-/** Playing time / ambiguous — no winner highlight. */
-const PITCHING_COMPARE_NEUTRAL_KEYS = new Set<PitchCompareSortKey>(["g", "gs", "ip", "ir"]);
+const HIGHER_IS_BETTER = new Set<PitchCompareSortKey>(["so", "w", "sv", "k7", "kPct"]);
 
 function formatEraLike(value: number): string {
-  if (value === 0) return "0.00";
-  return value.toFixed(2);
+  return fmtPitchDecimal(value, 2);
 }
 
 function formatOppBattingAvg(stats: PitchingStats): string {
   if (stats.abAgainst < 1) return "—";
-  const v = stats.h / stats.abAgainst;
-  const s = v.toFixed(3);
-  return s.startsWith("0.") ? s.slice(1) : s;
+  return fmtDecimalNoLeadingZero(stats.h / stats.abAgainst, 3);
 }
 
 export function pitchingCompareStatBorderLeft(key: PitchCompareSortKey): boolean {
@@ -128,6 +130,12 @@ export function getPitchingCompareNumericValue(
       return stats.g;
     case "gs":
       return stats.gs;
+    case "w":
+      return stats.w ?? null;
+    case "l":
+      return stats.l ?? null;
+    case "sv":
+      return stats.sv ?? null;
     case "ip":
       return stats.ip;
     case "h":
@@ -202,7 +210,7 @@ export function formatPitchingCompareCell(col: PitchCompareColumnDef, stats: Pit
   if (col.format === "pPa") {
     const p = stats.rates.pPa;
     if (p == null || Number.isNaN(p)) return "—";
-    return formatPPa(p);
+    return fmtPitchDecimal(p, 2);
   }
   if (col.format === "avgAgainst") {
     return formatOppBattingAvg(stats);
@@ -213,8 +221,8 @@ export function formatPitchingCompareCell(col: PitchCompareColumnDef, stats: Pit
 }
 
 /**
- * Green highlight: better for the pitcher. Ties unstyled; volume cols (G, GS, IP, IR) neutral.
- * Keys not in lower/higher sets default to higher = better (e.g. Strike%, FPS%).
+ * Green highlight: better for the pitcher. Ties unstyled; missing on either side yields no highlight.
+ * Volume stats (G, GS, IP) use higher = more work in the sample; IR uses lower = fewer inherited runners.
  */
 export function pitchingSheetCompareHighlight(
   col: PitchCompareColumnDef,
@@ -222,8 +230,6 @@ export function pitchingSheetCompareHighlight(
   lineB: PitchingStats | undefined,
   side: "a" | "b"
 ): boolean {
-  if (PITCHING_COMPARE_NEUTRAL_KEYS.has(col.key)) return false;
-
   const na = getPitchingCompareNumericValue(lineA, col.key);
   const nb = getPitchingCompareNumericValue(lineB, col.key);
   if (na === null || nb === null) return false;

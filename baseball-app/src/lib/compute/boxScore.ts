@@ -61,17 +61,12 @@ export function isReachedOnError(pa: PlateAppearance): boolean {
 }
 
 /**
- * Count this PA as one team error on the linescore (ROE, or 1B/2B/3B with a charged fielder).
+ * Count this PA as one team error on the linescore (ROE, hit + E, or non-hit PA with a charged fielder, e.g. throw on a steal).
  */
 export function paCountsAsDefensiveErrorForLinescore(pa: PlateAppearance): boolean {
   if (pa.result === "reached_on_error") return true;
-  if (
-    pa.error_fielder_id &&
-    (pa.result === "single" || pa.result === "double" || pa.result === "triple")
-  ) {
-    return true;
-  }
-  return false;
+  if (pa.result === "hr") return false;
+  return Boolean(pa.error_fielder_id);
 }
 
 /**

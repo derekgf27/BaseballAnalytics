@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { PlayerTagList } from "@/components/ui/PlayerTag";
-import { formatPPa } from "@/lib/format";
+import { fmtDecimalNoLeadingZero, formatPPa } from "@/lib/format";
 import { formatHeight } from "@/lib/height";
 import { BATTING_STAT_HEADER_TOOLTIPS } from "@/lib/statHeaderTooltips";
 import { TeamSprayChart } from "@/components/analyst/TeamSprayChart";
@@ -70,13 +70,12 @@ function normalizeHand(hand: string | null | undefined): string | null {
 }
 
 function formatAvg(n: number): string {
-  const s = n.toFixed(3);
-  return s.startsWith("0.") ? s.slice(1) : s;
+  return fmtDecimalNoLeadingZero(n, 3);
 }
 
 export function CoachPlayerDetailClient({ player, battingSplits, spraySplits }: CoachPlayerDetailClientProps) {
   const isSwitch = player.bats?.toUpperCase().startsWith("S") ?? false;
-  const [sprayResultFilter, setSprayResultFilter] = useState<SprayResultFilterKey>("hits");
+  const [sprayResultFilter, setSprayResultFilter] = useState<SprayResultFilterKey>("both");
 
   const filterSprayRows = (
     rows: { hit_direction: HitDirection; result: string }[],

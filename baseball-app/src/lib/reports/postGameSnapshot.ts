@@ -1,12 +1,47 @@
-import { battingStatsFromPAs, isRisp } from "@/lib/compute/battingStats";
+import { battingStatsFromPAs, isRisp, pitchMixFromPlateAppearancesOrPitchLog } from "@/lib/compute/battingStats";
 import { runsOnPaForLinescore } from "@/lib/compute/boxScore";
+import { aggregatePitchMixExtrasFromPas, groupPitchEventsByPaId } from "@/lib/compute/contactProfileFromPas";
+import { aggregatePitchTypeBuckets, type PitchTypeBucketKey } from "@/lib/compute/pitchTypeProfileFromPas";
+import { fmtDecimalNoLeadingZero } from "@/lib/format";
 import { ourTeamName } from "@/lib/opponentUtils";
-import type { Game, PlateAppearance, Player } from "@/lib/types";
+import { pitchTrackerTypeLabel } from "@/lib/pitchTrackerUi";
+import type { Game, PitchEvent, PlateAppearance, Player } from "@/lib/types";
+
+export type PostGameStartersDisplay = {
+  awayName: string | null;
+  homeName: string | null;
+};
+
+/** Win / loss / save from official game fields, names from roster map. */
+export type PostGamePitchDecisionsDisplay = {
+  winName: string | null;
+  lossName: string | null;
+  saveName: string | null;
+};
+
+export type PostGamePitchUsageRow = { label: string; pct: number };
+
+export type PostGameTeamPitchSeen = {
+  strikePct: number | null;
+  whiffPct: number | null;
+  foulPct?: number | null;
+  pitchUsage: PostGamePitchUsageRow[];
+  battedBall: {
+    gbPct: number;
+    ldPct: number;
+    fbPct: number;
+    iffPct: number;
+  } | null;
+};
 
 export type PostGameSnapshot = {
   finalScore: { ours: number; opp: number } | null;
   runsByInning: { inning: number; runs: number }[];
   maxInning: number;
+  /** Present on freshly built snapshots; may be missing on stale client state. */
+  startersDisplay?: PostGameStartersDisplay;
+  pitchDecisionsDisplay?: PostGamePitchDecisionsDisplay;
+  teamPitchSeen?: PostGameTeamPitchSeen | null;
   teamOffense: {
     avg: number;
     obp: number;
@@ -15,6 +50,8 @@ export type PostGameSnapshot = {
     kPct: number;
     bbPct: number;
     rispLine: string;
+    /** Sum of `pitches_seen` when PAs include pitch counts. */
+    pitchesSeenTotal?: number;
   } | null;
   plateDiscipline: {
     fpsPct: number | null;
@@ -42,7 +79,7 @@ export function pasOurTeamBatting(game: Game, pas: PlateAppearance[]): PlateAppe
 
 function fmt3(n: number | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
-  return n.toFixed(3);
+  return fmtDecimalNoLeadingZero(n, 3);
 }
 
 function ordinalInning(n: number): string {
@@ -54,13 +91,74 @@ function ordinalInning(n: number): string {
   return `${n}th`;
 }
 
+function pitchBucketDisplayLabel(key: PitchTypeBucketKey): string {
+  if (key === "other") return "Other";
+  return pitchTrackerTypeLabel(key);
+}
+
+function buildTeamPitchSeen(pasOur: PlateAppearance[], pitchEvents: PitchEvent[]): PostGameTeamPitchSeen | null {
+  if (pasOur.length === 0) return null;
+  const eventsByPaId = groupPitchEventsByPaId(pitchEvents);
+  const mix = pitchMixFromPlateAppearancesOrPitchLog(pasOur, eventsByPaId);
+  const extras = aggregatePitchMixExtrasFromPas(pasOur, eventsByPaId);
+  const whiffPct = extras.swings > 0 ? extras.whiffs / extras.swings : null;
+  const foulPct = extras.pitchesLogged > 0 ? extras.fouls / extras.pitchesLogged : null;
+
+  const { typedTotal, buckets } = aggregatePitchTypeBuckets(pasOur, eventsByPaId);
+  const pitchUsage: PostGamePitchUsageRow[] =
+    typedTotal > 0
+      ? (Object.keys(buckets) as PitchTypeBucketKey[])
+          .map((key) => ({ key, n: buckets[key]!.n }))
+          .filter((x) => x.n > 0)
+          .sort((a, b) => b.n - a.n)
+          .map((x) => ({ label: pitchBucketDisplayLabel(x.key), pct: x.n / typedTotal }))
+      : [];
+
+  const battedBall =
+    extras.bipTyped > 0
+      ? {
+          gbPct: extras.gb / extras.bipTyped,
+          ldPct: extras.ld / extras.bipTyped,
+          fbPct: extras.fb / extras.bipTyped,
+          iffPct: extras.iff / extras.bipTyped,
+        }
+      : null;
+
+  return {
+    strikePct: mix.strikePct,
+    whiffPct,
+    foulPct,
+    pitchUsage,
+    battedBall,
+  };
+}
+
 export function buildPostGameSnapshot(
   game: Game,
   pas: PlateAppearance[],
-  playersById: Map<string, Player>
+  playersById: Map<string, Player>,
+  pitchEvents: PitchEvent[] = []
 ): PostGameSnapshot {
   const ourHalf = game.our_side === "home" ? "bottom" : "top";
   const pasOur = pasOurTeamBatting(game, pas);
+
+  const awaySpId = game.starting_pitcher_away_id ?? null;
+  const homeSpId = game.starting_pitcher_home_id ?? null;
+  const startersDisplay: PostGameStartersDisplay = {
+    awayName: awaySpId ? playersById.get(awaySpId)?.name ?? null : null,
+    homeName: homeSpId ? playersById.get(homeSpId)?.name ?? null : null,
+  };
+
+  const winId = game.winning_pitcher_id ?? null;
+  const lossId = game.losing_pitcher_id ?? null;
+  const saveId = game.save_pitcher_id ?? null;
+  const pitchDecisionsDisplay: PostGamePitchDecisionsDisplay = {
+    winName: winId ? playersById.get(winId)?.name ?? null : null,
+    lossName: lossId ? playersById.get(lossId)?.name ?? null : null,
+    saveName: saveId ? playersById.get(saveId)?.name ?? null : null,
+  };
+
+  const teamPitchSeen = buildTeamPitchSeen(pasOur, pitchEvents);
   const teamStats = battingStatsFromPAs(pasOur);
 
   const pasOurRisp = pasOur.filter((p) => isRisp(p.base_state));
@@ -191,6 +289,9 @@ export function buildPostGameSnapshot(
     finalScore,
     runsByInning,
     maxInning,
+    startersDisplay,
+    pitchDecisionsDisplay,
+    teamPitchSeen,
     teamOffense: teamStats
       ? {
           avg: teamStats.avg,
@@ -200,6 +301,7 @@ export function buildPostGameSnapshot(
           kPct: teamStats.kPct ?? 0,
           bbPct: teamStats.bbPct ?? 0,
           rispLine,
+          pitchesSeenTotal: teamStats.pitchesSeenTotal,
         }
       : null,
     plateDiscipline: { fpsPct, pPa },

@@ -23,6 +23,7 @@ import { formatDateMMDDYYYY } from "@/lib/format";
 import { isGameFinalized } from "@/lib/gameRecord";
 import { analystGameLogHref, analystGameReviewHref } from "@/lib/analystRoutes";
 import { clearPAsForGameAction } from "@/app/analyst/games/actions";
+import { FinalizeGameModal } from "@/app/analyst/record/FinalizeGameModal";
 import { isDemoId } from "@/lib/db/mockData";
 import { plateAppearancesForPitchingSide } from "@/lib/compute/gamePitchingBox";
 import { inferLiveLinescoreFromPAs, totalRunsBottom, totalRunsTop } from "@/lib/compute/boxScore";
@@ -542,7 +543,12 @@ interface RecordPageClientProps {
   finalizeGameScore: (
     gameId: string,
     finalHome: number,
-    finalAway: number
+    finalAway: number,
+    options?: {
+      winningPitcherId?: string | null;
+      savePitcherId?: string | null;
+      losingPitcherId?: string | null;
+    }
   ) => Promise<{ ok: boolean; error?: string }>;
   linkPitchTrackerGroupToPa: (
     trackerGroupId: string,
@@ -553,14 +559,31 @@ interface RecordPageClientProps {
 /** Batter credited with 1B–3B; optional `error_fielder_id` for an extra base (e.g. single + throw E). */
 const RESULT_ALLOWS_OPTIONAL_ERROR_ON_HIT = new Set<PAResult>(["single", "double", "triple"]);
 
-/** This PA includes a charged error (ROE, or 1B–3B with optional fielder). */
+function hasRunnersOnBaseForm(baseState: string): boolean {
+  const b = baseState.padStart(3, "0").slice(0, 3);
+  return b.includes("1");
+}
+
+/** What we persist on `plate_appearances.error_fielder_id` for this draft. */
+function persistPlateAppearanceErrorFielderId(
+  result: PAResult,
+  baseState: string,
+  errorFielderId: string | null
+): string | null {
+  if (!errorFielderId) return null;
+  if (result === "reached_on_error") return errorFielderId;
+  if (RESULT_ALLOWS_OPTIONAL_ERROR_ON_HIT.has(result)) return errorFielderId;
+  if (result === "hr") return null;
+  return hasRunnersOnBaseForm(baseState) ? errorFielderId : null;
+}
+
+/** This PA includes a charged error (ROE, or optional fielder) — show earned vs unearned toggles for scorers. */
 function recordPaShowsUnearnedRunControls(
   result: PAResult | null,
   errorFielderId: string | null
 ): boolean {
-  if (result == null) return false;
   if (result === "reached_on_error") return true;
-  return Boolean(errorFielderId && RESULT_ALLOWS_OPTIONAL_ERROR_ON_HIT.has(result));
+  return Boolean(errorFielderId);
 }
 
 /** Any saved PA in this half-inning already has an error (for “earlier in inning” unearned situations). */
@@ -592,11 +615,6 @@ function computeShowEarnedUnearnedRunControls(
     halfInningHadPriorErrorFromPas(pas, gameId, inning, inningHalf) ||
     recordPaShowsUnearnedRunControls(result, errorFielderId)
   );
-}
-
-function hasRunnersOnBaseForm(baseState: string): boolean {
-  const b = baseState.padStart(3, "0").slice(0, 3);
-  return b.includes("1");
 }
 
 /** Runner player ids currently occupying 1st / 2nd / 3rd per diamond state (not the batter at the plate). */
@@ -887,11 +905,10 @@ export default function RecordPageClient({
   const [substitutionModalOpen, setSubstitutionModalOpen] = useState(false);
   const [pitcherChangeModalOpen, setPitcherChangeModalOpen] = useState(false);
   const [clearingPAs, setClearingPAs] = useState(false);
-  const [destructiveConfirm, setDestructiveConfirm] = useState<
-    null | "undoLastPa" | "clearGamePas" | "finalizeGame"
-  >(null);
+  const [destructiveConfirm, setDestructiveConfirm] = useState<null | "undoLastPa" | "clearGamePas">(null);
   const [destructivePending, setDestructivePending] = useState(false);
   const [finalizingGame, setFinalizingGame] = useState(false);
+  const [finalizeModalOpen, setFinalizeModalOpen] = useState(false);
   const [finalizedScoreSnapshot, setFinalizedScoreSnapshot] = useState<{
     home: number | null;
     away: number | null;
@@ -1103,14 +1120,17 @@ export default function RecordPageClient({
   }, [result, draftPitchLog.length]);
 
   useEffect(() => {
-    if (result == null) {
+    if (result == null) return;
+    if (result === "reached_on_error") return;
+    if (result === "hr") {
       setErrorFielderId(null);
       return;
     }
-    const keepError =
-      result === "reached_on_error" || RESULT_ALLOWS_OPTIONAL_ERROR_ON_HIT.has(result);
-    if (!keepError) setErrorFielderId(null);
-  }, [result]);
+    if (RESULT_ALLOWS_OPTIONAL_ERROR_ON_HIT.has(result)) return;
+    if (!hasRunnersOnBaseForm(baseState)) {
+      setErrorFielderId(null);
+    }
+  }, [result, baseState]);
 
   useEffect(() => {
     if (pitchesSeen === "") return;
@@ -1628,13 +1648,10 @@ export default function RecordPageClient({
     if (errorFielderModalMode === "roe" && result !== "reached_on_error") {
       setErrorFielderModalMode(null);
     }
-    if (
-      errorFielderModalMode === "hit" &&
-      (result == null || !RESULT_ALLOWS_OPTIONAL_ERROR_ON_HIT.has(result))
-    ) {
+    if (errorFielderModalMode === "hit" && (result === "hr" || result === "reached_on_error")) {
       setErrorFielderModalMode(null);
     }
-  }, [result, errorFielderModalMode]);
+  }, [result, baseState, errorFielderModalMode]);
 
   const undoLastDraftPitch = useCallback(() => {
     setDraftPitchLog((prev) => prev.slice(0, -1));
@@ -1708,11 +1725,11 @@ export default function RecordPageClient({
           const inferred = inferLiveLinescoreFromPAs(pas);
           setInning(Math.max(1, Math.min(inferred.liveInning, MAX_SELECTABLE_INNING)));
           setInningHalf(inferred.liveHalf ?? "top");
-          const firstAway = lineups.away.order[0];
-          const firstHome = lineups.home.order[0];
-          const firstBatterId =
-            firstAway ?? firstHome ?? players[0]?.id ?? null;
-          setBatterId(firstBatterId);
+        const firstAway = lineups.away.order[0];
+        const firstHome = lineups.home.order[0];
+        const firstBatterId =
+          firstAway ?? firstHome ?? players[0]?.id ?? null;
+        setBatterId(firstBatterId);
         }
       }
     });
@@ -1750,15 +1767,15 @@ export default function RecordPageClient({
     if (!selectedGameId) return;
     const raw = window.localStorage.getItem(recordFormStorageKey(selectedGameId));
     if (!raw) {
-      setInning(1);
-      setInningHalf("top");
-      setOuts(0);
-      setBaseState("000");
-      setRunnerOn1bId(null);
-      setRunnerOn2bId(null);
-      setRunnerOn3bId(null);
-      setBattingTablePeekOther(false);
-      setPitcherId(null);
+    setInning(1);
+    setInningHalf("top");
+    setOuts(0);
+    setBaseState("000");
+    setRunnerOn1bId(null);
+    setRunnerOn2bId(null);
+    setRunnerOn3bId(null);
+    setBattingTablePeekOther(false);
+    setPitcherId(null);
       setPitcherBySide({ home: null, away: null });
       setRunsScoredPlayerIds([]);
       setUnearnedRunsScoredPlayerIds([]);
@@ -1829,9 +1846,11 @@ export default function RecordPageClient({
       setErrorFielderId(
         typeof saved.errorFielderId === "string" &&
           saved.errorFielderId &&
-          saved.result != null &&
-          (saved.result === "reached_on_error" ||
-            RESULT_ALLOWS_OPTIONAL_ERROR_ON_HIT.has(saved.result))
+          saved.result !== "hr" &&
+          (saved.result == null ||
+            saved.result === "reached_on_error" ||
+            RESULT_ALLOWS_OPTIONAL_ERROR_ON_HIT.has(saved.result) ||
+            hasRunnersOnBaseForm(String(saved.baseState ?? "000")))
           ? saved.errorFielderId
           : null
       );
@@ -2295,9 +2314,9 @@ export default function RecordPageClient({
       sequenceForSave.length > 0 ? summarizePitchSequence(sequenceForSave) : null;
 
     if (seqSummary == null) {
-      if (pitchesSeen === "") {
-        showMsg("error", "Pitches seen is required.");
-        return;
+    if (pitchesSeen === "") {
+      showMsg("error", "Pitches seen is required.");
+      return;
       }
       const pitchCountManual = pitchesSeen as number;
       if (pitchCountManual > 0) {
@@ -2378,14 +2397,19 @@ export default function RecordPageClient({
         return;
       }
     }
-    if (
-      result != null &&
-      RESULT_ALLOWS_OPTIONAL_ERROR_ON_HIT.has(result) &&
-      errorFielderId &&
-      !fieldersForErrorPicker.some((p) => p.id === errorFielderId)
-    ) {
+    if (errorFielderId && !fieldersForErrorPicker.some((p) => p.id === errorFielderId)) {
       showMsg("error", "Chosen fielder is not on the defensive team — pick again.");
       return;
+    }
+    if (result != null && errorFielderId) {
+      const persistedErr = persistPlateAppearanceErrorFielderId(result, baseState, errorFielderId);
+      if (persistedErr === null) {
+        showMsg(
+          "error",
+          "Fielding error doesn’t match this outcome and bases — add a runner on base or clear the error."
+        );
+        return;
+      }
     }
     setSaving(true);
     try {
@@ -2402,7 +2426,7 @@ export default function RecordPageClient({
             selectedGameId,
             inning,
             inningHalf,
-            result,
+        result,
             errorFielderId
           ));
       const unearnedScorerIds = persistUnearned
@@ -2457,10 +2481,7 @@ export default function RecordPageClient({
         pitcher_hand: pitcherHandFromThrows,
         pitcher_id: pitcherId,
         error_fielder_id:
-          (result === "reached_on_error" || RESULT_ALLOWS_OPTIONAL_ERROR_ON_HIT.has(result)) &&
-          errorFielderId
-            ? errorFielderId
-            : null,
+          result != null ? persistPlateAppearanceErrorFielderId(result, baseState, errorFielderId) : null,
         inning_half: inningHalf ?? "top",
         notes: notesCombined,
       };
@@ -2510,11 +2531,10 @@ export default function RecordPageClient({
             : hitDirection === "opposite_field"
               ? "Oppo"
               : null;
+      const persistedErrId =
+        result != null ? persistPlateAppearanceErrorFielderId(result, baseState, errorFielderId) : null;
       const errorFielderName =
-        errorFielderId &&
-        (result === "reached_on_error" || RESULT_ALLOWS_OPTIONAL_ERROR_ON_HIT.has(result))
-          ? players.find((p) => p.id === errorFielderId)?.name ?? "?"
-          : null;
+        persistedErrId != null ? players.find((p) => p.id === persistedErrId)?.name ?? "?" : null;
       setLastSavedPaSummary({
         inning,
         inningHalf: inningHalf ?? null,
@@ -2782,59 +2802,71 @@ export default function RecordPageClient({
     setDestructiveConfirm("undoLastPa");
   };
 
-  const handleFinalizeGame = useCallback(async () => {
-    if (!selectedGameId) return;
-    const currentFinalAway = finalizedScoreSnapshot.away;
-    const currentFinalHome = finalizedScoreSnapshot.home;
-    if (currentFinalAway === liveAwayRuns && currentFinalHome === liveHomeRuns) {
-      showMsg("success", `Already finalized. Final score: ${liveAwayRuns}-${liveHomeRuns}.`);
-      router.push(`/analyst/games/${selectedGameId}/review`);
-      return;
-    }
-    setFinalizingGame(true);
-    try {
-      const result = await finalizeGameScore(selectedGameId, liveHomeRuns, liveAwayRuns);
-      if (!result.ok) {
-        showMsg("error", result.error ?? "Failed to finalize game");
+  const handleFinalizeGame = useCallback(
+    async (
+      winningPitcherId: string | null,
+      savePitcherId: string | null,
+      losingPitcherId: string | null
+    ) => {
+      if (!selectedGameId) return;
+      const currentFinalAway = finalizedScoreSnapshot.away;
+      const currentFinalHome = finalizedScoreSnapshot.home;
+      if (currentFinalAway === liveAwayRuns && currentFinalHome === liveHomeRuns) {
+        showMsg("success", `Already finalized. Final score: ${liveAwayRuns}-${liveHomeRuns}.`);
+        router.push(`/analyst/games/${selectedGameId}/review`);
         return;
       }
-      const wasPreviouslyFinalized = currentFinalAway != null && currentFinalHome != null;
-      setFinalizedScoreSnapshot({ away: liveAwayRuns, home: liveHomeRuns });
-      showMsg(
-        "success",
-        wasPreviouslyFinalized
-          ? `Final score updated. Final: ${liveAwayRuns}-${liveHomeRuns}.`
-          : `Game finalized. Final score: ${liveAwayRuns}-${liveHomeRuns}.`
-      );
-      router.push(`/analyst/games/${selectedGameId}/review`);
-    } finally {
-      setFinalizingGame(false);
-    }
-  }, [
-    router,
-    selectedGameId,
-    finalizedScoreSnapshot.away,
-    finalizedScoreSnapshot.home,
-    finalizeGameScore,
-    liveHomeRuns,
-    liveAwayRuns,
-    showMsg,
-  ]);
+      setFinalizingGame(true);
+      try {
+        const result = await finalizeGameScore(selectedGameId, liveHomeRuns, liveAwayRuns, {
+          winningPitcherId,
+          savePitcherId,
+          losingPitcherId,
+        });
+        if (!result.ok) {
+          showMsg("error", result.error ?? "Failed to finalize game");
+          return;
+        }
+        const wasPreviouslyFinalized = currentFinalAway != null && currentFinalHome != null;
+        setFinalizedScoreSnapshot({ away: liveAwayRuns, home: liveHomeRuns });
+        setFinalizeModalOpen(false);
+        showMsg(
+          "success",
+          wasPreviouslyFinalized
+            ? `Final score updated. Final: ${liveAwayRuns}-${liveHomeRuns}.`
+            : `Game finalized. Final score: ${liveAwayRuns}-${liveHomeRuns}.`
+        );
+        router.push(`/analyst/games/${selectedGameId}/review`);
+      } finally {
+        setFinalizingGame(false);
+      }
+    },
+    [
+      router,
+      selectedGameId,
+      finalizedScoreSnapshot.away,
+      finalizedScoreSnapshot.home,
+      finalizeGameScore,
+      liveHomeRuns,
+      liveAwayRuns,
+      showMsg,
+    ]
+  );
 
   const handleDestructiveConfirm = async () => {
     if (destructiveConfirm === "undoLastPa") {
       if (!lastPA || !selectedGameId) return;
       setDestructivePending(true);
       try {
-        const { ok, error } = await deletePlateAppearance(lastPA.id);
+    const { ok, error } = await deletePlateAppearance(lastPA.id);
         setDestructiveConfirm(null);
-        if (ok) {
-          setLastSavedPaSummary(null);
+    if (ok) {
+      setLastSavedPaSummary(null);
           lastRepeatablePaRef.current = null;
-          showMsg("destructive", "Last PA removed");
-          loadPAs();
-        } else {
-          showMsg("error", error ?? "Failed to remove");
+      showMsg("destructive", "Last PA removed");
+      loadPAs();
+    } else {
+      showMsg("error", error ?? "Failed to remove");
         }
       } finally {
         setDestructivePending(false);
@@ -2860,14 +2892,6 @@ export default function RecordPageClient({
       } finally {
         setDestructivePending(false);
         setClearingPAs(false);
-      }
-    } else if (destructiveConfirm === "finalizeGame") {
-      setDestructivePending(true);
-      setDestructiveConfirm(null);
-      try {
-        await handleFinalizeGame();
-      } finally {
-        setDestructivePending(false);
       }
     }
   };
@@ -3153,6 +3177,7 @@ export default function RecordPageClient({
       const blockNavShortcuts =
         substitutionModalOpen ||
         pitcherChangeModalOpen ||
+        finalizeModalOpen ||
         destructiveConfirm != null ||
         errorFielderModalMode != null;
       if (blockNavShortcuts) return;
@@ -3241,6 +3266,7 @@ export default function RecordPageClient({
     errorFielderId,
     substitutionModalOpen,
     pitcherChangeModalOpen,
+    finalizeModalOpen,
     destructiveConfirm,
     errorFielderModalMode,
     shortcutsHelpOpen,
@@ -3255,7 +3281,7 @@ export default function RecordPageClient({
             className="font-display text-3xl font-semibold tracking-tight text-[var(--text)]"
           >
             Record
-          </h1>
+        </h1>
           {selectedGameId && !recordLocked ? (
             <p className="mt-1 max-w-xl text-xs text-[var(--text-muted)]">
               {isPaDraftDirty
@@ -3347,10 +3373,10 @@ export default function RecordPageClient({
               {!isDemoId(selectedGameId) && (
                 <button
                   type="button"
-                  onClick={() => setDestructiveConfirm("finalizeGame")}
+                  onClick={() => setFinalizeModalOpen(true)}
                   disabled={finalizingGame}
                   className="font-display min-h-[44px] rounded-lg border-2 border-[var(--danger)] bg-[var(--danger)]/15 px-4 py-2 text-sm font-semibold uppercase tracking-wide text-[var(--danger)] transition hover:bg-[var(--danger)]/25 hover:border-[var(--danger)]/80 disabled:cursor-not-allowed disabled:opacity-50"
-                  title="Freeze final score snapshot from currently recorded PAs."
+                  title="Set final score and pitcher credits, then open box score review."
                 >
                   {finalizingGame ? "Finalizing…" : "Finalize game"}
                 </button>
@@ -3538,7 +3564,7 @@ export default function RecordPageClient({
                     </button>
                   ))}
                 </div>
-              </div>
+            </div>
             </div>
             <div className="mt-2 block">
               <span className="font-heading text-xs font-semibold text-[var(--text)]">
@@ -3549,10 +3575,10 @@ export default function RecordPageClient({
                 <div
                   className="input-tech flex min-h-[44px] flex-1 items-center px-3 py-2 text-sm text-[var(--text)]"
                   role="status"
-                  aria-label="Current pitcher"
-                >
+                aria-label="Current pitcher"
+              >
                   <span className="min-w-0 truncate">
-                    {pitchersForDropdown.length === 0 ? (
+                {pitchersForDropdown.length === 0 ? (
                       "No pitchers on roster"
                     ) : !selectedPitcher ? (
                       "—"
@@ -3619,7 +3645,7 @@ export default function RecordPageClient({
                         </option>
                       ))}
                     </select>
-                  </div>
+                    </div>
 
                 <details className="mt-2">
                   <summary className="mb-0.5 cursor-pointer list-none text-[9px] text-[var(--text-muted)] underline decoration-dotted underline-offset-2 marker:content-none [&::-webkit-details-marker]:hidden">
@@ -3651,35 +3677,35 @@ export default function RecordPageClient({
                         ? "3 balls already — choose Walk (BB) as outcome."
                         : "Putaway strike already logged at 2 strikes — Undo to change.";
                     return (
-                      <button
+                    <button
                         key={outcome}
-                        type="button"
+                      type="button"
                         title={countBlocked ? blockHint : title}
                         disabled={countBlocked}
                         onClick={() => appendDraftPitch(outcome)}
                         className={`flex min-h-[40px] w-full touch-manipulation items-center justify-center rounded-md border px-1 py-1.5 text-[11px] font-semibold leading-tight transition disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-[44px] sm:text-xs ${pitchLogOutcomePadClass(outcome)}`}
                       >
                         {label}
-                      </button>
+                    </button>
                     );
                   })}
-                  <button
-                    type="button"
+                    <button
+                      type="button"
                     onClick={undoLastDraftPitch}
                     disabled={draftPitchLog.length === 0}
                     className={`flex min-h-[40px] w-full touch-manipulation items-center justify-center rounded-md border px-1 py-1.5 text-[11px] font-medium leading-tight transition disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-[44px] sm:text-xs ${PITCH_LOG_UNDO_PAD_CLASS}`}
                   >
                     Undo
-                  </button>
-                  <button
-                    type="button"
+                    </button>
+                    <button
+                      type="button"
                     onClick={clearDraftPitchLog}
                     disabled={draftPitchLog.length === 0}
                     className={`flex min-h-[40px] w-full touch-manipulation items-center justify-center rounded-md border px-1 py-1.5 text-[11px] font-medium leading-tight transition disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-[44px] sm:text-xs ${PITCH_LOG_CLEAR_PAD_CLASS}`}
                   >
                     Clear
-                  </button>
-                </div>
+                    </button>
+              </div>
 
                 <div
                   role="status"
@@ -3693,7 +3719,7 @@ export default function RecordPageClient({
                   <div className="mt-1 flex flex-wrap items-end gap-3 sm:gap-4">
                     <label className="flex flex-col gap-0.5 text-[11px] text-[var(--text)]">
                       B
-                      <input
+                  <input
                         type="number"
                         min={0}
                         max={3}
@@ -3718,7 +3744,7 @@ export default function RecordPageClient({
                         }`}
                         aria-label="Balls in count"
                       />
-                    </label>
+                </label>
                     <label className="flex flex-col gap-0.5 text-[11px] text-[var(--text)]">
                       S
                       <input
@@ -3749,9 +3775,9 @@ export default function RecordPageClient({
                     </label>
                     <label className="flex flex-col gap-0.5 text-[11px] text-[var(--text)]">
                       Pitches
-                      <input
-                        type="number"
-                        min={0}
+                  <input
+                    type="number"
+                    min={0}
                         readOnly={pitchTotalsFromLog}
                         value={
                           pitchTotalsFromLog
@@ -3771,8 +3797,8 @@ export default function RecordPageClient({
                         className={`input-tech input-no-spinner h-9 w-12 px-1 text-center text-sm tabular-nums ${
                           pitchTotalsFromLog ? "cursor-default bg-[var(--bg-base)] text-[var(--text)]" : ""
                         }`}
-                        aria-label="Pitches seen"
-                      />
+                    aria-label="Pitches seen"
+                  />
                     </label>
                     <label className="flex flex-col gap-0.5 text-[11px] text-[var(--text)]">
                       Strikes thr.
@@ -3801,12 +3827,12 @@ export default function RecordPageClient({
                         aria-label="Strikes thrown"
                       />
                     </label>
-                  </div>
+                </div>
                   {!pitchTotalsFromLog && showPitchesWarning && (
                     <p className="mt-1.5 text-[11px] leading-snug text-[var(--warning)]">
-                      Pitches seen is required.
-                    </p>
-                  )}
+                    Pitches seen is required.
+                  </p>
+                )}
                   <div className="mt-1.5 flex flex-wrap items-center gap-2">
                     <span
                       className={`text-xs font-semibold ${
@@ -3817,9 +3843,9 @@ export default function RecordPageClient({
                     >
                       First pitch (FPS%): {displayFirstPitchStrikeLabel}
                     </span>
-                  </div>
-                </div>
-                </div>
+              </div>
+            </div>
+            </div>
 
                 <div className="flex min-h-0 min-w-0 flex-col sm:order-1 lg:max-h-[min(calc(100dvh-9rem),42rem)]">
                   <span className="mb-1 shrink-0 font-heading text-xs font-semibold text-[var(--text)]">
@@ -3866,7 +3892,7 @@ export default function RecordPageClient({
                             (row.outcome === "in_play"
                               ? "In play"
                               : row.outcome.replace(/_/g, " "));
-                          return (
+                        return (
                             <li key={row.clientKey}>
                               <div
                                 className="flex flex-wrap items-center gap-x-2 gap-y-0 rounded-md border border-[var(--accent)]/40 bg-[var(--bg-base)]/50 px-2 py-1.5 text-[11px] sm:text-xs"
@@ -3884,7 +3910,7 @@ export default function RecordPageClient({
                                   beforeStrikes={row.strikes_before}
                                   after={{ balls: after.balls, strikes: after.strikes }}
                                 />
-                              </div>
+                        </div>
                             </li>
                           );
                         }
@@ -3895,7 +3921,7 @@ export default function RecordPageClient({
                             outcome: r.outcome,
                           }));
                           const countBeforeThis = replayCountAtEndOfSequence(prefixBeforeCoach);
-                          return (
+                                return (
                             <li key={coachRow.id}>
                               <div
                                 className="flex flex-wrap items-center gap-x-2 gap-y-0 rounded-md border border-dashed border-[var(--accent)]/45 bg-[var(--bg-base)]/40 px-2 py-1.5 text-[11px] sm:text-xs"
@@ -3935,11 +3961,11 @@ export default function RecordPageClient({
                                     : result === "hbp"
                                       ? "+ HBP"
                                       : "+ Pitch"}
-                              </span>
+                            </span>
                               <span className="truncate">
                                 ({RESULT_OPTIONS.find((o) => o.value === result)?.label ?? result})
                               </span>
-                            </div>
+                        </div>
                           </li>
                         )}
                     </ul>
@@ -3951,9 +3977,9 @@ export default function RecordPageClient({
                     <p className="py-1 text-[10px] leading-snug text-[var(--text-muted)]">
                       Log a pitch on the pad or on the iPad — each pitch appears here (type from coach, result from
                       pad). Use <span className="text-[var(--accent)]">iPad link &amp; tools</span> above.
-                    </p>
-                  )}
-                  </div>
+                        </p>
+                      )}
+                    </div>
                 </div>
               </div>
             </section>
@@ -3973,11 +3999,9 @@ export default function RecordPageClient({
               <div className="space-y-6">
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 sm:gap-x-6 sm:gap-y-5">
                     {(["Hits", "Outs", "Reach", "Other"] as const).map((label) => {
-                      const group = RESULT_GROUPS.find((g) => g.label === label);
-                      if (!group) return null;
+                        const group = RESULT_GROUPS.find((g) => g.label === label);
+                        if (!group) return null;
                       const runnerAware = label === "Outs" || label === "Other";
-                      const hitErrorForGrid =
-                        result != null && RESULT_ALLOWS_OPTIONAL_ERROR_ON_HIT.has(result);
                       const gridClass =
                         label === "Hits"
                           ? "grid grid-cols-4 gap-2"
@@ -3988,14 +4012,14 @@ export default function RecordPageClient({
                               : label === "Other"
                                 ? "grid grid-cols-2 gap-2"
                                 : "grid grid-cols-3 gap-2";
-                      return (
+                        return (
                         <div key={group.label} className="min-w-0">
                           <span className="mb-2.5 block font-heading text-xs font-semibold text-[var(--text)]">
                             {group.label}
                           </span>
                           <div className={gridClass}>
-                            {group.options.map((opt) => {
-                              const runnerRequiredBlocked =
+                              {group.options.map((opt) => {
+                                const runnerRequiredBlocked =
                                 runnerAware &&
                                 requiresRunnerOnBaseForResult(opt.value) &&
                                 baseState === "000";
@@ -4023,10 +4047,10 @@ export default function RecordPageClient({
                                 : selected
                                   ? "cursor-pointer border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-base)] hover:opacity-90"
                                   : "cursor-pointer border-[var(--border)] bg-[var(--bg-input)] text-[var(--text)] hover:border-[var(--accent)] hover:bg-[var(--bg-elevated)]";
-                              return (
-                                <button
-                                  key={opt.value}
-                                  type="button"
+                                return (
+                                  <button
+                                    key={opt.value}
+                                    type="button"
                                   title={title || undefined}
                                   disabled={disabled}
                                   onClick={() => {
@@ -4057,39 +4081,38 @@ export default function RecordPageClient({
                                       : spanFull
                                         ? "min-w-[12rem] flex-1 basis-full sm:basis-auto sm:min-w-[14rem]"
                                         : "min-w-[3rem] flex-1 basis-[calc(50%-0.25rem)] sm:basis-auto sm:min-w-[3.25rem]"
-                                  }`}
-                                >
-                                  {opt.label}
-                                </button>
-                              );
-                            })}
+                                    }`}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                );
+                              })}
                             {label === "Other" ? (
                               <button
                                 type="button"
-                                disabled={!hitErrorForGrid}
                                 title={
-                                  hitErrorForGrid
-                                    ? errorFielderId
-                                      ? `Fielding error: ${players.find((p) => p.id === errorFielderId)?.name ?? "?"}. Tap to change.`
-                                      : "Charge a fielding error after a clean hit (batter keeps 1B / 2B / 3B)."
-                                    : "Select 1B, 2B, or 3B first — then tap Error to charge a fielder for an extra base."
+                                  errorFielderId
+                                    ? `Fielding error: ${players.find((p) => p.id === errorFielderId)?.name ?? "?"}. Tap to change.`
+                                    : result == null
+                                      ? "Charge a fielding error on this play (pick outcome if needed; save checks that error matches result and bases)."
+                                      : RESULT_ALLOWS_OPTIONAL_ERROR_ON_HIT.has(result)
+                                        ? "Charge a fielding error after a clean hit (batter keeps 1B / 2B / 3B)."
+                                        : "Charge a fielding error on this play (e.g. errant throw on a steal). Save must match outcome and base state."
                                 }
                                 onClick={() => {
-                                  if (hitErrorForGrid) setErrorFielderModalMode("hit");
+                                  setErrorFielderModalMode("hit");
                                 }}
                                 className={`min-h-[42px] w-full rounded-lg border-2 px-2 py-2 text-center text-xs font-semibold transition duration-200 touch-manipulation sm:min-h-[44px] sm:px-2.5 sm:text-sm ${
-                                  !hitErrorForGrid
-                                    ? "cursor-not-allowed border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-muted)] opacity-60"
-                                    : errorFielderId
-                                      ? "cursor-pointer border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-base)] hover:opacity-90"
-                                      : "cursor-pointer border-[var(--border)] bg-[var(--bg-input)] text-[var(--text)] hover:border-[var(--accent)] hover:bg-[var(--bg-elevated)]"
+                                  errorFielderId
+                                    ? "cursor-pointer border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-base)] hover:opacity-90"
+                                    : "cursor-pointer border-[var(--border)] bg-[var(--bg-input)] text-[var(--text)] hover:border-[var(--accent)] hover:bg-[var(--bg-elevated)]"
                                 }`}
                               >
                                 Error
                               </button>
                             ) : null}
-                          </div>
-                          {label === "Other" && hitErrorForGrid && errorFielderId ? (
+                            </div>
+                          {label === "Other" && errorFielderId ? (
                             <p className="mt-2 text-[10px] leading-snug text-[var(--text-muted)]">
                               E: {players.find((p) => p.id === errorFielderId)?.name ?? "?"}
                               <button
@@ -4101,9 +4124,9 @@ export default function RecordPageClient({
                               </button>
                             </p>
                           ) : null}
-                        </div>
-                      );
-                    })}
+                          </div>
+                        );
+                      })}
                 </div>
 
                 <div className="border-t border-[var(--border)]/55 pt-5">
@@ -4114,34 +4137,34 @@ export default function RecordPageClient({
                       </span>
                       <div className="mt-2 grid grid-cols-2 gap-2.5 sm:gap-3">
                         {[
-                          { value: "pulled" as const, label: "Pulled" },
-                          { value: "up_the_middle" as const, label: "Up the middle" },
+                              { value: "pulled" as const, label: "Pulled" },
+                              { value: "up_the_middle" as const, label: "Up the middle" },
                           { value: "opposite_field" as const, label: "Opposite field", span: true as const },
                         ].map(({ value, label, span }) => (
-                          <button
-                            key={value}
-                            type="button"
+                            <button
+                              key={value}
+                              type="button"
                             onClick={() =>
                               setHitDirection((h) => (h === value ? null : value))
                             }
                             className={`min-h-[42px] w-full cursor-pointer rounded-lg border-2 px-2 py-2 text-center text-xs font-semibold transition duration-200 touch-manipulation sm:min-h-[44px] sm:px-3 sm:text-sm ${
                               span ? "col-span-2" : ""
                             } ${
-                              hitDirection === value
-                                ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-base)] hover:opacity-90"
-                                : "border-[var(--border)] bg-[var(--bg-input)] text-[var(--text)] hover:border-[var(--accent)] hover:bg-[var(--bg-elevated)]"
-                            }`}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                      {showHitDirectionWarning && (
+                                hitDirection === value
+                                  ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-base)] hover:opacity-90"
+                                  : "border-[var(--border)] bg-[var(--bg-input)] text-[var(--text)] hover:border-[var(--accent)] hover:bg-[var(--bg-elevated)]"
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        {showHitDirectionWarning && (
                         <p className="mt-2 text-[11px] leading-snug text-[var(--warning)]">
-                          Choose pull, middle, or oppo for this base hit.
-                        </p>
-                      )}
-                    </div>
+                            Choose pull, middle, or oppo for this base hit.
+                          </p>
+                        )}
+                      </div>
 
                     <div className="min-w-0 flex-1">
                       <span className="block text-[11px] font-semibold uppercase tracking-wide text-white">
@@ -4327,7 +4350,7 @@ export default function RecordPageClient({
                             </p>
                           )}
                         </div>
-                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -4403,8 +4426,8 @@ export default function RecordPageClient({
               className="scroll-mt-4 flex flex-wrap items-center gap-2 max-lg:sticky max-lg:bottom-0 max-lg:z-40 max-lg:-mx-2 max-lg:mt-2 max-lg:border-t max-lg:border-[var(--border)] max-lg:bg-[var(--bg-base)]/92 max-lg:px-2 max-lg:pb-[max(0.75rem,env(safe-area-inset-bottom))] max-lg:pt-3 max-lg:backdrop-blur-md max-lg:shadow-[0_-12px_40px_rgba(0,0,0,0.5)]"
               aria-label="Primary recording actions"
             >
-              <button
-                type="button"
+                <button
+                  type="button"
                 onClick={requestUndoLastPA}
                 disabled={!lastPA || destructivePending}
                 title={
@@ -4413,8 +4436,8 @@ export default function RecordPageClient({
                     : "Save a plate appearance first — then you can undo the last one if you mis-entered it."
                 }
                 className="min-h-[48px] shrink-0 rounded-lg border-2 border-[var(--border)] bg-transparent px-4 py-2 text-sm font-medium text-[var(--text-muted)] transition hover:border-[var(--danger)] hover:text-[var(--danger)] touch-manipulation disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Undo last PA
+                >
+                  Undo last PA
               </button>
               <button
                 type="button"
@@ -4458,7 +4481,7 @@ export default function RecordPageClient({
                 {saving ? "Saving…" : "Save PA"}
               </button>
             </nav>
-              </div>
+            </div>
               <div className="order-2 w-full max-w-[300px] shrink-0 self-start lg:order-1 lg:min-w-[260px]">
                 <section className="rounded border border-[var(--border)] bg-[var(--bg-elevated)] p-1.5">
                   <h4 className="font-display mb-1 text-[10px] font-semibold uppercase tracking-wider text-white">
@@ -4561,10 +4584,10 @@ export default function RecordPageClient({
                     <span className="text-[var(--accent)]">{lastSavedPaSummary.rbi}</span>
                   </span>
                 )}
-                <span className="text-[var(--text)]">
+                  <span className="text-[var(--text)]">
                   <span className="font-semibold">Pitcher:</span>{" "}
                   <span className="text-[var(--accent)]">{lastSavedPaSummary.pitcherName}</span>
-                </span>
+                  </span>
                 <span className="text-[var(--text)]">
                   <span className="font-semibold">Count:</span>{" "}
                   <span className="text-[var(--accent)]">{lastSavedPaSummary.countLabel}</span>
@@ -4654,33 +4677,33 @@ export default function RecordPageClient({
                     />
                   </div>
                 </div>
-              </>
-            ) : (
-              <>
+                  </>
+                ) : (
+                  <>
                 <div className="flex flex-wrap justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setBattingTablePeekOther((v) => !v)}
-                    className="rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1 text-xs font-medium text-[var(--text)] transition hover:border-[var(--accent)] hover:bg-[var(--accent-dim)]/30"
-                  >
+              <button
+                type="button"
+                onClick={() => setBattingTablePeekOther((v) => !v)}
+                className="rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1 text-xs font-medium text-[var(--text)] transition hover:border-[var(--accent)] hover:bg-[var(--accent-dim)]/30"
+              >
                     {recordBoxScoreToggleLabel}
-                  </button>
-                </div>
+              </button>
+            </div>
                 <div className="grid grid-cols-1 items-start gap-4">
                   <div className="min-w-0">
-                    <GameBattingTable
-                      game={selectedGame}
-                      teamName={battingTableTeamName}
-                      pas={pasForBattingTable}
-                      players={players}
-                      lineupOrder={
+            <GameBattingTable
+              game={selectedGame}
+              teamName={battingTableTeamName}
+              pas={pasForBattingTable}
+              players={players}
+              lineupOrder={
                         lineupForBattingTable.order.length > 0
                           ? lineupForBattingTable.order
                           : undefined
-                      }
-                      lineupPositionByPlayerId={lineupForBattingTable.positionByPlayerId}
-                      highlightedBatterId={battingTablePeekOther ? null : batterId}
-                      baserunningByPlayerId={baserunningByPlayerId}
+              }
+              lineupPositionByPlayerId={lineupForBattingTable.positionByPlayerId}
+              highlightedBatterId={battingTablePeekOther ? null : batterId}
+              baserunningByPlayerId={baserunningByPlayerId}
                       showPitchData={false}
                     />
                   </div>
@@ -4700,11 +4723,30 @@ export default function RecordPageClient({
                       currentPitcherId={pitcherId}
                     />
                   </div>
-                </div>
-              </>
-            )}
           </div>
+        </>
+      )}
+    </div>
         </main>
+      )}
+
+      {selectedGameId && selectedGame && (
+        <FinalizeGameModal
+          open={finalizeModalOpen}
+          onClose={() => !finalizingGame && setFinalizeModalOpen(false)}
+          game={selectedGame}
+          pas={allPAsForGame}
+          players={players}
+          finalHomeRuns={liveHomeRuns}
+          finalAwayRuns={liveAwayRuns}
+          initialWinningPitcherId={selectedGame.winning_pitcher_id}
+          initialSavePitcherId={selectedGame.save_pitcher_id}
+          initialLosingPitcherId={selectedGame.losing_pitcher_id}
+          pending={finalizingGame}
+          onConfirm={(winningPitcherId, savePitcherId, losingPitcherId) =>
+            handleFinalizeGame(winningPitcherId, savePitcherId, losingPitcherId)
+          }
+        />
       )}
 
       <ConfirmDeleteDialog
@@ -4713,32 +4755,16 @@ export default function RecordPageClient({
         title={
           destructiveConfirm === "undoLastPa"
             ? "Remove last plate appearance?"
-            : destructiveConfirm === "clearGamePas"
-              ? "Clear all plate appearances for this game?"
-              : "Finalize game score?"
+            : "Clear all plate appearances for this game?"
         }
         description={
           destructiveConfirm === "undoLastPa"
             ? "The most recently recorded plate appearance will be permanently removed."
-            : destructiveConfirm === "clearGamePas"
-              ? "This cannot be undone. All PAs recorded for this game will be deleted."
-              : `This sets the final score snapshot to ${liveAwayRuns}-${liveHomeRuns} and opens the box score review.`
+            : "This cannot be undone. All PAs recorded for this game will be deleted."
         }
-        confirmLabel={
-          destructiveConfirm === "undoLastPa"
-            ? "Remove"
-            : destructiveConfirm === "clearGamePas"
-              ? "Clear plate appearances"
-              : "Finalize game"
-        }
-        pendingLabel={
-          destructiveConfirm === "undoLastPa"
-            ? "Removing…"
-            : destructiveConfirm === "clearGamePas"
-              ? "Clearing…"
-              : "Finalizing…"
-        }
-        pending={destructivePending || finalizingGame}
+        confirmLabel={destructiveConfirm === "undoLastPa" ? "Remove" : "Clear plate appearances"}
+        pendingLabel={destructiveConfirm === "undoLastPa" ? "Removing…" : "Clearing…"}
+        pending={destructivePending}
         onConfirm={handleDestructiveConfirm}
       />
 

@@ -50,14 +50,38 @@ export async function createGameWithLineupAction(
   return createGameWithLineup(game, savedLineupId, opponentSlots, ourSlotsOverride);
 }
 
-/** Replace our club’s lineup for an existing game (e.g. after editing in the lineup modal). */
+/** Replace our club’s lineup for an existing game (e.g. after editing in the lineup modal). Empty slots clear that side. */
 export async function replaceOurGameLineupAction(
   gameId: string,
   slots: { player_id: string; position?: string | null }[]
 ): Promise<boolean> {
   const game = await getGame(gameId);
-  if (!game || !slots.length) return false;
+  if (!game) return false;
   await replaceGameLineup(gameId, game.our_side as LineupSide, slots);
+  return true;
+}
+
+/** Lineup slots on a given ballpark side (before/after `our_side` changes). */
+export async function fetchLineupSlotsForBallparkSideAction(
+  gameId: string,
+  side: LineupSide
+): Promise<{ player_id: string; position: string | null }[]> {
+  const slots = await getGameLineup(gameId);
+  return [...slots]
+    .filter((s) => s.side === side)
+    .sort((a, b) => a.slot - b.slot)
+    .map((s) => ({ player_id: s.player_id, position: s.position ?? null }));
+}
+
+/** Replace the opponent’s lineup for an existing game. Pass an empty array to clear that side. */
+export async function replaceOpponentGameLineupAction(
+  gameId: string,
+  slots: { player_id: string; position?: string | null }[]
+): Promise<boolean> {
+  const game = await getGame(gameId);
+  if (!game) return false;
+  const oppSide: LineupSide = game.our_side === "home" ? "away" : "home";
+  await replaceGameLineup(gameId, oppSide, slots);
   return true;
 }
 
@@ -124,6 +148,21 @@ export async function fetchGameLineupSlots(
 ): Promise<{ slot: number; player_id: string; position?: string | null }[]> {
   const game = await getGame(gameId);
   const slots = (await getGameLineup(gameId)).filter((s) => s.side === game?.our_side);
+  return [...slots].sort((a, b) => a.slot - b.slot).map((s) => ({
+    slot: s.slot,
+    player_id: s.player_id,
+    position: s.position ?? null,
+  }));
+}
+
+/** Opponent (non–our_side) lineup slots for edit form / modal. */
+export async function fetchOpponentGameLineupSlots(
+  gameId: string
+): Promise<{ slot: number; player_id: string; position?: string | null }[]> {
+  const game = await getGame(gameId);
+  if (!game) return [];
+  const oppSide: LineupSide = game.our_side === "home" ? "away" : "home";
+  const slots = (await getGameLineup(gameId)).filter((s) => s.side === oppSide);
   return [...slots].sort((a, b) => a.slot - b.slot).map((s) => ({
     slot: s.slot,
     player_id: s.player_id,

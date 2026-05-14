@@ -1,22 +1,43 @@
 "use client";
 
-import type { PreGameOverviewPayload, PreGameRecentHitterLine } from "@/app/reports/actions";
-import type { PreGameCoachHittingNotes, PreGameContactProfile } from "@/lib/reports/preGameReportBuild";
+import { useMemo, type ReactNode } from "react";
+import type { PreGameOverviewPayload } from "@/app/reports/actions";
+import { FINAL_COUNT_PAIRS, finalCountBucketKey } from "@/lib/compute/battingStatsWithSplitsFromPas";
+import type {
+  PreGameCoachHittingNotes,
+  PreGameContactProfile,
+  PreGamePitchMixRow,
+  PreGameReportSections,
+} from "@/lib/reports/preGameReportBuild";
 import {
   isActiveRosterPlayer,
   isPitcherPlayer,
   matchupLabelUsFirst,
-  opponentTeamName,
-  ourTeamName,
   ourVenueLabel,
 } from "@/lib/opponentUtils";
-import { formatDateMMDDYYYY } from "@/lib/format";
+import { fmtDecimalNoLeadingZero, fmtPitchDecimal, formatDateMMDDYYYY } from "@/lib/format";
 import { formatBattingTripleSlash } from "@/lib/format/battingSlash";
-import type { BattingStats, BattingStatsWithSplits, Bats, Game, Player, Throws } from "@/lib/types";
+import type {
+  BattingStats,
+  BattingStatsWithSplits,
+  Bats,
+  Game,
+  PitchingRateLine,
+  PitchingStats,
+  Player,
+  Throws,
+} from "@/lib/types";
 
 function fmt3(n: number | undefined | null) {
   if (n == null || !Number.isFinite(n)) return "—";
-  return n.toFixed(3);
+  return fmtDecimalNoLeadingZero(n, 3);
+}
+
+/** Opponent batting average allowed: H / AB against (official AB on this pitcher's PAs). */
+function fmtBaaAgainst(o: PitchingStats): string {
+  const ab = o.abAgainst;
+  if (ab == null || ab < 1 || !Number.isFinite(ab)) return "—";
+  return fmt3(o.h / ab);
 }
 
 function batsAbbr(b: Bats | null | undefined): string {
@@ -29,46 +50,6 @@ function batsAbbr(b: Bats | null | undefined): string {
 function pct1(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
   return `${Math.round(n * 100)}%`;
-}
-
-function formatRecentLine(
-  line: PreGameRecentHitterLine | null | undefined,
-  recentGamesCount: number
-): string {
-  if (!line || line.pa < 1) {
-    if (recentGamesCount > 0) return `No PAs in last ${recentGamesCount} team games`;
-    return "—";
-  }
-  return `${line.pa} PA · OPS ${line.ops.toFixed(3)} · K% ${Math.round(line.kPct * 100)}% · BB% ${Math.round(line.bbPct * 100)}%`;
-}
-
-function slashVsOppStarter(
-  splits: BattingStatsWithSplits | undefined,
-  oppThrows: Throws | null | undefined
-): { slash: string; detail: string } {
-  const o = splits?.overall;
-  if (!o) return { slash: "—", detail: "No logged PAs" };
-
-  if (!oppThrows) {
-    return {
-      slash: formatBattingTripleSlash(o.avg, o.obp, o.slg),
-      detail: "Season",
-    };
-  }
-
-  const plat = oppThrows === "L" ? splits.vsL : splits.vsR;
-  const pa = plat?.pa ?? 0;
-  if (plat && pa >= 1) {
-    return {
-      slash: formatBattingTripleSlash(plat.avg, plat.obp, plat.slg),
-      detail: oppThrows === "L" ? `vs LHP (${pa} PA)` : `vs RHP (${pa} PA)`,
-    };
-  }
-
-  return {
-    slash: formatBattingTripleSlash(o.avg, o.obp, o.slg),
-    detail: `Season (${oppThrows === "L" ? "vs LHP" : "vs RHP"} n/a)`,
-  };
 }
 
 function fmtHitsAb(stats: BattingStats | null | undefined): string {
@@ -86,7 +67,7 @@ function fmtKbbFromLine(stats: BattingStats | null | undefined): { kPct: string;
 function fmtPpa(stats: BattingStats | null | undefined): string {
   const ppa = stats?.pPa;
   if (ppa == null || !Number.isFinite(ppa)) return "—";
-  return ppa.toFixed(1);
+  return fmtDecimalNoLeadingZero(ppa, 1);
 }
 
 function rispSlashDisplay(s: string | null | undefined): string {
@@ -127,7 +108,7 @@ function rispCompactRow(player: Player, splits: BattingStatsWithSplits | undefin
   };
 }
 
-/** Row for platoon leaderboard: same sample rules as {@link slashVsOppStarter}; `sortOps` drives sort order. */
+/** Row for platoon leaderboard vs opponent starter handedness; `sortOps` drives sort order. */
 function platoonVsStarterLeaderboardRow(
   player: Player,
   splits: BattingStatsWithSplits | undefined,
@@ -141,6 +122,7 @@ function platoonVsStarterLeaderboardRow(
   pa: number;
   slash: string;
   opsDisplay: string;
+  wobaDisplay: string;
   hAbDisplay: string;
   ppaDisplay: string;
   kPctDisplay: string;
@@ -161,6 +143,7 @@ function platoonVsStarterLeaderboardRow(
       pa: 0,
       slash: "—",
       opsDisplay: "—",
+      wobaDisplay: "—",
       hAbDisplay: "—",
       ppaDisplay: "—",
       kPctDisplay: "—",
@@ -180,6 +163,7 @@ function platoonVsStarterLeaderboardRow(
       pa: o.pa ?? 0,
       slash: formatBattingTripleSlash(o.avg, o.obp, o.slg),
       opsDisplay: fmtSeason(o.ops),
+      wobaDisplay: fmtSeason(o.woba),
       hAbDisplay: fmtHitsAb(o),
       ppaDisplay: fmtPpa(o),
       kPctDisplay: kb.kPct,
@@ -201,6 +185,7 @@ function platoonVsStarterLeaderboardRow(
       pa: platPa,
       slash: formatBattingTripleSlash(plat.avg, plat.obp, plat.slg),
       opsDisplay: fmtSeason(plat.ops),
+      wobaDisplay: fmtSeason(plat.woba),
       hAbDisplay: fmtHitsAb(plat),
       ppaDisplay: fmtPpa(plat),
       kPctDisplay: kb.kPct,
@@ -219,6 +204,7 @@ function platoonVsStarterLeaderboardRow(
     pa: o.pa ?? 0,
     slash: formatBattingTripleSlash(o.avg, o.obp, o.slg),
     opsDisplay: fmtSeason(o.ops),
+    wobaDisplay: fmtSeason(o.woba),
     hAbDisplay: fmtHitsAb(o),
     ppaDisplay: fmtPpa(o),
     kPctDisplay: kb.kPct,
@@ -229,7 +215,7 @@ function platoonVsStarterLeaderboardRow(
 
 function fmtSeason(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
-  return n.toFixed(3);
+  return fmtDecimalNoLeadingZero(n, 3);
 }
 
 function pitcherHandLabel(t: Throws | null | undefined): string {
@@ -242,42 +228,19 @@ function resolvePlayer(id: string, overview: PreGameOverviewPayload | null, rost
   return overview?.playersById[id] ?? roster.find((p) => p.id === id);
 }
 
-function HitterNameCell({
-  name,
-  posLabel,
-  batsLetter,
-  footnote,
-}: {
-  name: string;
-  posLabel: string;
-  batsLetter: string;
-  footnote?: string;
-}) {
-  const meta = [posLabel !== "—" ? posLabel : null, batsLetter !== "—" ? batsLetter : null].filter(Boolean).join(" · ");
-  return (
-    <td className="px-3 py-2.5">
-      <div className="font-medium text-[var(--text)]">{name}</div>
-      {meta ? <div className="text-xs text-[var(--text-muted)]">{meta}</div> : null}
-      {footnote ? (
-        <div className="mt-0.5 text-[10px] leading-snug text-[var(--text-faint)]">{footnote}</div>
-      ) : null}
-    </td>
-  );
-}
-
 function SituationalTeamCard({
   title,
   line,
 }: {
   title: string;
-  line: { pa: number; ops: number; woba: number; kPct: number } | null;
+  line: { pa: number; ops: number; obp: number; kPct: number } | null;
 }) {
   return (
     <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)]/25 p-3">
       <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">{title}</div>
       {line ? (
         <p className="mt-2 font-display text-sm tabular-nums text-[var(--text)]">
-          {line.pa} PA · OPS {fmt3(line.ops)} · wOBA {fmt3(line.woba)} · K% {pct1(line.kPct)}
+          {line.pa} PA · OPS {fmt3(line.ops)} · OBP {fmt3(line.obp)} · K% {pct1(line.kPct)}
         </p>
       ) : (
         <p className="mt-2 text-xs text-[var(--text-muted)]">Sample too small.</p>
@@ -297,7 +260,7 @@ function TwoStrikeTeamPrintTiles({ line }: { line: PreGameCoachHittingNotes["two
   const tiles = [
     { label: "PA", value: String(line.pa) },
     { label: "OPS", value: fmt3(line.ops) },
-    { label: "wOBA", value: fmt3(line.woba) },
+    { label: "OBP", value: fmt3(line.obp) },
     { label: "K%", value: pct1(line.kPct) },
   ] as const;
   return (
@@ -433,7 +396,7 @@ function SituationalHittersTable({
               <th className={`${th} text-left`}>Hitter</th>
               <th className={`${th} text-right tabular-nums`}>PA</th>
               <th className={`${th} text-right font-display tabular-nums`}>OPS</th>
-              <th className={`${th} text-right font-display tabular-nums`}>wOBA</th>
+              <th className={`${th} text-right font-display tabular-nums`}>OBP</th>
             </tr>
           </thead>
           <tbody>
@@ -445,7 +408,7 @@ function SituationalHittersTable({
                 <td className={`${td} font-semibold text-[var(--text)] print:font-bold`}>{r.name}</td>
                 <td className={`${td} text-right tabular-nums`}>{r.pa}</td>
                 <td className={`${td} text-right font-display tabular-nums font-semibold`}>{fmt3(r.ops)}</td>
-                <td className={`${td} text-right font-display tabular-nums`}>{fmt3(r.woba)}</td>
+                <td className={`${td} text-right font-display tabular-nums`}>{fmt3(r.obp)}</td>
               </tr>
             ))}
           </tbody>
@@ -520,35 +483,744 @@ function CoachHittingNotesSection({ notes, forPrint = false }: { notes: PreGameC
   );
 }
 
+const MIN_PITCH_FINAL_COUNT_PRINT = 3;
+
+function PitchMixPrintSection({
+  rows,
+  className,
+}: {
+  rows: PreGamePitchMixRow[];
+  /** Optional wrapper e.g. `mt-6` when shown outside the rates block. */
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <h3 className="font-display text-sm font-semibold text-[var(--text)]">Pitch mix</h3>
+      <div className="mt-2 overflow-x-auto rounded-lg border border-[var(--border)]">
+        <table className="w-full border-collapse text-xs">
+          <thead>
+            <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
+              <th className="px-2 py-1.5 text-left font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                Pitch
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                Usage
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                Strike%
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                Whiff%
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                n
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr className="border-b border-[var(--border)]">
+                <td
+                  className="px-2 py-3 text-center text-[11px] leading-snug text-[var(--text-muted)]"
+                  colSpan={5}
+                >
+                  No pitch-tracked throws in this sample (layout preview).
+                </td>
+              </tr>
+            ) : (
+              rows.map((row) => (
+                <tr key={row.label} className="border-b border-[var(--border)]">
+                  <td className="px-2 py-1.5 text-left font-medium text-[var(--text)]">{row.label}</td>
+                  <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">
+                    {pct1(row.usagePct)}
+                  </td>
+                  <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">
+                    {pct1(row.strikePct)}
+                  </td>
+                  <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">
+                    {pct1(row.whiffPct)}
+                  </td>
+                  <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text-muted)]">
+                    {row.pitches}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function fmtPitchDec(n: number | undefined | null, digits: number): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return fmtPitchDecimal(n, digits);
+}
+
+/** Single stat tile — matches {@link ContactMixStrip} batter styling (border-l + tinted fill + print colors). */
+function PitchingRateTile({
+  label,
+  value,
+  screen,
+  printAccent,
+}: {
+  label: string;
+  value: string;
+  screen: string;
+  printAccent: string;
+}) {
+  return (
+    <div
+      className={`rounded-lg border border-[var(--border)] border-l-4 px-3 py-2.5 text-center ${screen} ${printAccent} print:border-2 print:border-slate-300 print:px-4 print:py-3`}
+    >
+      <div className="text-[10px] font-bold uppercase tracking-wide opacity-90 print:text-xs">{label}</div>
+      <div className="mt-1 font-display text-lg font-bold tabular-nums leading-none print:text-2xl print:mt-1.5">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+/** Prominent color-coded pitcher rates (mirrors team {@link ContactMixStrip} tiles). */
+function PitchingRatesProcessBlock({ rates }: { rates: PitchingRateLine }) {
+  const emerald =
+    "border-l-emerald-600 dark:border-l-emerald-400 bg-emerald-100/85 dark:bg-emerald-950/40 text-emerald-950 dark:text-emerald-100";
+  const emeraldPrint = "print:border-l-emerald-700 print:bg-emerald-50 print:text-slate-900";
+  const amber =
+    "border-l-amber-600 dark:border-l-amber-400 bg-amber-100/85 dark:bg-amber-950/40 text-amber-950 dark:text-amber-100";
+  const amberPrint = "print:border-l-amber-700 print:bg-amber-50 print:text-slate-900";
+  const sky =
+    "border-l-sky-600 dark:border-l-sky-400 bg-sky-100/85 dark:bg-sky-950/40 text-sky-950 dark:text-sky-100";
+  const skyPrint = "print:border-l-sky-700 print:bg-sky-50 print:text-slate-900";
+  const violet =
+    "border-l-violet-600 dark:border-l-violet-400 bg-violet-100/85 dark:bg-violet-950/40 text-violet-950 dark:text-violet-100";
+  const violetPrint = "print:border-l-violet-700 print:bg-violet-50 print:text-slate-900";
+
+  return (
+    <div
+      className="rounded-xl border-2 border-[var(--accent)]/40 bg-[var(--accent-dim)]/20 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] print:border-[var(--accent)] print:bg-gradient-to-b print:from-amber-50/80 print:to-white print:p-6 print:shadow-none"
+      style={{ breakInside: "avoid" as const }}
+    >
+      <h3 className="font-display text-base font-bold uppercase tracking-[0.14em] text-[var(--accent)] print:text-xl">
+        Rates and process
+      </h3>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-2 print:grid-cols-2 print:gap-5">
+        <div
+          className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)]/35 p-4 print:border-2 print:bg-white print:p-5"
+          style={{ breakInside: "avoid" as const }}
+        >
+          <h4 className="border-b border-[var(--border)] pb-2 font-display text-xs font-bold uppercase tracking-[0.12em] text-[var(--accent)] print:text-sm">
+            Core
+          </h4>
+          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-3 print:mt-4 print:gap-y-5">
+            <div>
+              <dt className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] print:text-xs">K%</dt>
+              <dd className="mt-0.5 font-display text-xl font-bold tabular-nums text-[var(--text)] print:text-2xl">{pct1(rates.kPct)}</dd>
+            </div>
+            <div>
+              <dt className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] print:text-xs">BB%</dt>
+              <dd className="mt-0.5 font-display text-xl font-bold tabular-nums text-[var(--text)] print:text-2xl">{pct1(rates.bbPct)}</dd>
+            </div>
+            <div>
+              <dt className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] print:text-xs">K/9</dt>
+              <dd className="mt-0.5 font-display text-xl font-bold tabular-nums text-[var(--text)] print:text-2xl">{fmtPitchDec(rates.k7, 1)}</dd>
+            </div>
+            <div>
+              <dt className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] print:text-xs">BB/9</dt>
+              <dd className="mt-0.5 font-display text-xl font-bold tabular-nums text-[var(--text)] print:text-2xl">{fmtPitchDec(rates.bb7, 1)}</dd>
+            </div>
+            <div>
+              <dt className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] print:text-xs">H/9</dt>
+              <dd className="mt-0.5 font-display text-xl font-bold tabular-nums text-[var(--text)] print:text-2xl">{fmtPitchDec(rates.h7, 1)}</dd>
+            </div>
+            <div>
+              <dt className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] print:text-xs">HR/9</dt>
+              <dd className="mt-0.5 font-display text-xl font-bold tabular-nums text-[var(--text)] print:text-2xl">{fmtPitchDec(rates.hr7, 1)}</dd>
+            </div>
+          </dl>
+        </div>
+
+        <div
+          className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)]/35 p-4 print:border-2 print:bg-white print:p-5"
+          style={{ breakInside: "avoid" as const }}
+        >
+          <h4 className="border-b border-[var(--border)] pb-2 font-display text-xs font-bold uppercase tracking-[0.12em] text-[var(--accent)] print:text-sm">
+            Pitch log
+          </h4>
+          <table className="mt-3 w-full table-fixed border-collapse text-sm print:mt-4 print:text-base">
+            <colgroup>
+              <col className="w-[52%]" />
+              <col className="w-[48%]" />
+            </colgroup>
+            <tbody className="divide-y divide-[var(--border)]/80">
+              <tr>
+                <th
+                  scope="row"
+                  className="py-2.5 pr-3 text-left font-normal tabular-nums text-[var(--text-muted)] print:py-3"
+                >
+                  P/PA
+                </th>
+                <td className="py-2.5 text-right font-display font-semibold tabular-nums text-[var(--text)] print:py-3">
+                  {rates.pPa != null && Number.isFinite(rates.pPa) ? fmtDecimalNoLeadingZero(rates.pPa, 1) : "—"}
+                </td>
+              </tr>
+              <tr>
+                <th
+                  scope="row"
+                  className="py-2.5 pr-3 text-left font-normal tabular-nums text-[var(--text-muted)] print:py-3"
+                >
+                  Strike%
+                </th>
+                <td className="py-2.5 text-right font-display font-semibold tabular-nums text-[var(--text)] print:py-3">
+                  {rates.strikePct != null ? pct1(rates.strikePct) : "—"}
+                </td>
+              </tr>
+              <tr>
+                <th
+                  scope="row"
+                  className="py-2.5 pr-3 text-left font-normal tabular-nums text-[var(--text-muted)] print:py-3"
+                >
+                  FPS%
+                </th>
+                <td className="py-2.5 text-right font-display font-semibold tabular-nums text-[var(--text)] print:py-3">
+                  {rates.fpsPct != null ? pct1(rates.fpsPct) : "—"}
+                </td>
+              </tr>
+              <tr>
+                <th
+                  scope="row"
+                  className="py-2.5 pr-3 text-left font-normal tabular-nums text-[var(--text-muted)] print:py-3"
+                >
+                  Swing%
+                </th>
+                <td className="py-2.5 text-right font-display font-semibold tabular-nums text-[var(--text)] print:py-3">
+                  {rates.swingPct != null ? pct1(rates.swingPct) : "—"}
+                </td>
+              </tr>
+              <tr>
+                <th
+                  scope="row"
+                  className="py-2.5 pr-3 text-left font-normal tabular-nums text-[var(--text-muted)] print:py-3"
+                >
+                  Whiff%
+                </th>
+                <td className="py-2.5 text-right font-display font-semibold tabular-nums text-[var(--text)] print:py-3">
+                  {rates.whiffPct != null ? pct1(rates.whiffPct) : "—"}
+                </td>
+              </tr>
+              <tr>
+                <th
+                  scope="row"
+                  className="py-2.5 pr-3 text-left font-normal tabular-nums text-[var(--text-muted)] print:py-3"
+                >
+                  Foul%
+                </th>
+                <td className="py-2.5 text-right font-display font-semibold tabular-nums text-[var(--text)] print:py-3">
+                  {rates.foulPct != null ? pct1(rates.foulPct) : "—"}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {rates.gbPct != null || rates.ldPct != null || rates.fbPct != null || rates.iffPct != null ? (
+        <>
+          <p className="mt-5 text-[11px] font-bold uppercase tracking-wide text-[var(--accent)] print:text-sm print:mb-2">
+            BIP mix (tagged)
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4 print:gap-3">
+            <PitchingRateTile
+              label="GB%"
+              value={rates.gbPct != null ? pct1(rates.gbPct) : "—"}
+              screen={emerald}
+              printAccent={emeraldPrint}
+            />
+            <PitchingRateTile
+              label="LD%"
+              value={rates.ldPct != null ? pct1(rates.ldPct) : "—"}
+              screen={amber}
+              printAccent={amberPrint}
+            />
+            <PitchingRateTile
+              label="FB%"
+              value={rates.fbPct != null ? pct1(rates.fbPct) : "—"}
+              screen={sky}
+              printAccent={skyPrint}
+            />
+            <PitchingRateTile
+              label="IFFB%"
+              value={rates.iffPct != null ? pct1(rates.iffPct) : "—"}
+              screen={violet}
+              printAccent={violetPrint}
+            />
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+/** G / GS / IP / … / FIP line — used for season totals and window sample on the print pitcher page. */
+function PitchingLineSampleTable({
+  title,
+  o,
+  description,
+}: {
+  title: string;
+  o: PitchingStats;
+  description?: string | null;
+}) {
+  return (
+    <div>
+      <h3 className="font-display text-sm font-semibold text-[var(--text)]">{title}</h3>
+      {description ? (
+        <p className="mt-1 text-[10px] text-[var(--text-muted)] print:text-xs">{description}</p>
+      ) : null}
+      <div className="mt-2 overflow-x-auto rounded-lg border border-[var(--border)]">
+        <table className="w-full border-collapse text-xs">
+          <thead>
+            <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                G
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                GS
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                IP
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                H
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                BAA
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                R
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                ER
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                BB
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                SO
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                SV
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                HR
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                HBP
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                WHIP
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                ERA
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                FIP
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="border-b border-[var(--border)]">
+              <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">{o.g}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">{o.gs}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums font-semibold text-[var(--text)]">
+                {o.ipDisplay}
+              </td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">{o.h}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">{fmtBaaAgainst(o)}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">{o.r}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">{o.er}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">{o.bb}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">{o.so}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">
+                {o.sv != null ? o.sv : "—"}
+              </td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">{o.hr}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">{o.hbp}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">{fmtPitchDec(o.whip, 2)}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">{fmtPitchDec(o.era, 2)}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">{fmtPitchDec(o.fip, 2)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/** Shared columns for platoon splits + runner-situation pitching rows (PA through pitch-log rates). */
+const PITCHING_EXT_SPLIT_NUM_TD =
+  "whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]";
+
+function pitchingExtendedSplitStatCells(line: PitchingStats | null | undefined): ReactNode {
+  if (!line || (line.rates?.pa ?? 0) < 1) {
+    return (
+      <td className="px-2 py-1.5 text-right font-display tabular-nums text-[var(--text-muted)]" colSpan={18}>
+        —
+      </td>
+    );
+  }
+  const r = line.rates;
+  const num = PITCHING_EXT_SPLIT_NUM_TD;
+  return (
+    <>
+      <td className={num}>{r.pa}</td>
+      <td className={num}>{line.h}</td>
+      <td className={num}>{fmtBaaAgainst(line)}</td>
+      <td className={num}>{line.r}</td>
+      <td className={num}>{line.er}</td>
+      <td className={num}>{line.bb}</td>
+      <td className={num}>{line.so}</td>
+      <td className={num}>{line.sv != null ? line.sv : "—"}</td>
+      <td className={num}>{fmtPitchDec(line.whip, 2)}</td>
+      <td className={num}>{fmtPitchDec(line.era, 2)}</td>
+      <td className={num}>{pct1(r.kPct)}</td>
+      <td className={num}>{pct1(r.bbPct)}</td>
+      <td className={num}>
+        {r.pPa != null && Number.isFinite(r.pPa) ? fmtDecimalNoLeadingZero(r.pPa, 1) : "—"}
+      </td>
+      <td className={num}>{r.strikePct != null ? pct1(r.strikePct) : "—"}</td>
+      <td className={num}>{r.fpsPct != null ? pct1(r.fpsPct) : "—"}</td>
+      <td className={num}>{r.swingPct != null ? pct1(r.swingPct) : "—"}</td>
+      <td className={num}>{r.whiffPct != null ? pct1(r.whiffPct) : "—"}</td>
+      <td className={num}>{r.foulPct != null ? pct1(r.foulPct) : "—"}</td>
+    </>
+  );
+}
+
+function pitchingPlatoonRow(label: string, line: PitchingStats | null | undefined) {
+  return (
+    <tr key={label} className="border-b border-[var(--border)]">
+      <td className="px-2 py-1.5 text-left font-medium text-[var(--text)]">{label}</td>
+      {pitchingExtendedSplitStatCells(line)}
+    </tr>
+  );
+}
+
+function PitchingPlatoonSplitsTable({
+  title,
+  description,
+  rows,
+}: {
+  title: string;
+  description?: string | null;
+  rows: { label: string; line: PitchingStats | null | undefined }[];
+}) {
+  return (
+    <div>
+      <h3 className="font-display text-sm font-semibold text-[var(--text)]">{title}</h3>
+      {description ? (
+        <p className="mt-1 text-[10px] text-[var(--text-muted)] print:text-xs">{description}</p>
+      ) : null}
+      <div className="mt-2 overflow-x-auto rounded-lg border border-[var(--border)]">
+        <table className="w-full border-collapse text-xs">
+          <thead>
+            <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
+              <th className="px-2 py-1.5 text-left font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                Split
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                PA
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                H
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                BAA
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                R
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                ER
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                BB
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                SO
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                SV
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                WHIP
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                ERA
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                K%
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                BB%
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                P/PA
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                Strike%
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                FPS%
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                Swing%
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                Whiff%
+              </th>
+              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                Foul%
+              </th>
+            </tr>
+          </thead>
+          <tbody>{rows.map(({ label, line }) => pitchingPlatoonRow(label, line))}</tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function PreGamePitchingPlanPrintSection({
+  pitchingPlan,
+}: {
+  pitchingPlan: NonNullable<PreGameReportSections["pitchingPlan"]>;
+}) {
+  const st = pitchingPlan.starterWindowPitching;
+  const o = st?.overall;
+  const showSeasonHandedness =
+    pitchingPlan.seasonStarterLine != null ||
+    (pitchingPlan.seasonStarterVsLHB?.rates?.pa ?? 0) >= 1 ||
+    (pitchingPlan.seasonStarterVsRHB?.rates?.pa ?? 0) >= 1;
+
+  return (
+    <section className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6 print:break-before-page">
+      <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--text)] print:text-xl">
+        {pitchingPlan.starterName ?? "—"}
+      </h2>
+      {pitchingPlan.lastStartVersus || pitchingPlan.lastStartStatLine ? (
+        <div className="mt-4 space-y-2">
+          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent)] print:text-xs">
+            Last start — most recent game pitched
+          </p>
+          {pitchingPlan.lastStartVersus ? (
+            <p className="text-base font-semibold leading-snug text-[var(--text)] sm:text-lg print:text-lg print:leading-snug">
+              {pitchingPlan.lastStartVersus}
+            </p>
+          ) : null}
+          {pitchingPlan.lastStartStatLine ? (
+            <p className="font-display text-lg font-bold tabular-nums leading-snug text-[var(--text)] sm:text-xl print:text-2xl print:leading-relaxed">
+              {pitchingPlan.lastStartStatLine}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {pitchingPlan.planNotes ? (
+        <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)]/40 px-3 py-2.5 print:border-2">
+          <p className="text-sm leading-relaxed text-[var(--text)]">{pitchingPlan.planNotes}</p>
+        </div>
+      ) : null}
+
+      {o && (o.rates?.pa ?? 0) >= 1 ? (
+        <div className="mt-5 space-y-4">
+          <PitchingRatesProcessBlock rates={o.rates} />
+
+          {pitchingPlan.seasonStarterLine ? (
+            <PitchingLineSampleTable
+              title="Season"
+              o={pitchingPlan.seasonStarterLine}
+              description="Full season totals"
+            />
+          ) : null}
+
+          {showSeasonHandedness ? (
+            <PitchingPlatoonSplitsTable
+              title="Season vs LHB / RHB"
+              description="Full season; L/R batters only (switch hitters excluded from platoon buckets)."
+              rows={[
+                { label: "vs LHB", line: pitchingPlan.seasonStarterVsLHB },
+                { label: "vs RHB", line: pitchingPlan.seasonStarterVsRHB },
+              ]}
+            />
+          ) : null}
+
+          {st?.runnerSituations ? (
+            <div>
+              <h3 className="font-display text-sm font-semibold text-[var(--text)]">Runner situation</h3>
+              <div className="mt-2 overflow-x-auto rounded-lg border border-[var(--border)]">
+                <table className="w-full border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
+                      <th className="px-2 py-1.5 text-left font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                        Situation
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                        PA
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                        H
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                        BAA
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                        R
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                        ER
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                        BB
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                        SO
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                        SV
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                        WHIP
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                        ERA
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                        K%
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                        BB%
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                        P/PA
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                        Strike%
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                        FPS%
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                        Swing%
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                        Whiff%
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                        Foul%
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(
+                      [
+                        ["Bases empty", st.runnerSituations.basesEmpty.combined],
+                        ["Runners on", st.runnerSituations.runnersOn.combined],
+                        ["RISP", st.runnerSituations.risp.combined],
+                        ["Bases loaded", st.runnerSituations.basesLoaded.combined],
+                      ] as const
+                    ).map(([label, line]) => (
+                      <tr key={label} className="border-b border-[var(--border)]">
+                        <td className="px-2 py-1.5 text-left font-medium text-[var(--text)]">{label}</td>
+                        {pitchingExtendedSplitStatCells(line)}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+
+          {st?.statsByFinalCount?.overall ? (
+            <div>
+              <h3 className="font-display text-sm font-semibold text-[var(--text)]">By final count</h3>
+              <p className="mt-1 text-[10px] text-[var(--text-muted)]">Rows with at least {MIN_PITCH_FINAL_COUNT_PRINT} PA only.</p>
+              <div className="mt-2 overflow-x-auto rounded-lg border border-[var(--border)]">
+                <table className="w-full border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
+                      <th className="px-2 py-1.5 text-left font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                        Count
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                        PA
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                        ERA
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                        K%
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                        BB%
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {FINAL_COUNT_PAIRS.map(([b, s]) => {
+                      const key = finalCountBucketKey(b, s);
+                      const row = st.statsByFinalCount!.overall[key];
+                      const pa = row?.rates?.pa ?? 0;
+                      if (!row || pa < MIN_PITCH_FINAL_COUNT_PRINT) return null;
+                      return (
+                        <tr key={key} className="border-b border-[var(--border)]">
+                          <td className="px-2 py-1.5 text-left font-medium text-[var(--text)]">{key}</td>
+                          <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">
+                            {pa}
+                          </td>
+                          <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">
+                            {fmtPitchDec(row.era, 2)}
+                          </td>
+                          <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">
+                            {pct1(row.rates.kPct)}
+                          </td>
+                          <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">
+                            {pct1(row.rates.bbPct)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+
+          <PitchMixPrintSection rows={pitchingPlan.pitchMix} />
+        </div>
+      ) : null}
+
+      {!o || (o.rates?.pa ?? 0) < 1 ? (
+        <PitchMixPrintSection rows={pitchingPlan.pitchMix} className="mt-6" />
+      ) : null}
+    </section>
+  );
+}
+
 export function PreGameReport({
   game,
   roster,
   statsByPlayerId,
-  trendInsights,
   overview,
 }: {
   game: Game;
   roster: Player[];
   statsByPlayerId: Record<string, BattingStatsWithSplits | undefined>;
-  trendInsights: string[];
   overview: PreGameOverviewPayload | null;
 }) {
-  const batters = roster.filter((p) => !isPitcherPlayer(p));
-  const withOps = batters
-    .map((p) => {
-      const o = statsByPlayerId[p.id]?.overall;
-      const pa = o?.pa ?? 0;
-      const ops = o?.ops ?? 0;
-      return { player: p, pa, ops };
-    })
-    .filter((x) => x.pa >= 1)
-    .sort((a, b) => b.ops - a.ops)
-    .slice(0, 6);
-
-  const timeLine =
-    game.game_time && String(game.game_time).trim()
-      ? ` · ${String(game.game_time).slice(0, 5)}`
-      : "";
+  const batters = useMemo(() => roster.filter((p) => !isPitcherPlayer(p)), [roster]);
 
   const ourSpId =
     game.our_side === "home" ? game.starting_pitcher_home_id ?? null : game.starting_pitcher_away_id ?? null;
@@ -558,65 +1230,76 @@ export function PreGameReport({
   const ourSp = ourSpId ? resolvePlayer(ourSpId, overview, roster) : undefined;
   const oppSp = oppSpId ? resolvePlayer(oppSpId, overview, roster) : undefined;
   const oppThrows = oppSp?.throws ?? null;
-  /** Our starter’s handedness — opponent hitters face this for platoon splits. */
-  const ourThrows = ourSp?.throws ?? null;
 
   const ourLineup = overview?.ourLineup ?? [];
-  const opponentLineup = overview?.opponentLineup ?? [];
-  const priorMeetings = overview?.priorMeetings ?? [];
-  const recentHitterLineByPlayerId = overview?.recentHitterLineByPlayerId ?? {};
-  const recentGamesCount = overview?.recentGamesCount ?? 0;
   const rep = overview?.report;
-  const seasonStatsById = overview?.lineupStatsByPlayerId ?? {};
+  const lineupStatsMap = overview?.lineupStatsByPlayerId;
   const ourStarterSummary = overview?.ourStarterSummary ?? null;
 
-  const lineupPlayerIds = new Set(ourLineup.map((r) => r.player_id));
-  const ourBench = roster
-    .filter((p) => isActiveRosterPlayer(p) && !lineupPlayerIds.has(p.id))
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  const lineupPlayerIds = useMemo(() => new Set(ourLineup.map((r) => r.player_id)), [ourLineup]);
+  const ourBench = useMemo(
+    () =>
+      roster
+        .filter((p) => isActiveRosterPlayer(p) && !lineupPlayerIds.has(p.id))
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })),
+    [roster, lineupPlayerIds]
+  );
 
-  const platoonPrintRows = batters
-    .map((p) =>
-      platoonVsStarterLeaderboardRow(p, statsByPlayerId[p.id] ?? seasonStatsById[p.id], oppThrows)
-    )
-    .sort((a, b) => {
-      const ak = Number.isFinite(a.sortOps) ? a.sortOps : -1;
-      const bk = Number.isFinite(b.sortOps) ? b.sortOps : -1;
-      if (bk !== ak) return bk - ak;
+  const platoonPrintRows = useMemo(() => {
+    return batters
+      .map((p) =>
+        platoonVsStarterLeaderboardRow(p, statsByPlayerId[p.id] ?? lineupStatsMap?.[p.id], oppThrows)
+      )
+      .sort((a, b) => {
+        const ak = Number.isFinite(a.sortOps) ? a.sortOps : -1;
+        const bk = Number.isFinite(b.sortOps) ? b.sortOps : -1;
+        if (bk !== ak) return bk - ak;
+        if (b.pa !== a.pa) return b.pa - a.pa;
+        return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+      });
+  }, [batters, statsByPlayerId, lineupStatsMap, oppThrows]);
+
+  const rispSortedRows = useMemo(() => {
+    const windowRispById = overview?.pregameWindowRispStatsByPlayerId;
+    const rispAllRows = batters
+      .map((p) => {
+        if (windowRispById) {
+          const wr = windowRispById[p.id];
+          if (!wr) return null;
+          return rispCompactRow(p, { risp: wr } as BattingStatsWithSplits);
+        }
+        return rispCompactRow(p, statsByPlayerId[p.id] ?? lineupStatsMap?.[p.id]);
+      })
+      .filter((row): row is NonNullable<typeof row> => Boolean(row));
+    return [...rispAllRows].sort((a, b) => {
+      const ao = Number.isFinite(Number(a.opsDisplay)) ? Number(a.opsDisplay) : -1;
+      const bo = Number.isFinite(Number(b.opsDisplay)) ? Number(b.opsDisplay) : -1;
+      if (bo !== ao) return bo - ao;
       if (b.pa !== a.pa) return b.pa - a.pa;
       return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
     });
+  }, [batters, statsByPlayerId, lineupStatsMap, overview?.pregameWindowRispStatsByPlayerId]);
 
-  const windowRispById = overview?.pregameWindowRispStatsByPlayerId;
-  const rispAllRows = batters
-    .map((p) => {
-      if (windowRispById) {
-        const wr = windowRispById[p.id];
-        if (!wr) return null;
-        return rispCompactRow(p, { risp: wr } as BattingStatsWithSplits);
-      }
-      return rispCompactRow(p, statsByPlayerId[p.id] ?? seasonStatsById[p.id]);
-    })
-    .filter((row): row is NonNullable<typeof row> => Boolean(row));
-  const rispSortedRows = [...rispAllRows].sort((a, b) => {
-    const ao = Number.isFinite(Number(a.opsDisplay)) ? Number(a.opsDisplay) : -1;
-    const bo = Number.isFinite(Number(b.opsDisplay)) ? Number(b.opsDisplay) : -1;
-    if (bo !== ao) return bo - ao;
-    if (b.pa !== a.pa) return b.pa - a.pa;
-    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-  });
-
-  const seasonAvgOps = (playerId: string): { avg: string; ops: string } => {
-    const s = statsByPlayerId[playerId]?.overall ?? seasonStatsById[playerId]?.overall;
-    return { avg: fmtSeason(s?.avg), ops: fmtSeason(s?.ops) };
+  const seasonAvgLine = (playerId: string): { avg: string; ops: string; paNote: string } => {
+    const s = statsByPlayerId[playerId]?.overall ?? lineupStatsMap?.[playerId]?.overall;
+    const pa = s?.pa ?? 0;
+    return {
+      avg: fmtSeason(s?.avg),
+      ops: fmtSeason(s?.ops),
+      paNote: pa >= 1 ? `${pa} PA` : "",
+    };
   };
 
   return (
-    <>
-      <section className="hidden print:block rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6">
+    <div className="space-y-8 print:space-y-0">
+      <p className="rounded-lg border border-dashed border-[var(--border)] bg-[var(--bg-elevated)]/35 px-4 py-3 text-sm leading-relaxed text-[var(--text-muted)] print:hidden">
+        On-screen preview of the pre-game PDF. Use your browser&apos;s Print dialog and choose &quot;Save as PDF&quot; to
+        export the same layout.
+      </p>
+      <section className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6">
         <h1 className="font-display text-2xl font-bold text-[var(--text)]">{matchupLabelUsFirst(game, true)}</h1>
         <p className="mt-1 text-sm text-[var(--text-muted)]">
-          {formatDateMMDDYYYY(game.date)} · {ourVenueLabel(game)} · Season AVG/OPS
+          {formatDateMMDDYYYY(game.date)} · {ourVenueLabel(game)} · Logged season AVG / OPS / PA
         </p>
 
         <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 print:grid-cols-2">
@@ -630,17 +1313,22 @@ export function PreGameReport({
                 const pos =
                   row.position?.trim() || p?.positions?.filter((x) => x.trim().toUpperCase() !== "P")[0] || "—";
                 const jersey = p?.jersey?.trim() || "—";
-                const st = seasonAvgOps(row.player_id);
+                const bat = batsAbbr(p?.bats);
+                const st = seasonAvgLine(row.player_id);
                 return (
                   <li key={`print-our-${row.slot}-${row.player_id}`} className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-[var(--text)]">
                         {row.slot}. {p?.name ?? "Unknown"}
                       </p>
-                      <p className="text-[11px] text-[var(--text-muted)]">#{jersey} · {pos}</p>
+                      <p className="text-[11px] text-[var(--text-muted)]">
+                        #{jersey} · {pos}
+                        {bat !== "—" ? ` · ${bat}` : ""}
+                      </p>
                     </div>
-                    <p className="shrink-0 text-[11px] font-semibold text-[var(--text)]">
+                    <p className="shrink-0 text-[11px] font-semibold tabular-nums text-[var(--text)]">
                       AVG {st.avg} · OPS {st.ops}
+                      {st.paNote ? ` · ${st.paNote}` : ""}
                     </p>
                   </li>
                 );
@@ -655,7 +1343,7 @@ export function PreGameReport({
                     #{ourSp?.jersey?.trim() || "—"} · {pitcherHandLabel(ourSp?.throws ?? null)}
                   </p>
                 </div>
-                <p className="shrink-0 text-[11px] font-semibold text-[var(--text)]">
+                <p className="shrink-0 text-[11px] font-semibold tabular-nums text-[var(--text)]">
                   ERA {ourStarterSummary?.seasonEra ?? "—"}
                 </p>
               </div>
@@ -669,15 +1357,20 @@ export function PreGameReport({
                 {ourBench.map((p) => {
                   const pos = p.positions?.filter((x) => x.trim().toUpperCase() !== "P")[0] || "—";
                   const jersey = p.jersey?.trim() || "—";
-                  const st = seasonAvgOps(p.id);
+                  const bat = batsAbbr(p.bats);
+                  const st = seasonAvgLine(p.id);
                   return (
                     <li key={`print-bench-${p.id}`} className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-[var(--text)]">{p.name}</p>
-                        <p className="text-[11px] text-[var(--text-muted)]">#{jersey} · {pos}</p>
+                        <p className="text-[11px] text-[var(--text-muted)]">
+                          #{jersey} · {pos}
+                          {bat !== "—" ? ` · ${bat}` : ""}
+                        </p>
                       </div>
-                      <p className="shrink-0 text-[11px] font-semibold text-[var(--text)]">
+                      <p className="shrink-0 text-[11px] font-semibold tabular-nums text-[var(--text)]">
                         AVG {st.avg} · OPS {st.ops}
+                        {st.paNote ? ` · ${st.paNote}` : ""}
                       </p>
                     </li>
                   );
@@ -690,27 +1383,41 @@ export function PreGameReport({
         </div>
       </section>
 
-      <section className="hidden print:block print:break-before-page rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6">
+      {rep?.pitchingPlan ? <PreGamePitchingPlanPrintSection pitchingPlan={rep.pitchingPlan} /> : null}
+
+      <section className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6 print:break-before-page">
         <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--text)]">Platoon splits</h2>
-        <p className="mt-1 text-xs text-[var(--text-muted)]">
-          {oppThrows
-            ? `vs ${pitcherHandLabel(oppThrows)} · all hitters · sorted by OPS`
-            : "Opponent starter handedness unknown — season overall · sorted by OPS"}
-        </p>
         <div className="mt-4 overflow-x-auto rounded-lg border border-[var(--border)]">
-          <table className="w-full border-collapse text-left text-xs">
+          <table className="w-full border-collapse text-xs">
             <thead>
               <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
-                <th className="px-2 py-1.5 font-semibold uppercase tracking-wider text-[var(--text-muted)]">Hitter</th>
-                <th className="px-2 py-1.5 text-right font-semibold uppercase tracking-wider text-[var(--text-muted)]">PA</th>
-                <th className="px-2 py-1.5 text-right font-semibold uppercase tracking-wider text-[var(--text-muted)]">H-AB</th>
-                <th className="px-2 py-1.5 text-right font-semibold uppercase tracking-wider text-[var(--text-muted)]">P/PA</th>
-                <th className="px-2 py-1.5 text-right font-semibold uppercase tracking-wider text-[var(--text-muted)]">OPS</th>
-                <th className="px-2 py-1.5 text-right font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                <th className="px-2 py-1.5 text-left font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                  Hitter
+                </th>
+                <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                  PA
+                </th>
+                <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                  H-AB
+                </th>
+                <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                  P/PA
+                </th>
+                <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                  OPS
+                </th>
+                <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                  wOBA
+                </th>
+                <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
                   AVG/OBP/SLG
                 </th>
-                <th className="px-2 py-1.5 text-right font-semibold uppercase tracking-wider text-[var(--text-muted)]">K%</th>
-                <th className="px-2 py-1.5 text-right font-semibold uppercase tracking-wider text-[var(--text-muted)]">BB%</th>
+                <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                  K%
+                </th>
+                <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                  BB%
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -722,25 +1429,23 @@ export function PreGameReport({
                 ]
                   .filter(Boolean)
                   .join(" · ");
+                const num = "whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]";
                 return (
                   <tr key={`print-platoon-${row.playerId}`} className="border-b border-[var(--border)]">
-                    <td className="px-2 py-1.5">
+                    <td className="px-2 py-1.5 text-left align-top">
                       <div className="font-medium text-[var(--text)]">{row.name}</div>
                       {subMeta ? (
                         <div className="mt-0.5 text-[10px] leading-snug text-[var(--text-muted)]">{subMeta}</div>
                       ) : null}
                     </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums text-[var(--text)]">{row.pa}</td>
-                    <td className="px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">{row.hAbDisplay}</td>
-                    <td className="px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">{row.ppaDisplay}</td>
-                    <td className="px-2 py-1.5 text-right font-display tabular-nums font-semibold text-[var(--text)]">
-                      {row.opsDisplay}
-                    </td>
-                    <td className="px-2 py-1.5 text-right font-display tabular-nums font-semibold text-[var(--text)]">
-                      {row.slash}
-                    </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums text-[var(--text)]">{row.kPctDisplay}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums text-[var(--text)]">{row.bbPctDisplay}</td>
+                    <td className={num}>{row.pa}</td>
+                    <td className={num}>{row.hAbDisplay}</td>
+                    <td className={num}>{row.ppaDisplay}</td>
+                    <td className={`${num} font-semibold`}>{row.opsDisplay}</td>
+                    <td className={`${num} font-semibold`}>{row.wobaDisplay}</td>
+                    <td className={`${num} font-semibold`}>{row.slash}</td>
+                    <td className={num}>{row.kPctDisplay}</td>
+                    <td className={num}>{row.bbPctDisplay}</td>
                   </tr>
                 );
               })}
@@ -749,14 +1454,19 @@ export function PreGameReport({
         </div>
       </section>
 
-      <section className="hidden print:block print:break-before-page rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6">
+      <section className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6 print:break-before-page">
         <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--text)]">RISP and situational hitting</h2>
         <p className="mt-1 text-xs text-[var(--text-muted)]">
           Team row: plate appearances with runners in scoring position only (rates below use that sample).
         </p>
 
         <div className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)]/25 px-3 py-2">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Team RISP (season)</div>
+          <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Team RISP</div>
+          {rep?.hittingTrends?.windowLabel ? (
+            <p className="mt-0.5 text-[10px] leading-snug text-[var(--text-muted)] print:text-xs">
+              {rep.hittingTrends.windowLabel}
+            </p>
+          ) : null}
           <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
             <span className="text-[var(--text-muted)]">
               PA{" "}
@@ -783,7 +1493,10 @@ export function PreGameReport({
                 {rep?.hittingTrends?.season?.rispOps != null ? fmtSeason(rep.hittingTrends.season.rispOps) : "—"}
               </span>
             </span>
-            <span className="text-[var(--text-muted)]">Slash <span className="font-semibold text-[var(--text)]">{rispSlashDisplay(rep?.hittingTrends?.season?.rispSlash ?? "—").replace(/\s*\(\d+\sPA\)\s*$/, "")}</span></span>
+            <span className="text-[var(--text-muted)]">
+              AVG/OBP/SLG{" "}
+              <span className="font-semibold text-[var(--text)]">{rispSlashDisplay(rep?.hittingTrends?.season?.rispSlash ?? "—").replace(/\s*\(\d+\sPA\)\s*$/, "")}</span>
+            </span>
             <span className="text-[var(--text-muted)]">
               K%{" "}
               <span className="font-semibold text-[var(--text)]">
@@ -802,39 +1515,57 @@ export function PreGameReport({
         {rispSortedRows.length > 0 ? (
           <>
             <div className="mt-4 overflow-x-auto rounded-lg border border-[var(--border)]">
-              <table className="w-full border-collapse text-left text-xs">
+              <table className="w-full border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
-                    <th className="px-2 py-1.5 font-semibold uppercase tracking-wider text-[var(--text-muted)]">Hitter</th>
-                    <th className="px-2 py-1.5 text-right font-semibold uppercase tracking-wider text-[var(--text-muted)]">PA</th>
-                    <th className="px-2 py-1.5 text-right font-semibold uppercase tracking-wider text-[var(--text-muted)]">H-AB</th>
-                    <th className="px-2 py-1.5 text-right font-semibold uppercase tracking-wider text-[var(--text-muted)]">P/PA</th>
-                    <th className="px-2 py-1.5 text-right font-semibold uppercase tracking-wider text-[var(--text-muted)]">OPS</th>
-                    <th className="px-2 py-1.5 text-right font-semibold uppercase tracking-wider text-[var(--text-muted)]">Slash</th>
-                    <th className="px-2 py-1.5 text-right font-semibold uppercase tracking-wider text-[var(--text-muted)]">K%</th>
-                    <th className="px-2 py-1.5 text-right font-semibold uppercase tracking-wider text-[var(--text-muted)]">BB%</th>
+                    <th className="px-2 py-1.5 text-left font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                      Hitter
+                    </th>
+                    <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                      PA
+                    </th>
+                    <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                      H-AB
+                    </th>
+                    <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                      P/PA
+                    </th>
+                    <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                      OPS
+                    </th>
+                    <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                      AVG/OBP/SLG
+                    </th>
+                    <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                      K%
+                    </th>
+                    <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
+                      BB%
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rispSortedRows.map((row) => (
-                    <tr key={`print-risp-backup-${row.playerId}`} className="border-b border-[var(--border)]">
-                      <td className="px-2 py-1.5 font-medium text-[var(--text)]">{row.name}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums text-[var(--text)]">{row.pa}</td>
-                      <td className="px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">{row.hAbDisplay}</td>
-                      <td className="px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">{row.ppaDisplay}</td>
-                      <td className="px-2 py-1.5 text-right font-display tabular-nums font-semibold text-[var(--text)]">
-                        {row.opsDisplay}
-                      </td>
-                      <td className="px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">{row.slash}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums text-[var(--text)]">{row.kPctDisplay}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums text-[var(--text)]">{row.bbPctDisplay}</td>
-                    </tr>
-                  ))}
+                  {rispSortedRows.map((row) => {
+                    const num = "whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]";
+                    return (
+                      <tr key={`print-risp-backup-${row.playerId}`} className="border-b border-[var(--border)]">
+                        <td className="px-2 py-1.5 text-left font-medium text-[var(--text)]">{row.name}</td>
+                        <td className={num}>{row.pa}</td>
+                        <td className={num}>{row.hAbDisplay}</td>
+                        <td className={num}>{row.ppaDisplay}</td>
+                        <td className={`${num} font-semibold`}>{row.opsDisplay}</td>
+                        <td className={num}>{row.slash}</td>
+                        <td className={num}>{row.kPctDisplay}</td>
+                        <td className={num}>{row.bbPctDisplay}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
-            <p className="mt-2 text-[10px] text-[var(--text-muted)]">
-              Every roster batter with at least one RISP PA in this window (same as the team row), sorted by RISP OPS then PA.
+            <p className="mt-2 text-[10px] text-[var(--text-muted)] print:text-xs">
+              Every roster batter with at least one RISP PA in this window (same sample as the team row above), sorted by
+              RISP OPS then PA.
             </p>
           </>
         ) : (
@@ -843,453 +1574,10 @@ export function PreGameReport({
       </section>
 
       {rep?.coachHittingNotes ? (
-        <div className="hidden print:block print:break-before-page">
+        <div className="print:break-before-page">
           <CoachHittingNotesSection notes={rep.coachHittingNotes} forPrint />
         </div>
       ) : null}
-
-      <div className="space-y-8 print:hidden">
-      <section id="pre-overview" className="scroll-mt-6 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6">
-        <h2 className="font-display border-b border-[var(--border)] pb-3 text-lg font-semibold tracking-tight text-[var(--text)]">
-          Game overview
-        </h2>
-
-        <div className="mt-5 space-y-2 text-[var(--text)]">
-          <p className="font-display text-2xl font-bold leading-tight sm:text-3xl">
-            {matchupLabelUsFirst(game, true)}
-          </p>
-          <p className="text-base text-[var(--text-muted)]">
-            {formatDateMMDDYYYY(game.date)}
-            {timeLine}
-          </p>
-        </div>
-
-        {rep ? (
-          <div className="mt-8 space-y-10">
-            <div id="pre-context" className="scroll-mt-6">
-              <h3 className="font-display text-base font-semibold text-[var(--text)]">Game context</h3>
-              <ul className="mt-3 list-inside list-disc space-y-2 text-sm leading-relaxed text-[var(--text-muted)]">
-                {rep.gameContext.bullets.map((b, i) => (
-                  <li key={i}>{b}</li>
-                ))}
-              </ul>
-            </div>
-
-            {rep.pitchingPlan ? (
-              <div id="pre-pitching" className="scroll-mt-6">
-                <h3 className="font-display text-base font-semibold text-[var(--text)]">Pitching plan</h3>
-                <div className="mt-3 space-y-3 text-sm text-[var(--text)]">
-                  <p className="font-medium text-[var(--text)]">
-                    {rep.pitchingPlan.starterName ?? "Starting pitcher"}{" "}
-                    {rep.pitchingPlan.seasonIp && rep.pitchingPlan.seasonEra
-                      ? `· Season ${rep.pitchingPlan.seasonIp} IP, ERA ${rep.pitchingPlan.seasonEra}`
-                      : null}
-                  </p>
-                  {rep.pitchingPlan.lastOuting ? (
-                    <p className="text-[var(--text-muted)]">Last outing: {rep.pitchingPlan.lastOuting}</p>
-                  ) : null}
-                  {rep.pitchingPlan.planNotes ? (
-                    <p className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)]/40 px-4 py-3 text-[var(--text)]">
-                      <span className="text-xs font-bold uppercase tracking-wider text-[var(--accent)]">Staff notes</span>
-                      <span className="mt-1 block leading-relaxed">{rep.pitchingPlan.planNotes}</span>
-                    </p>
-                  ) : null}
-                  {rep.pitchingPlan.pitchMix.length > 0 ? (
-                    <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
-                      <table className="w-full min-w-[320px] border-collapse text-left text-sm">
-                        <thead>
-                          <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
-                            <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                              Pitch
-                            </th>
-                            <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                              Usage
-                            </th>
-                            <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                              Strike%
-                            </th>
-                            <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                              Whiff%
-                            </th>
-                            <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                              n
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {rep.pitchingPlan.pitchMix.map((row) => (
-                            <tr key={row.label} className="border-b border-[var(--border)]">
-                              <td className="px-3 py-2 font-medium">{row.label}</td>
-                              <td className="px-3 py-2 text-right tabular-nums">{pct1(row.usagePct)}</td>
-                              <td className="px-3 py-2 text-right tabular-nums">{pct1(row.strikePct)}</td>
-                              <td className="px-3 py-2 text-right tabular-nums">{pct1(row.whiffPct)}</td>
-                              <td className="px-3 py-2 text-right tabular-nums text-[var(--text-muted)]">{row.pitches}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : null}
-                  {rep.pitchingPlan.pitchMixFootnote ? (
-                    <p className="text-xs text-[var(--text-faint)]">{rep.pitchingPlan.pitchMixFootnote}</p>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
-
-            {rep.hittingTrends ? (
-              <div id="pre-hitting-trends" className="scroll-mt-6">
-                <h3 className="font-display text-base font-semibold text-[var(--text)]">Hitting trends</h3>
-                <p className="mt-1 text-xs text-[var(--text-faint)]">{rep.hittingTrends.windowLabel}</p>
-                <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  {rep.hittingTrends.season ? (
-                    <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)]/30 p-4">
-                      <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Wider sample</div>
-                      <p className="mt-2 font-display text-lg font-bold text-[var(--accent)]">
-                        OPS {rep.hittingTrends.season.ops.toFixed(3)}
-                      </p>
-                      <p className="mt-1 text-sm text-[var(--text-muted)]">
-                        {rep.hittingTrends.season.pa} PA · K% {pct1(rep.hittingTrends.season.kPct)} · BB%{" "}
-                        {pct1(rep.hittingTrends.season.bbPct)}
-                      </p>
-                      <p className="mt-2 text-xs text-[var(--text-faint)]">
-                        RISP slash: {rep.hittingTrends.season.rispSlash}
-                        {rep.hittingTrends.season.rispPpa != null && Number.isFinite(rep.hittingTrends.season.rispPpa)
-                          ? ` · P/PA ${rep.hittingTrends.season.rispPpa.toFixed(1)}`
-                          : ""}
-                        {rep.hittingTrends.season.rispKPct != null ? ` · K% ${pct1(rep.hittingTrends.season.rispKPct)}` : ""}
-                        {rep.hittingTrends.season.rispBbPct != null ? ` · BB% ${pct1(rep.hittingTrends.season.rispBbPct)}` : ""}
-                        {rep.hittingTrends.season.fpsPct != null ? ` · FPS ${pct1(rep.hittingTrends.season.fpsPct)}` : ""}
-                      </p>
-                    </div>
-                  ) : null}
-                  {rep.hittingTrends.recent ? (
-                    <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)]/30 p-4">
-                      <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Recent games</div>
-                      <p className="mt-2 font-display text-lg font-bold text-[var(--accent)]">
-                        OPS {rep.hittingTrends.recent.ops.toFixed(3)}
-                      </p>
-                      <p className="mt-1 text-sm text-[var(--text-muted)]">
-                        {rep.hittingTrends.recent.pa} PA · K% {pct1(rep.hittingTrends.recent.kPct)} · BB%{" "}
-                        {pct1(rep.hittingTrends.recent.bbPct)}
-                      </p>
-                      <p className="mt-2 text-xs text-[var(--text-faint)]">
-                        RISP: {rep.hittingTrends.recent.rispSlash}
-                        {rep.hittingTrends.recent.rispPpa != null && Number.isFinite(rep.hittingTrends.recent.rispPpa)
-                          ? ` · P/PA ${rep.hittingTrends.recent.rispPpa.toFixed(1)}`
-                          : ""}
-                        {rep.hittingTrends.recent.rispKPct != null ? ` · K% ${pct1(rep.hittingTrends.recent.rispKPct)}` : ""}
-                        {rep.hittingTrends.recent.rispBbPct != null ? ` · BB% ${pct1(rep.hittingTrends.recent.rispBbPct)}` : ""}
-                      </p>
-                    </div>
-                  ) : null}
-                </div>
-                {rep.hittingTrends.insights.length > 0 ? (
-                  <ul className="mt-4 list-inside list-disc space-y-2 text-sm text-[var(--text)]">
-                    {rep.hittingTrends.insights.map((line, i) => (
-                      <li key={i}>{line}</li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            ) : null}
-
-            {rep.coachHittingNotes ? (
-              <div id="pre-coach-approach" className="print:hidden">
-                <CoachHittingNotesSection notes={rep.coachHittingNotes} />
-              </div>
-            ) : null}
-
-            {(rep.playerInsights.hot.length > 0 || rep.playerInsights.cold.length > 0) && (
-              <div id="pre-players" className="scroll-mt-6">
-                <h3 className="font-display text-base font-semibold text-[var(--text)]">Player insights</h3>
-                <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                  {rep.playerInsights.hot.length > 0 ? (
-                    <div>
-                      <div className="text-xs font-bold uppercase tracking-wider text-emerald-400/90">Heating up</div>
-                      <ul className="mt-2 space-y-2 text-sm text-[var(--text)]">
-                        {rep.playerInsights.hot.map((x) => (
-                          <li key={x.name} className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)]/25 px-3 py-2">
-                            <span className="font-medium">{x.name}</span>
-                            <span className="mt-0.5 block text-xs text-[var(--text-muted)]">{x.line}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                  {rep.playerInsights.cold.length > 0 ? (
-                    <div>
-                      <div className="text-xs font-bold uppercase tracking-wider text-amber-200/80">Cooling off</div>
-                      <ul className="mt-2 space-y-2 text-sm text-[var(--text)]">
-                        {rep.playerInsights.cold.map((x) => (
-                          <li key={x.name} className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)]/25 px-3 py-2">
-                            <span className="font-medium">{x.name}</span>
-                            <span className="mt-0.5 block text-xs text-[var(--text-muted)]">{x.line}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            )}
-
-            {rep.opponentObservations.length > 0 ? (
-              <div id="pre-opp" className="scroll-mt-6">
-                <h3 className="font-display text-base font-semibold text-[var(--text)]">Opponent observations</h3>
-                <ul className="mt-3 list-inside list-disc space-y-2 text-sm text-[var(--text)]">
-                  {rep.opponentObservations.map((line, i) => (
-                    <li key={i}>{line}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
-            {rep.matchupInsights.length > 0 ? (
-              <div id="pre-matchup" className="scroll-mt-6">
-                <h3 className="font-display text-base font-semibold text-[var(--text)]">Matchup insights</h3>
-                <ul className="mt-3 list-inside list-disc space-y-2 text-sm text-[var(--text)]">
-                  {rep.matchupInsights.map((line, i) => (
-                    <li key={i}>{line}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
-            {rep.gamePlan.length > 0 ? (
-              <div id="pre-plan" className="scroll-mt-6">
-                <h3 className="font-display text-base font-semibold text-[var(--text)]">Game plan</h3>
-                <ol className="mt-4 space-y-3 text-sm leading-relaxed text-[var(--text)]">
-                  {rep.gamePlan.map((line, i) => (
-                    <li key={i} className="flex gap-3">
-                      <span className="font-bold text-[var(--accent)]">{i + 1}.</span>
-                      <span>{line}</span>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-
-        <div id="pre-lineups" className="scroll-mt-6 mt-10 border-t border-[var(--border)] pt-10">
-          <h3 className="font-display text-base font-semibold text-[var(--text)]">Lineups</h3>
-
-          <div className="mt-4 grid gap-6 lg:grid-cols-2">
-            <div className="min-w-0">
-              <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-[var(--accent)]">{ourTeamName(game)}</h4>
-              {ourLineup.length > 0 ? (
-                <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
-                  <table className="w-full min-w-[280px] border-collapse text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
-                        <th className="w-10 px-2 py-2 font-display text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                          #
-                        </th>
-                        <th className="px-2 py-2 font-display text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                          Hitter
-                        </th>
-                        <th className="px-2 py-2 font-display text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                          Recent
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {ourLineup.map((row) => {
-                        const p = resolvePlayer(row.player_id, overview, roster);
-                        const splits =
-                          statsByPlayerId[row.player_id] ?? overview?.lineupStatsByPlayerId[row.player_id];
-                        const { detail } = slashVsOppStarter(splits, oppThrows);
-                        const pos =
-                          row.position?.trim() ||
-                          p?.positions?.filter((x) => x.trim().toUpperCase() !== "P")[0] ||
-                          "—";
-                        const recentLine = formatRecentLine(
-                          recentHitterLineByPlayerId[row.player_id],
-                          recentGamesCount
-                        );
-                        return (
-                          <tr key={`${row.slot}-${row.player_id}`} className="border-b border-[var(--border)]">
-                            <td className="px-2 py-2 tabular-nums text-[var(--text-muted)]">{row.slot}</td>
-                            <HitterNameCell
-                              name={p?.name ?? "Unknown"}
-                              posLabel={pos}
-                              batsLetter={batsAbbr(p?.bats)}
-                              footnote={detail}
-                            />
-                            <td className="px-2 py-2 text-xs leading-snug text-[var(--text-muted)]">{recentLine}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="rounded-lg border border-dashed border-[var(--border)] bg-[var(--bg-elevated)]/30 px-4 py-6 text-center text-sm text-[var(--text)]">
-                  No lineup.
-                </p>
-              )}
-            </div>
-
-            <div className="min-w-0">
-              <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                {opponentTeamName(game)}
-              </h4>
-              {opponentLineup.length > 0 ? (
-                <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
-                  <table className="w-full min-w-[240px] border-collapse text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
-                        <th className="w-10 px-2 py-2 font-display text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                          #
-                        </th>
-                        <th className="px-2 py-2 font-display text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                          Hitter
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {opponentLineup.map((row) => {
-                        const p = resolvePlayer(row.player_id, overview, roster);
-                        const splits =
-                          statsByPlayerId[row.player_id] ?? overview?.lineupStatsByPlayerId[row.player_id];
-                        const { detail } = slashVsOppStarter(splits, ourThrows);
-                        const pos =
-                          row.position?.trim() ||
-                          p?.positions?.filter((x) => x.trim().toUpperCase() !== "P")[0] ||
-                          "—";
-                        return (
-                          <tr key={`opp-${row.slot}-${row.player_id}`} className="border-b border-[var(--border)]">
-                            <td className="px-2 py-2 tabular-nums text-[var(--text-muted)]">{row.slot}</td>
-                            <HitterNameCell
-                              name={p?.name ?? "Unknown"}
-                              posLabel={pos}
-                              batsLetter={batsAbbr(p?.bats)}
-                              footnote={detail}
-                            />
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="rounded-lg border border-dashed border-[var(--border)] bg-[var(--bg-elevated)]/30 px-4 py-6 text-center text-sm text-[var(--text)]">
-                  No lineup.
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {priorMeetings.length > 0 ? (
-        <section id="pre-history" className="scroll-mt-6 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6">
-          <h2 className="font-display border-b border-[var(--border)] pb-3 text-lg font-semibold tracking-tight text-[var(--text)]">
-            Last meetings vs this opponent
-          </h2>
-          <ul className="mt-4 space-y-3">
-            {priorMeetings.map((m) => {
-              const score =
-                m.ourRuns != null && m.oppRuns != null ? `${m.ourRuns}–${m.oppRuns}` : "Score not set";
-              const outcomeClass =
-                m.outcome === "W"
-                  ? "text-emerald-400"
-                  : m.outcome === "L"
-                    ? "text-rose-300"
-                    : "text-[var(--text-muted)]";
-              const pasBit = m.fromPas
-                ? ` · Logged offense (${ourTeamName(game)}): ${m.fromPas.pa} PA, OPS ${m.fromPas.ops.toFixed(3)}, K% ${Math.round(m.fromPas.kPct * 100)}%, BB% ${Math.round(m.fromPas.bbPct * 100)}%`
-                : ` · No logged PAs for ${ourTeamName(game)} in that game`;
-              return (
-                <li
-                  key={m.gameId}
-                  className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)]/30 px-4 py-3 text-sm text-[var(--text)]"
-                >
-                  <span className="font-semibold">{formatDateMMDDYYYY(m.date)}</span>
-                  {m.outcome ? <span className={`ml-2 font-display text-xs font-bold ${outcomeClass}`}>{m.outcome}</span> : null}
-                  <span className="text-[var(--text-muted)]">
-                    {" "}
-                    — {score}
-                    {pasBit}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      ) : null}
-
-      <section id="pre-leaders" className="scroll-mt-6 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6">
-        <h2 className="font-display border-b border-[var(--border)] pb-3 text-lg font-semibold tracking-tight text-[var(--text)]">
-          Who&apos;s swinging well (season, logged PAs)
-        </h2>
-        {withOps.length > 0 ? (
-          <ul className="mt-5 divide-y divide-[var(--border)] rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)]/40">
-            {withOps.map(({ player, pa, ops }, i) => {
-              const o = statsByPlayerId[player.id]?.overall;
-              const slash = o ? formatBattingTripleSlash(o.avg, o.obp, o.slg) : `OPS ${fmt3(ops)}`;
-              return (
-                <li
-                  key={player.id}
-                  className="flex flex-wrap items-baseline justify-between gap-3 px-4 py-3 text-[var(--text)]"
-                >
-                  <span className="font-medium">
-                    <span className="text-[var(--text-faint)] tabular-nums">{i + 1}.</span> {player.name}
-                  </span>
-                  <span className="font-display tabular-nums text-lg font-bold text-[var(--accent)]">
-                    {pa} PA · {slash}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        ) : null}
-      </section>
-
-      {trendInsights.length > 0 ? (
-        <section id="pre-trends" className="scroll-mt-6 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6">
-          <h2 className="font-display border-b border-[var(--border)] pb-3 text-lg font-semibold tracking-tight text-[var(--text)]">
-            Team trends to keep in mind
-          </h2>
-          <ul className="mt-5 list-inside list-disc space-y-2.5 text-base leading-relaxed text-[var(--text)]">
-            {trendInsights.slice(0, 8).map((line, i) => (
-              <li key={i}>{line}</li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      <section id="pre-checklist" className="scroll-mt-6 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6">
-        <h2 className="font-display border-b border-[var(--border)] pb-3 text-lg font-semibold tracking-tight text-[var(--text)]">
-          Pre-game checklist
-        </h2>
-        <ul className="mt-5 space-y-3 text-base leading-relaxed text-[var(--text)]">
-          <li className="flex gap-3">
-            <span className="font-bold text-[var(--accent)]">1.</span>
-            <span>Confirm lineup and defensive alignment vs this opponent&apos;s handedness and recent tendencies.</span>
-          </li>
-          <li className="flex gap-3">
-            <span className="font-bold text-[var(--accent)]">2.</span>
-            <span>
-              Agree on approach by inning situation (early count, RISP, two-strike)—match to what you&apos;ve logged in
-              practice and past games.
-            </span>
-          </li>
-          <li className="flex gap-3">
-            <span className="font-bold text-[var(--accent)]">3.</span>
-            <span>Bullpen availability and who covers late innings if the starter shortens.</span>
-          </li>
-          <li className="flex gap-3">
-            <span className="font-bold text-[var(--accent)]">4.</span>
-            <span>
-              After the game, use <strong className="text-[var(--text)]">Post-Game</strong> on this hub for PA-based
-              offense and discipline notes.
-            </span>
-          </li>
-        </ul>
-      </section>
-      </div>
-    </>
+    </div>
   );
 }

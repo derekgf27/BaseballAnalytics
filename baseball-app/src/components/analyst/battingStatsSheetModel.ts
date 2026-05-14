@@ -3,7 +3,7 @@
  * Used by {@link BattingStatsSheet} and player profile batting tables.
  */
 
-import { formatPPa } from "@/lib/format";
+import { fmtDecimalNoLeadingZero, formatPPa } from "@/lib/format";
 import { BATTING_STAT_HEADER_TOOLTIPS } from "@/lib/statHeaderTooltips";
 import type { BattingFinalCountBucketKey, BattingStats } from "@/lib/types";
 
@@ -194,8 +194,7 @@ export function formatBattingSheetNumber(value: number | undefined, format: "int
   if (value === undefined) return "—";
   if (format === "int") return String(value);
   if (format === "pct") return `${(value * 100).toFixed(1)}%`;
-  const s = value.toFixed(3);
-  return s.startsWith("0.") ? s.slice(1) : s;
+  return fmtDecimalNoLeadingZero(value, 3);
 }
 
 /**
@@ -260,14 +259,9 @@ export function battingSheetCellNumericValue(
   return typeof v === "number" ? v : null;
 }
 
-/** No winner highlighting — playing time / ambiguous. */
+/** Identity column only — not shown in compare data tables. */
 const BATTING_COMPARE_NEUTRAL_KEYS: Partial<Record<BattingSheetSortKey, true>> = {
   name: true,
-  gp: true,
-  gs: true,
-  pa: true,
-  ab: true,
-  fieldersChoice: true,
 };
 
 /** Lower numeric value is better for the batter. */
@@ -277,11 +271,12 @@ const BATTING_COMPARE_LOWER_IS_BETTER: Partial<Record<BattingSheetSortKey, true>
   gidp: true,
   cs: true,
   e: true,
+  fieldersChoice: true,
 };
 
 /**
- * Whether this cell should use success/green styling when comparing two players.
- * Only the strictly better side is highlighted; ties stay default (white). Missing values on either side yield no highlight.
+ * Green highlight: better for the batter (higher counting/rate stats except where lower is better).
+ * Ties unstyled; missing on either side yields no highlight.
  */
 export function battingSheetCompareHighlight(
   col: BattingSheetColumnDef,

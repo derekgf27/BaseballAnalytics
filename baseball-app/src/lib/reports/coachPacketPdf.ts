@@ -1,5 +1,5 @@
 import { jsPDF } from "jspdf";
-import { formatDateMMDDYYYY } from "@/lib/format";
+import { fmtDecimalNoLeadingZero, formatDateMMDDYYYY } from "@/lib/format";
 import { ourVenueLabel } from "@/lib/opponentUtils";
 import type { CoachPacketModel } from "./coachPacketTypes";
 
@@ -15,7 +15,7 @@ function coachPacketFilenameBase(m: CoachPacketModel): string {
 }
 
 function statFmt(n: number | null): string {
-  return n != null && Number.isFinite(n) ? n.toFixed(3) : "—";
+  return n != null && Number.isFinite(n) ? fmtDecimalNoLeadingZero(n, 3) : "—";
 }
 
 function drawLineupColumn(

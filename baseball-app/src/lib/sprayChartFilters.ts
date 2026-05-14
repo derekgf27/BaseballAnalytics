@@ -25,7 +25,7 @@ export type SprayResultFilterKey = "hits" | "outs" | "both";
 /** Parse URL/query param for spray filters (Charts, Compare, etc.). */
 export function parseSprayResultFilterKey(raw: string | null | undefined): SprayResultFilterKey {
   if (raw === "hits" || raw === "outs" || raw === "both") return raw;
-  return "hits";
+  return "both";
 }
 
 export function isValidSprayHitDirection(d: string | null | undefined): d is HitDirection {

@@ -11,12 +11,12 @@ import {
 import { PostGameReport } from "@/app/reports/components/PostGameReport";
 import { PreGameReport } from "@/app/reports/components/PreGameReport";
 import { PlayerReportsTab } from "@/app/reports/components/PlayerReportsTab";
-import { PlayersToWatch } from "@/app/reports/components/PlayersToWatch";
 import { TeamTrends } from "@/app/reports/components/TeamTrends";
 import { formatDateMMDDYYYY } from "@/lib/format";
 import { matchupLabelUsFirst } from "@/lib/opponentUtils";
 import type { TeamTrendPoint } from "@/lib/reports/teamTrendsSnapshot";
-import type { BattingStatsWithSplits, Game, Player } from "@/lib/types";
+import type { AnalystPlayerSpraySplits } from "@/lib/analystPlayerSpraySplits";
+import type { BattingStatsWithSplits, Game, PlateAppearance, Player } from "@/lib/types";
 import type { PostGameSnapshot } from "@/lib/reports/postGameSnapshot";
 
 const btnPrimary =
@@ -24,13 +24,12 @@ const btnPrimary =
 const btnSecondary =
   "font-orbitron inline-flex min-h-[44px] items-center justify-center rounded-lg border-2 border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-2 text-sm font-semibold tracking-wide text-[var(--text)] transition hover:border-[var(--accent)]/60 hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50";
 
-type HubTab = "pregame" | "postgame" | "players" | "watch" | "trends";
+type HubTab = "pregame" | "postgame" | "players" | "trends";
 
 const TAB_META: { id: HubTab; label: string }[] = [
   { id: "pregame", label: "Pre-Game" },
   { id: "postgame", label: "Post-Game" },
   { id: "players", label: "Player Reports" },
-  { id: "watch", label: "Players to Watch" },
   { id: "trends", label: "Team Trends" },
 ];
 
@@ -53,6 +52,8 @@ export function ReportsHubClient({
   games,
   batterRoster,
   statsByPlayerId,
+  sprayByPlayerId = {},
+  disciplineExtraByPlayerId = {},
   teamTrendPoints,
   teamTrendInsights,
   canEdit,
@@ -60,6 +61,8 @@ export function ReportsHubClient({
   games: Game[];
   batterRoster: Player[];
   statsByPlayerId: Record<string, BattingStatsWithSplits | undefined>;
+  sprayByPlayerId?: Record<string, AnalystPlayerSpraySplits | null>;
+  disciplineExtraByPlayerId?: Record<string, { strikePct: number | null; fpsPct: number | null }>;
   teamTrendPoints: TeamTrendPoint[];
   teamTrendInsights: string[];
   canEdit: boolean;
@@ -71,6 +74,7 @@ export function ReportsHubClient({
   const [error, setError] = useState<string | null>(null);
   const [postGameGame, setPostGameGame] = useState<Game | null>(null);
   const [postGameData, setPostGameData] = useState<PostGameSnapshot | null>(null);
+  const [postGamePas, setPostGamePas] = useState<PlateAppearance[] | null>(null);
   const [analystAddendum, setAnalystAddendum] = useState("");
   const [preGameOverview, setPreGameOverview] = useState<PreGameOverviewPayload | null>(null);
 
@@ -101,9 +105,15 @@ export function ReportsHubClient({
   }, [tab, postGameGame, selectedGame]);
 
   const triggerPrint = useReactToPrint({
-    contentRef: printRef,
     documentTitle,
     pageStyle: PRINT_PAGE_STYLE,
+    /** Avoids stale/missing refs with Next.js App Router + Turbopack (see react-to-print #827). */
+    preserveAfterPrint: true,
+    onBeforePrint: async () => {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+    },
   });
 
   const onGenerate = useCallback(async () => {
@@ -119,15 +129,18 @@ export function ReportsHubClient({
         setError(res.error);
         setPostGameGame(null);
         setPostGameData(null);
+        setPostGamePas(null);
         return;
       }
       setPostGameGame(res.game);
       setPostGameData(res.postGame);
+      setPostGamePas(res.pas);
       setTab("postgame");
     } catch {
       setError("Could not load report.");
       setPostGameGame(null);
       setPostGameData(null);
+      setPostGamePas(null);
     } finally {
       setLoading(false);
     }
@@ -166,7 +179,19 @@ export function ReportsHubClient({
           <button type="button" className={btnPrimary} onClick={() => void onGenerate()} disabled={loading || !canEdit}>
             {loading ? "Generating…" : "Generate Report"}
           </button>
-          <button type="button" className={btnSecondary} onClick={() => void triggerPrint()} disabled={loading}>
+          <button
+            type="button"
+            className={btnSecondary}
+            onClick={() => {
+              const root = printRef.current;
+              if (!root) {
+                setError("Nothing to print yet — pick a game and wait for the report to load.");
+                return;
+              }
+              void triggerPrint(() => root);
+            }}
+            disabled={loading}
+          >
             Export PDF
           </button>
         </div>
@@ -224,22 +249,22 @@ export function ReportsHubClient({
                     game={selectedGame}
                     roster={batterRoster}
                     statsByPlayerId={statsByPlayerId}
-                    trendInsights={teamTrendInsights}
                     overview={preGameOverview}
                   />
                 ) : (
                   <p className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--bg-card)] p-8 text-center text-base text-[var(--text-muted)]">
-                    Add a game on the schedule, then pick it above to see matchup context and season leaders.
+                    Add a game on the schedule, then pick it above to load the pre-game PDF preview.
                   </p>
                 )}
               </>
             )}
             {tab === "postgame" && (
               <>
-                {postGameGame && postGameData ? (
+                {postGameGame && postGameData && postGamePas ? (
                   <PostGameReport
                     game={postGameGame}
                     data={postGameData}
+                    pas={postGamePas}
                     analystAddendum={analystAddendum}
                     onAnalystAddendumChange={setAnalystAddendum}
                   />
@@ -253,10 +278,12 @@ export function ReportsHubClient({
               </>
             )}
             {tab === "players" && (
-              <PlayerReportsTab roster={batterRoster} statsByPlayerId={statsByPlayerId} />
-            )}
-            {tab === "watch" && (
-              <PlayersToWatch roster={batterRoster} statsByPlayerId={statsByPlayerId} />
+              <PlayerReportsTab
+                roster={batterRoster}
+                statsByPlayerId={statsByPlayerId}
+                sprayByPlayerId={sprayByPlayerId}
+                disciplineExtraByPlayerId={disciplineExtraByPlayerId}
+              />
             )}
             {tab === "trends" && <TeamTrends points={teamTrendPoints} insights={teamTrendInsights} />}
           </motion.div>

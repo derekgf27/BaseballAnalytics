@@ -1,4 +1,5 @@
 import type { PreGameOverviewPayload } from "@/app/reports/actions";
+import { fmtDecimalNoLeadingZero } from "@/lib/format";
 import { matchupLabelUsFirst } from "@/lib/opponentUtils";
 import type { Game } from "@/lib/types";
 
@@ -126,7 +127,7 @@ function buildRulesAnswer(queryRaw: string, ctx: ReportsAssistantContext): strin
     }
     if (rep.hittingTrends?.season) {
       chunks.push(
-        `- Hitting: OPS ${rep.hittingTrends.season.ops.toFixed(3)} over ${rep.hittingTrends.season.pa} PA (K ${pct(rep.hittingTrends.season.kPct)}, BB ${pct(rep.hittingTrends.season.bbPct)}).`
+        `- Hitting: OPS ${fmtDecimalNoLeadingZero(rep.hittingTrends.season.ops, 3)} over ${rep.hittingTrends.season.pa} PA (K ${pct(rep.hittingTrends.season.kPct)}, BB ${pct(rep.hittingTrends.season.bbPct)}).`
       );
     }
     if (rep.gamePlan.length) chunks.push(`- Game plan: ${rep.gamePlan.slice(0, 3).join(" ")}`);
@@ -138,7 +139,7 @@ function buildRulesAnswer(queryRaw: string, ctx: ReportsAssistantContext): strin
     if (!ht?.season) return "No hitting trend sample is loaded yet for this game.";
     const rispExtras: string[] = [];
     if (ht.season.rispPpa != null && Number.isFinite(ht.season.rispPpa)) {
-      rispExtras.push(`P/PA ${ht.season.rispPpa.toFixed(1)}`);
+      rispExtras.push(`P/PA ${fmtDecimalNoLeadingZero(ht.season.rispPpa, 1)}`);
     }
     if (ht.season.rispKPct != null) rispExtras.push(`K% ${pct(ht.season.rispKPct)}`);
     if (ht.season.rispBbPct != null) rispExtras.push(`BB% ${pct(ht.season.rispBbPct)}`);
@@ -146,11 +147,11 @@ function buildRulesAnswer(queryRaw: string, ctx: ReportsAssistantContext): strin
       rispExtras.length > 0 ? `${ht.season.rispSlash} · ${rispExtras.join(" · ")}` : ht.season.rispSlash;
     return [
       `Wider sample (${ht.windowLabel}):`,
-      `- OPS ${ht.season.ops.toFixed(3)} in ${ht.season.pa} PA`,
+      `- OPS ${fmtDecimalNoLeadingZero(ht.season.ops, 3)} in ${ht.season.pa} PA`,
       `- K% ${pct(ht.season.kPct)} | BB% ${pct(ht.season.bbPct)}`,
       `- RISP: ${rispBits}`,
       `- FPS: ${pct(ht.season.fpsPct)}`,
-      ht.recent ? `Recent: OPS ${ht.recent.ops.toFixed(3)} in ${ht.recent.pa} PA.` : "",
+      ht.recent ? `Recent: OPS ${fmtDecimalNoLeadingZero(ht.recent.ops, 3)} in ${ht.recent.pa} PA.` : "",
     ]
       .filter(Boolean)
       .join("\n");
@@ -162,7 +163,9 @@ function buildRulesAnswer(queryRaw: string, ctx: ReportsAssistantContext): strin
     const top = p.pitchMix.slice(0, 3).map((x) => `${x.label} ${pct(x.usagePct)}`).join(", ");
     return [
       `${p.starterName ?? "Starter"}${p.seasonIp ? ` (${p.seasonIp} IP` : ""}${p.seasonEra ? `${p.seasonIp ? ", " : " ("}ERA ${p.seasonEra}` : ""}${p.seasonIp || p.seasonEra ? ")" : ""}`,
-      p.lastOuting ? `Last outing: ${p.lastOuting}` : "",
+      p.lastStartStatLine
+        ? `Last start${p.lastStartVersus ? ` (${p.lastStartVersus})` : ""}: ${p.lastStartStatLine}`
+        : "",
       top ? `Pitch mix: ${top}` : p.pitchMixFootnote ?? "No reliable typed pitch mix sample.",
       p.planNotes ? `Staff notes: ${p.planNotes}` : "",
     ]

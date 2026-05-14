@@ -9,6 +9,7 @@ import {
   isRisp,
   pitchMixFromPlateAppearancesOrPitchLog,
 } from "@/lib/compute/battingStats";
+import { fmtDecimalNoLeadingZero } from "@/lib/format";
 import { isPitcherPlayer } from "@/lib/opponentUtils";
 import { formatBattingTripleSlash } from "@/lib/format/battingSlash";
 import type { Game, PitchEvent, PlateAppearance, Player } from "@/lib/types";
@@ -41,13 +42,9 @@ export function GameBatterPitchDetailStack({
   if (rows.length === 0) return null;
   const substitutionLabelByPlayerId = useMemo(() => {
     const map = new Map<string, string>();
-    let subIndex = 0;
     for (const row of rows) {
       if (!row.isSubstitution) continue;
-      const marker = substitutionMarker(subIndex);
-      const roleAndPos = row.position ? `PH-${row.position}` : "PH";
-      map.set(row.playerId, `${marker}-${row.name} ${roleAndPos}`);
-      subIndex += 1;
+      map.set(row.playerId, pinchHitterDisplayLabel(row));
     }
     return map;
   }, [rows]);
@@ -61,8 +58,7 @@ export function GameBatterPitchDetailStack({
           ? `${row.lineupSlot ?? index + 1}. ${row.name} ${row.position}`
           : `${row.lineupSlot ?? index + 1}. ${row.name}`;
         const substitutionLabel =
-          substitutionLabelByPlayerId.get(row.playerId) ??
-          (row.position ? `${substitutionMarker(index)}-${row.name} PH-${row.position}` : `${substitutionMarker(index)}-${row.name} PH`);
+          substitutionLabelByPlayerId.get(row.playerId) ?? pinchHitterDisplayLabel(row);
         const nameWithOrder = row.isSubstitution ? substitutionLabel : starterLabel;
         const batterPas = pas.filter((p) => p.batter_id === row.playerId);
         const batterPaIds = new Set(batterPas.map((p) => p.id));
@@ -151,17 +147,13 @@ function lobByBatterFromPas(pas: PlateAppearance[]): Map<string, number> {
 }
 
 function formatAvgOps(value: number): string {
-  if (value === 0) return ".000";
-  const s = value.toFixed(3);
-  return s.startsWith("0.") ? s.slice(1) : s;
+  return fmtDecimalNoLeadingZero(value, 3);
 }
 
-function substitutionMarker(index: number): string {
-  const alphabet = "abcdefghijklmnopqrstuvwxyz";
-  if (index < alphabet.length) return alphabet[index]!;
-  const first = alphabet[Math.floor(index / alphabet.length) - 1] ?? "z";
-  const second = alphabet[index % alphabet.length] ?? "z";
-  return `${first}${second}`;
+/** Box-score style line for a substitute batter (pinch hitter / entered mid-game). */
+function pinchHitterDisplayLabel(row: Pick<GameBattingRow, "name" | "position">): string {
+  const pos = row.position?.trim();
+  return pos ? `PH ${row.name} ${pos}` : `PH ${row.name}`;
 }
 
 function computeGameBatting(
@@ -225,6 +217,11 @@ function computeGameBatting(
     }
   }
 
+  /** When true, missing per-player rows in `lineupPositionByPlayerId` means "not in current 9" — do not guess from roster (often wrong vs. game role, e.g. DH vs LF). */
+  const gameLineupLoaded =
+    lineupPositionByPlayerId != null &&
+    Object.keys(lineupPositionByPlayerId).length > 0;
+
   const rows: GameBattingRow[] = [];
   for (const batterId of order) {
     const player = playerMap.get(batterId);
@@ -252,7 +249,9 @@ function computeGameBatting(
     const displayPosition =
       gamePosition != null && gamePosition !== ""
         ? gamePosition
-        : player?.positions?.[0] ?? "";
+        : !gameLineupLoaded
+          ? (player?.positions?.[0] ?? "")
+          : "";
     rows.push({
       playerId: batterId,
       name: displayName,
@@ -279,6 +278,68 @@ function computeGameBatting(
       lob: lobByBatter.get(batterId) ?? 0,
     });
   }
+
+  /**
+   * Saved `lineupOrder` often reflects the lineup *after* subs, so `starterSlots` marks the sub
+   * (e.g. PH) as the "starter" and the original batter as the substitute — inverted vs. box score
+   * convention. Within each batting-order slot, treat the batter with the earliest PA as the
+   * starter line; everyone else in that slot is a substitution line.
+   */
+  const byLineupSlot = new Map<number, GameBattingRow[]>();
+  for (const row of rows) {
+    const s = row.lineupSlot;
+    if (s == null || s < 1) continue;
+    const g = byLineupSlot.get(s) ?? [];
+    g.push(row);
+    byLineupSlot.set(s, g);
+  }
+  for (const [, group] of byLineupSlot) {
+    if (group.length === 1) {
+      group[0]!.isSubstitution = false;
+      continue;
+    }
+    let starterRow = group[0]!;
+    let starterFirst =
+      firstAppearanceIndex.get(starterRow.playerId) ?? Number.MAX_SAFE_INTEGER;
+    for (const row of group) {
+      const fi = firstAppearanceIndex.get(row.playerId) ?? Number.MAX_SAFE_INTEGER;
+      if (fi < starterFirst) {
+        starterRow = row;
+        starterFirst = fi;
+      }
+    }
+    for (const row of group) {
+      row.isSubstitution = row.playerId !== starterRow.playerId;
+    }
+  }
+
+  /**
+   * Replaced starters disappear from `game_lineups`, so they have no `lineupPositionByPlayerId`
+   * entry. Using roster `positions[0]` often mislabels them (e.g. LF vs DH). Copy the **current**
+   * slot's saved position from whoever occupies that lineup spot now (usually the PH in the same
+   * role, e.g. DH).
+   */
+  if (gameLineupLoaded && lineupOrder?.length && lineupPositionByPlayerId) {
+    for (const row of rows) {
+      if (row.isSubstitution || row.lineupSlot == null) continue;
+      if (row.position) continue;
+      const idx = row.lineupSlot - 1;
+      if (idx < 0 || idx >= lineupOrder.length) continue;
+      const currentId = lineupOrder[idx]!;
+      if (currentId === row.playerId) continue;
+      const slotPos = lineupPositionByPlayerId[currentId];
+      if (slotPos?.trim()) row.position = slotPos.trim();
+    }
+  }
+
+  for (const row of rows) {
+    if (row.position) continue;
+    const p = playerMap.get(row.playerId);
+    if (!gameLineupLoaded || row.isSubstitution) {
+      row.position = p?.positions?.[0] ?? "";
+    }
+  }
+
   return rows.sort((a, b) => {
     const slotA = a.lineupSlot ?? Number.MAX_SAFE_INTEGER;
     const slotB = b.lineupSlot ?? Number.MAX_SAFE_INTEGER;
@@ -342,13 +403,9 @@ export function GameBattingTable({
   const rowsWithPending = rows;
   const substitutionLabelByPlayerId = useMemo(() => {
     const map = new Map<string, string>();
-    let subIndex = 0;
     for (const row of rowsWithPending) {
       if (!row.isSubstitution) continue;
-      const marker = substitutionMarker(subIndex);
-      const roleAndPos = row.position ? `PH-${row.position}` : "PH";
-      map.set(row.playerId, `${marker}-${row.name} ${roleAndPos}`);
-      subIndex += 1;
+      map.set(row.playerId, pinchHitterDisplayLabel(row));
     }
     return map;
   }, [rowsWithPending]);
@@ -458,8 +515,7 @@ export function GameBattingTable({
                 ? `${row.lineupSlot ?? index + 1}. ${row.name} ${row.position}`
                 : `${row.lineupSlot ?? index + 1}. ${row.name}`;
               const substitutionLabel =
-                substitutionLabelByPlayerId.get(row.playerId) ??
-                (row.position ? `${substitutionMarker(index)}-${row.name} PH-${row.position}` : `${substitutionMarker(index)}-${row.name} PH`);
+                substitutionLabelByPlayerId.get(row.playerId) ?? pinchHitterDisplayLabel(row);
               const nameWithOrder = row.isSubstitution ? substitutionLabel : starterLabel;
               return (
                 <Fragment key={row.playerId}>

@@ -408,6 +408,14 @@ export function StatsPageClient({
     [filteredPitchingMatchupPas, filteredPitchingPitchEvents, pitchingMatchupPayload?.pitchEvents]
   );
 
+  /** Games in the current pitching sample (for official W–L–SV when recomputing from filtered PAs). */
+  const displayPitchingGames = useMemo(() => {
+    if (!pitchingMatchupPayload?.games?.length) return undefined;
+    const pas = filteredPitchingMatchupPas ?? pitchingMatchupPayload.pas;
+    const gameIds = new Set(pas.map((p) => p.game_id).filter(Boolean) as string[]);
+    return pitchingMatchupPayload.games.filter((g) => gameIds.has(g.id));
+  }, [pitchingMatchupPayload, filteredPitchingMatchupPas]);
+
   const pitchBatterBatsByIdObj = useMemo(
     () => Object.fromEntries(Array.from(pitchBatterBatsMap.entries())),
     [pitchBatterBatsMap]
@@ -420,7 +428,8 @@ export function StatsPageClient({
       filteredPitchingMatchupPas,
       pitchStarterMap,
       pitchBatterBatsMap,
-      filteredPitchingPitchEvents
+      filteredPitchingPitchEvents,
+      displayPitchingGames
     );
   }, [
     filteredPitchingMatchupPas,
@@ -430,6 +439,7 @@ export function StatsPageClient({
     pitchStarterMap,
     pitchBatterBatsMap,
     initialPitchingStatsWithSplits,
+    displayPitchingGames,
   ]);
 
   const hasResettableFilters = useMemo(

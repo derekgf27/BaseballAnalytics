@@ -29,6 +29,7 @@ import {
 import { kPctToKRate, type PlayerStatsForWatch } from "@/lib/playersToWatch";
 import { isSprayChartBipResult } from "@/lib/sprayChartFilters";
 import { isClubRosterPlayer, isPitcherPlayer } from "@/lib/opponentUtils";
+import { isGameFinalized } from "@/lib/gameRecord";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isDemoId } from "./mockData";
 import type {
@@ -968,6 +969,9 @@ const EMPTY_PITCHING_STATS = (): PitchingStats => ({
   era: 0,
   hr: 0,
   so: 0,
+  w: 0,
+  l: 0,
+  sv: 0,
   bb: 0,
   hbp: 0,
   fip: 0,
@@ -993,6 +997,63 @@ const EMPTY_PITCHING_STATS_WITH_SPLITS = (): PitchingStatsWithSplits => ({
     basesLoaded: EMPTY_PITCHING_RUNNER_SPLIT(),
   },
 });
+
+/** Official pitcher decisions from finalized `games` rows (winning / losing / save pitcher ids). */
+export type PitcherOfficialTotals = {
+  wins: number;
+  losses: number;
+  saves: number;
+};
+
+/**
+ * Count official W–L–SV per player from the games table. Only finalized games (both scores set).
+ * When `calendarYear` is set, only games whose `date` falls in that year (ISO `YYYY-MM-DD`).
+ */
+export async function getPitcherOfficialTotalsForPlayers(
+  playerIds: string[],
+  options?: { calendarYear?: number | null }
+): Promise<Record<string, PitcherOfficialTotals>> {
+  const blank = (): PitcherOfficialTotals => ({ wins: 0, losses: 0, saves: 0 });
+  const clean = [
+    ...new Set(
+      playerIds
+        .filter((id) => typeof id === "string" && id.trim() && !isDemoId(id.trim()))
+        .map((id) => id.trim())
+    ),
+  ];
+  const out: Record<string, PitcherOfficialTotals> = {};
+  for (const id of clean) out[id] = blank();
+
+  const supabase = await getSupabase();
+  if (!supabase || clean.length === 0) return out;
+
+  let q = supabase
+    .from("games")
+    .select("id, date, winning_pitcher_id, losing_pitcher_id, save_pitcher_id, final_score_home, final_score_away")
+    .not("final_score_home", "is", null)
+    .not("final_score_away", "is", null);
+
+  const y = options?.calendarYear;
+  if (y != null && Number.isFinite(y)) {
+    q = q.gte("date", `${y}-01-01`).lte("date", `${y}-12-31`);
+  }
+
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+
+  for (const row of data ?? []) {
+    const g = row as Game;
+    if (isDemoId(g.id)) continue;
+    const wId = g.winning_pitcher_id?.trim() || null;
+    const lId = g.losing_pitcher_id?.trim() || null;
+    const sId = g.save_pitcher_id?.trim() || null;
+    if (wId && out[wId] != null) out[wId].wins += 1;
+    if (lId && out[lId] != null) out[lId].losses += 1;
+    if (sId && out[sId] != null) out[sId].saves += 1;
+  }
+
+  return out;
+}
 
 /** Pitching stats: PAs where `pitcher_id` matches; GS = listed SP on `games` only when ≥1 PA exists for that game. */
 export async function getPitchingStatsForPlayers(
@@ -1064,6 +1125,54 @@ export async function getPitchingStatsForPlayers(
     }
   }
 
+  const { data: savePitcherRows } = await supabase
+    .from("games")
+    .select("id, save_pitcher_id")
+    .in("save_pitcher_id", clean)
+    .not("final_score_home", "is", null)
+    .not("final_score_away", "is", null);
+  const officialSavesByPlayer = new Map<string, number>();
+  for (const id of clean) officialSavesByPlayer.set(id, 0);
+  for (const row of savePitcherRows ?? []) {
+    const r = row as { id: string; save_pitcher_id: string | null };
+    if (excludeGid && r.id === excludeGid) continue;
+    const pid = r.save_pitcher_id;
+    if (!pid) continue;
+    officialSavesByPlayer.set(pid, (officialSavesByPlayer.get(pid) ?? 0) + 1);
+  }
+
+  const { data: winPitcherRows } = await supabase
+    .from("games")
+    .select("id, winning_pitcher_id")
+    .in("winning_pitcher_id", clean)
+    .not("final_score_home", "is", null)
+    .not("final_score_away", "is", null);
+  const officialWinsByPlayer = new Map<string, number>();
+  for (const id of clean) officialWinsByPlayer.set(id, 0);
+  for (const row of winPitcherRows ?? []) {
+    const r = row as { id: string; winning_pitcher_id: string | null };
+    if (excludeGid && r.id === excludeGid) continue;
+    const pid = r.winning_pitcher_id;
+    if (!pid) continue;
+    officialWinsByPlayer.set(pid, (officialWinsByPlayer.get(pid) ?? 0) + 1);
+  }
+
+  const { data: lossPitcherRows } = await supabase
+    .from("games")
+    .select("id, losing_pitcher_id")
+    .in("losing_pitcher_id", clean)
+    .not("final_score_home", "is", null)
+    .not("final_score_away", "is", null);
+  const officialLossesByPlayer = new Map<string, number>();
+  for (const id of clean) officialLossesByPlayer.set(id, 0);
+  for (const row of lossPitcherRows ?? []) {
+    const r = row as { id: string; losing_pitcher_id: string | null };
+    if (excludeGid && r.id === excludeGid) continue;
+    const pid = r.losing_pitcher_id;
+    if (!pid) continue;
+    officialLossesByPlayer.set(pid, (officialLossesByPlayer.get(pid) ?? 0) + 1);
+  }
+
   const result: Record<string, PitchingStatsWithSplits> = {};
   const paPitchIds = (pasRows ?? [])
     .map((row) => (row as PlateAppearance).id)
@@ -1079,6 +1188,9 @@ export async function getPitchingStatsForPlayers(
     const { pasL, pasR } = platoonPitchingPasSplits(pas, batterBatsById);
     const stats = pitchingStatsFromPAs(pas, starters, batterBatsById, eventsByPaIdPitching, {
       allPasForRunCharges: allPasForGames,
+      officialSaves: officialSavesByPlayer.get(playerId) ?? 0,
+      officialWins: officialWinsByPlayer.get(playerId) ?? 0,
+      officialLosses: officialLossesByPlayer.get(playerId) ?? 0,
     });
     const base = stats ?? EMPTY_PITCHING_STATS_WITH_SPLITS();
     const eN = eCountsPitch[playerId] ?? 0;
@@ -1187,12 +1299,46 @@ export async function getPitchingStatsForPitcherVsOurClub(
     paPitchIds.length > 0 ? await getPitchEventsForPaIds(paPitchIds) : [];
   const eventsByPaIdPitching = groupPitchEventsByPaId(pitchEventsPitching);
 
+  const { data: saveRowsVsOur } = await supabase
+    .from("games")
+    .select("id, save_pitcher_id, final_score_home, final_score_away")
+    .in("id", filteredGameIds)
+    .eq("save_pitcher_id", pitcherId);
+  let savesVsOur = 0;
+  for (const row of saveRowsVsOur ?? []) {
+    const g = row as Game;
+    const fh = g.final_score_home;
+    const fa = g.final_score_away;
+    if (fh == null || fa == null || Number.isNaN(Number(fh)) || Number.isNaN(Number(fa))) continue;
+    savesVsOur += 1;
+  }
+
+  const { data: decisionRowsVsOur } = await supabase
+    .from("games")
+    .select("id, winning_pitcher_id, losing_pitcher_id, final_score_home, final_score_away")
+    .in("id", filteredGameIds);
+  let winsVsOur = 0;
+  let lossesVsOur = 0;
+  for (const row of decisionRowsVsOur ?? []) {
+    const g = row as Game;
+    const fh = g.final_score_home;
+    const fa = g.final_score_away;
+    if (fh == null || fa == null || Number.isNaN(Number(fh)) || Number.isNaN(Number(fa))) continue;
+    if (g.winning_pitcher_id === pitcherId) winsVsOur += 1;
+    if (g.losing_pitcher_id === pitcherId) lossesVsOur += 1;
+  }
+
   const withSplits = pitchingStatsFromPAs(
     filteredPas,
     startersForSample,
     batterBatsById,
     eventsByPaIdPitching,
-    { allPasForRunCharges: allPasForGames }
+    {
+      allPasForRunCharges: allPasForGames,
+      officialSaves: savesVsOur,
+      officialWins: winsVsOur,
+      officialLosses: lossesVsOur,
+    }
   );
   if (!withSplits) return null;
   const eCountsPitch = await fetchFieldingErrorCountsForPlayers(supabase, [pitcherId]);
@@ -1256,9 +1402,13 @@ export async function getPitcherLastOutingBefore(
   const pitchEvents = paIds.length > 0 ? await getPitchEventsForPaIds(paIds) : [];
   const eventsByPaId = groupPitchEventsByPaId(pitchEvents);
 
+  const fin = isGameFinalized(g);
   const merged = pitchingStatsFromPAs(pasP, started, batterBatsById, eventsByPaId, {
     pitcherIdForRunCharge: pitcherId,
     allPasForRunCharges: allPas,
+    officialSaves: fin && g.save_pitcher_id === pitcherId ? 1 : 0,
+    officialWins: fin && g.winning_pitcher_id === pitcherId ? 1 : 0,
+    officialLosses: fin && g.losing_pitcher_id === pitcherId ? 1 : 0,
   });
   if (!merged?.overall) return null;
   return { game: g, overall: merged.overall };
@@ -1384,8 +1534,12 @@ export async function getTeamPitchingStats(
     paTeamPitchIds.length > 0 ? await getPitchEventsForPaIds(paTeamPitchIds) : [];
   const eventsByPaIdTeam = groupPitchEventsByPaId(pitchEventsTeam);
 
+  const { data: teamSaveGames } = await supabase.from("games").select("id").in("save_pitcher_id", ids);
+  const teamOfficialSaves = (teamSaveGames ?? []).length;
+
   const merged = pitchingStatsFromPAs(pas, new Set(), batterBatsById, eventsByPaIdTeam, {
     pitcherIdForRunCharge: null,
+    officialSaves: teamOfficialSaves,
   });
   if (!merged?.overall) return null;
 
@@ -1931,10 +2085,7 @@ export async function getPlayersToWatchInput(): Promise<PlayerStatsForWatch[]> {
   if (list.length === 0 || !supabase) return [];
 
   const ids = list.map((p) => p.id);
-  const { data } = await supabase
-    .from("plate_appearances")
-    .select("*")
-    .in("batter_id", ids);
+  const { data } = await supabase.from("plate_appearances").select("*").in("batter_id", ids);
 
   const allPAs = (data ?? []) as PlateAppearance[];
   const byBatter = new Map<string, PlateAppearance[]>();

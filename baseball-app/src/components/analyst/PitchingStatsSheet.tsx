@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, type ReactNode } from "react";
 import Link from "next/link";
 import { analystPlayerProfileHref } from "@/lib/analystRoutes";
 import { comparePlayersByLastNameThenFull } from "@/lib/playerSort";
-import { formatPPa } from "@/lib/format";
+import { fmtDecimalNoLeadingZero, fmtPitchDecimal } from "@/lib/format";
 import { REGULATION_INNINGS } from "@/lib/leagueConfig";
 import { PITCHING_STAT_HEADER_TOOLTIPS } from "@/lib/statHeaderTooltips";
 import type {
@@ -42,6 +42,9 @@ type PitchSortKey =
   | "er"
   | "hr"
   | "so"
+  | "w"
+  | "l"
+  | "sv"
   | "bb"
   | "hbp"
   | "era"
@@ -127,6 +130,9 @@ const COLUMNS: {
   { key: "name", label: "Player", align: "left", format: "name", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.player },
   { key: "g", label: "G", align: "right", format: "int", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.g },
   { key: "gs", label: "GS", align: "right", format: "int", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.gs },
+  { key: "w", label: "W", align: "right", format: "int", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.w },
+  { key: "l", label: "L", align: "right", format: "int", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.l },
+  { key: "sv", label: "SV", align: "right", format: "int", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.sv },
   { key: "ip", label: "IP", align: "right", format: "ip", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.ip },
   { key: "h", label: "H", align: "right", format: "int", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.h, borderLeft: true },
   { key: "baa", label: "BAA", align: "right", format: "avgAgainst", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.baa },
@@ -545,10 +551,13 @@ const LOWER_BETTER = new Set<PitchSortKey>([
   "plBaaCH",
   "plBaaSP",
   "plBaaOT",
+  "l",
 ]);
 
 const HIGHER_BETTER = new Set<PitchSortKey>([
   "so",
+  "w",
+  "sv",
   "k7",
   "kPct",
   "whiffPct",
@@ -730,16 +739,13 @@ function stickyLeadRowBg(selected: boolean, index: number): string {
 }
 
 function formatEraLike(value: number): string {
-  if (value === 0) return "0.00";
-  return value.toFixed(2);
+  return fmtPitchDecimal(value, 2);
 }
 
 /** Opponent AVG — three decimals, batting-style (drop leading 0). */
 function formatOppBattingAvg(stats: PitchingStats): string {
   if (stats.abAgainst < 1) return "—";
-  const v = stats.h / stats.abAgainst;
-  const s = v.toFixed(3);
-  return s.startsWith("0.") ? s.slice(1) : s;
+  return fmtDecimalNoLeadingZero(stats.h / stats.abAgainst, 3);
 }
 
 function pitchTypeBaaFromRates(
@@ -756,8 +762,7 @@ function pitchTypeBaaFromRates(
 
 function formatPitchTypeBaa(rate: number | undefined): string {
   if (rate === undefined) return "—";
-  const s = rate.toFixed(3);
-  return s.startsWith("0.") ? s.slice(1) : s;
+  return fmtDecimalNoLeadingZero(rate, 3);
 }
 
 /** AB denominator for per–pitch-type AVG (for leader styling). */
@@ -834,6 +839,12 @@ function getPitchingStatValue(stats: PitchingStats | undefined, key: PitchSortKe
       return stats.hr;
     case "so":
       return stats.so;
+    case "w":
+      return stats.w;
+    case "l":
+      return stats.l;
+    case "sv":
+      return stats.sv;
     case "bb":
       return stats.bb;
     case "hbp":
@@ -989,7 +1000,7 @@ function displayCell(stats: PitchingStats | undefined, key: PitchSortKey, format
   if (format === "pPa") {
     const p = stats.rates.pPa;
     if (p == null || Number.isNaN(p)) return "—";
-    return formatPPa(p);
+    return fmtPitchDecimal(p, 2);
   }
   if (format === "avgAgainst") {
     return formatOppBattingAvg(stats);
@@ -1441,11 +1452,11 @@ export function PitchingStatsSheet({
                     Search
                   </span>
                   <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end sm:gap-3 sm:justify-start">
-                    <input
-                      type="search"
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      placeholder="Player name…"
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Player name…"
                       className="w-full max-w-[16rem] rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] focus:border-[var(--accent)] focus:outline-none"
                     />
                     {sampleToolbarEnd ? <div className="shrink-0">{sampleToolbarEnd}</div> : null}
@@ -1633,17 +1644,17 @@ export function PitchingStatsSheet({
               >
                 {COLUMNS[0].label}
                 {sortKey === COLUMNS[0].key && (
-                  <span className="ml-1 text-[var(--accent)]" aria-hidden>
-                    {sortDir === "asc" ? "↑" : "↓"}
-                  </span>
-                )}
-              </th>
-              <th
-                title={PITCHING_STAT_HEADER_TOOLTIPS.throws}
+                      <span className="ml-1 text-[var(--accent)]" aria-hidden>
+                        {sortDir === "asc" ? "↑" : "↓"}
+                      </span>
+                    )}
+                  </th>
+                    <th
+                      title={PITCHING_STAT_HEADER_TOOLTIPS.throws}
                 className={`font-display border-b border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] ${STICKY_LEAD.throws}`}
-              >
+                    >
                 T
-              </th>
+                    </th>
               {displayColumns.slice(1).map(({ key, label, align, tooltip, borderLeft }, idx) => (
                 <th
                   key={`${key}-${idx}`}

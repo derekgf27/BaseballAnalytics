@@ -205,7 +205,7 @@ export function PlayerSprayChartsSection({
   sprayResultFilter: controlledFilter,
   onSprayResultFilterChange,
 }: PlayerSprayChartsSectionProps) {
-  const [internalFilter, setInternalFilter] = useState<SprayResultFilterKey>("hits");
+  const [internalFilter, setInternalFilter] = useState<SprayResultFilterKey>("both");
   const sprayResultFilter = controlledFilter ?? internalFilter;
   const setSprayResultFilter = onSprayResultFilterChange ?? setInternalFilter;
 

@@ -93,7 +93,7 @@ export function OpponentDetailClient({
   pitcherSprayData,
   hasTaggedOpponentRoster,
 }: OpponentDetailClientProps) {
-  const [sprayResultFilter, setSprayResultFilter] = useState<"hits" | "outs" | "both">("hits");
+  const [sprayResultFilter, setSprayResultFilter] = useState<"hits" | "outs" | "both">("both");
   const [matchupPitcherId, setMatchupPitcherId] = useState("");
   const [pitchMatchupBatterId, setPitchMatchupBatterId] = useState("");
 
@@ -214,6 +214,13 @@ export function OpponentDetailClient({
     return raw.filter((e) => ids.has(e.pa_id));
   }, [pitchingMatchupPayload?.pitchEvents, filteredPitchingMatchupPas]);
 
+  const displayPitchingGames = useMemo(() => {
+    if (!pitchingMatchupPayload?.games?.length) return undefined;
+    const pas = filteredPitchingMatchupPas ?? pitchingMatchupPayload.pas;
+    const gameIds = new Set(pas.map((p) => p.game_id).filter(Boolean) as string[]);
+    return pitchingMatchupPayload.games.filter((g) => gameIds.has(g.id));
+  }, [pitchingMatchupPayload, filteredPitchingMatchupPas]);
+
   const displayPitchingStatsWithSplits = useMemo(() => {
     if (!filteredPitchingMatchupPas || !pitchingMatchupPayload) return opponentPitchingStatsWithSplits;
     return computePitchingStatsWithSplitsForRoster(
@@ -221,7 +228,8 @@ export function OpponentDetailClient({
       filteredPitchingMatchupPas,
       pitchStarterMap,
       pitchBatterBatsMap,
-      filteredPitchingPitchEvents
+      filteredPitchingPitchEvents,
+      displayPitchingGames
     );
   }, [
     filteredPitchingMatchupPas,
@@ -231,6 +239,7 @@ export function OpponentDetailClient({
     pitchStarterMap,
     pitchBatterBatsMap,
     opponentPitchingStatsWithSplits,
+    displayPitchingGames,
   ]);
 
   const battingSheetPlayers =

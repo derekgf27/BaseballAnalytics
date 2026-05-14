@@ -4,6 +4,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { TeamSprayChart } from "@/components/analyst/TeamSprayChart";
 import { isRisp } from "@/lib/compute/battingStats";
+import { fmtDecimalNoLeadingZero } from "@/lib/format";
 import type { HitDirection } from "@/lib/types";
 import type { Game, Player } from "@/lib/types";
 import {
@@ -881,7 +882,7 @@ export function ChartsClient({ sprayData, pitchingSprayData, chartPas, players, 
                       <div className="mt-0.5 text-sm font-semibold text-[var(--neo-accent)]">
                         {rispHits}/{rispAb}
                         <span className="ml-1 text-xs text-[var(--text)]">
-                          ({rispAb > 0 ? (rispHits / rispAb).toFixed(3).replace(/^0/, "") : "—"})
+                          ({rispAb > 0 ? fmtDecimalNoLeadingZero(rispHits / rispAb, 3) : "—"})
                         </span>
                       </div>
                       <div className="mt-0.5 text-[10px] text-[var(--text-faint)]">{rispPas.length} PAs with RISP</div>
@@ -891,7 +892,7 @@ export function ChartsClient({ sprayData, pitchingSprayData, chartPas, players, 
                       <div className="mt-0.5 text-sm font-semibold text-[var(--neo-accent)]">
                         {lateObjectiveHits}/{lateObjectiveAb}
                         <span className="ml-1 text-xs text-[var(--text)]">
-                          ({lateObjectiveAb > 0 ? (lateObjectiveHits / lateObjectiveAb).toFixed(3).replace(/^0/, "") : "—"})
+                          ({lateObjectiveAb > 0 ? fmtDecimalNoLeadingZero(lateObjectiveHits / lateObjectiveAb, 3) : "—"})
                         </span>
                       </div>
                       <div className="mt-0.5 text-[10px] text-[var(--text-faint)]">{lateObjectivePas.length} PAs inning 7+</div>
@@ -913,7 +914,7 @@ export function ChartsClient({ sprayData, pitchingSprayData, chartPas, players, 
                         <div className="min-w-0">
                           <div className="truncate font-medium text-[var(--text)]">{p.name}</div>
                           <div className="truncate tabular-nums text-[var(--text-muted)]">
-                            PA {p.pa} · AVG {p.avg.toFixed(3).replace(/^0/, "")} · K% {(p.kPct * 100).toFixed(1)} · BB% {(p.bbPct * 100).toFixed(1)}
+                            PA {p.pa} · AVG {fmtDecimalNoLeadingZero(p.avg, 3)} · K% {(p.kPct * 100).toFixed(1)} · BB% {(p.bbPct * 100).toFixed(1)}
                           </div>
                         </div>
                       </div>

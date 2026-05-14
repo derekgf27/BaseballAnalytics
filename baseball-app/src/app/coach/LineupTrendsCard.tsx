@@ -1,10 +1,10 @@
 "use client";
 
+import { fmtDecimalNoLeadingZero } from "@/lib/format";
 import type { TodayLineupSlot } from "./CoachTodayClient";
 
 function formatAvgLike(value: number): string {
-  const s = value.toFixed(3);
-  return s.startsWith("0.") ? s.slice(1) : s;
+  return fmtDecimalNoLeadingZero(value, 3);
 }
 
 interface LineupTrendsCardProps {

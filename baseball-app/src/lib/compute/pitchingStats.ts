@@ -18,10 +18,12 @@ import {
 import { groupPitchEventsByPaId, mergeContactProfileIntoPitchingRates } from "@/lib/compute/contactProfileFromPas";
 import { mergePitchTypeTeamProfileFromLines } from "@/lib/compute/pitchTypeProfileFromPas";
 import { isDemoId } from "@/lib/db/mockData";
+import { isGameFinalized } from "@/lib/gameRecord";
 import { REGULATION_INNINGS } from "@/lib/leagueConfig";
 import type {
   BattingFinalCountBucketKey,
   Bats,
+  Game,
   PAResult,
   PitchEvent,
   PitchingRateLine,
@@ -292,7 +294,40 @@ export type PitchingStatsFromPasOptions = {
    * When omitted, inferred if every PA shares the same `pitcher_id`.
    */
   pitcherIdForRunCharge?: string | null;
+  /**
+   * Saves credited on games (`games.save_pitcher_id`). Applied only to the combined overall line
+   * from {@link pitchingStatsFromPAs}; platoon lines omit `sv`.
+   */
+  officialSaves?: number;
+  /** Official wins on finalized games (`games.winning_pitcher_id`). */
+  officialWins?: number;
+  /** Official losses on finalized games (`games.losing_pitcher_id`). */
+  officialLosses?: number;
 };
+
+/** W–L–SV from finalized games only (same ids as game row bookkeeping). */
+export function countOfficialPitchDecisionsFromGames(
+  pitcherId: string | null | undefined,
+  games: Game[]
+): { wins: number; losses: number; saves: number } {
+  if (!pitcherId || isDemoId(pitcherId)) return { wins: 0, losses: 0, saves: 0 };
+  let wins = 0;
+  let losses = 0;
+  let saves = 0;
+  for (const g of games) {
+    if (!isGameFinalized(g)) continue;
+    if (isDemoId(g.id)) continue;
+    if (g.winning_pitcher_id === pitcherId) wins += 1;
+    if (g.losing_pitcher_id === pitcherId) losses += 1;
+    if (g.save_pitcher_id === pitcherId) saves += 1;
+  }
+  return { wins, losses, saves };
+}
+
+/** Count games in `games` where `save_pitcher_id` matches the pitcher. */
+export function countSavesInGamesForPitcher(pitcherId: string | null | undefined, games: Game[]): number {
+  return countOfficialPitchDecisionsFromGames(pitcherId, games).saves;
+}
 
 function resolveRunChargeParams(
   pasThisPitcher: PlateAppearance[],
@@ -620,6 +655,17 @@ export function pitchingStatsFromPAs(
         )
       : null;
 
+  const officialSaves = options?.officialSaves;
+  if (officialSaves !== undefined) {
+    overall.sv = officialSaves;
+  }
+  if (options?.officialWins !== undefined) {
+    overall.w = options.officialWins;
+  }
+  if (options?.officialLosses !== undefined) {
+    overall.l = options.officialLosses;
+  }
+
   return { overall, vsLHB, vsRHB };
 }
 
@@ -731,6 +777,9 @@ function emptyPitchingStatsWithSplits(): PitchingStatsWithSplits {
       h: 0,
       abAgainst: 0,
       r: 0,
+      w: 0,
+      l: 0,
+      sv: 0,
       irs: 0,
       er: 0,
       era: 0,
@@ -762,7 +811,9 @@ export function computePitchingStatsWithSplitsForRoster(
   pas: PlateAppearance[],
   starterGameIdsByPlayer: Map<string, Set<string>>,
   batterBatsById: Map<string, Bats | null | undefined>,
-  pitchEvents: PitchEvent[] = []
+  pitchEvents: PitchEvent[] = [],
+  /** When set, official W–L–SV are counted from these finalized games (e.g. full club schedule or matchup filter). */
+  gamesForOfficialDecisions?: Game[]
 ): Record<string, PitchingStatsWithSplits> {
   const eventsByPaId = groupPitchEventsByPaId(pitchEvents);
   const byPitcher = new Map<string, PlateAppearance[]>();
@@ -779,8 +830,14 @@ export function computePitchingStatsWithSplitsForRoster(
     const list = byPitcher.get(playerId) ?? [];
     const starters = starterGameIdsByPlayer.get(playerId) ?? new Set<string>();
   const { pasL, pasR } = platoonPitchingPasSplits(list, batterBatsById);
+    const official = gamesForOfficialDecisions?.length
+      ? countOfficialPitchDecisionsFromGames(playerId, gamesForOfficialDecisions)
+      : null;
     const stats = pitchingStatsFromPAs(list, starters, batterBatsById, eventsByPaId, {
       allPasForRunCharges: pas,
+      officialSaves: official?.saves,
+      officialWins: official?.wins,
+      officialLosses: official?.losses,
     });
     const base = stats ?? emptyPitchingStatsWithSplits();
     result[playerId] = {
@@ -846,6 +903,9 @@ export function aggregatePitchingTeamLine(lines: PitchingStats[]): PitchingStats
   const e = L.reduce((s, l) => s + (l.e ?? 0), 0);
   const ir = L.reduce((s, l) => s + (l.ir ?? 0), 0);
   const irs = L.reduce((s, l) => s + (l.irs ?? 0), 0);
+  const w = L.reduce((s, l) => s + (l.w ?? 0), 0);
+  const lossSum = L.reduce((s, l) => s + (l.l ?? 0), 0);
+  const sv = L.reduce((s, line) => s + (line.sv ?? 0), 0);
 
   const era = ip > 0 ? (REGULATION_INNINGS * er) / ip : 0;
   const whip = ip > 0 ? (h + bb) / ip : 0;
@@ -902,6 +962,9 @@ export function aggregatePitchingTeamLine(lines: PitchingStats[]): PitchingStats
     fip,
     whip,
     e,
+    w,
+    l: lossSum,
+    sv,
     rates,
   };
 }

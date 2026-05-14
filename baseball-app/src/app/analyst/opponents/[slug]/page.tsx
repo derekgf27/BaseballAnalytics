@@ -248,7 +248,8 @@ export default async function OpponentDetailPage({
       opponentPitchingPasTagged,
       starterGameIdsByPlayer,
       batterBatsById,
-      opponentPitchEvents
+      opponentPitchEvents,
+      vsGames
     );
     battingStatsPlayers = rosterPlayersForSheet.filter(
       (p) => (opponentBattingStatsWithSplits[p.id]?.overall.pa ?? 0) > 0

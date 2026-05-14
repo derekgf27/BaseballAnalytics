@@ -22,9 +22,15 @@ interface BoxScoreProps {
   game: Game;
   /** All plate appearances for the game (caller passes full game list). */
   pas: PlateAppearance[];
+  /** Tighter typography and cell padding (e.g. review page beside pitcher credits). */
+  compact?: boolean;
+  /** Large table for emphasis (e.g. game review); wins over `compact` when both set. */
+  large?: boolean;
+  /** Omit outer border/background (use inside a parent card). */
+  bare?: boolean;
 }
 
-export function BoxScore({ game, pas }: BoxScoreProps) {
+export function BoxScore({ game, pas, compact = false, large = false, bare = false }: BoxScoreProps) {
   const pasAway = pas.filter((p) => p.inning_half === "top");
   const pasHome = pas.filter((p) => p.inning_half === "bottom");
   const awayStats = computeBoxScoreFromPAs(pasAway);
@@ -37,29 +43,92 @@ export function BoxScore({ game, pas }: BoxScoreProps) {
   const awayR = Object.values(awayStats.runsByInning).reduce((s, n) => s + n, 0);
   const homeR = Object.values(homeStats.runsByInning).reduce((s, n) => s + n, 0);
 
+  const isCompact = compact && !large;
+  const cellPad = large
+    ? "px-2 py-2.5 sm:px-2.5 sm:py-3"
+    : isCompact
+      ? "px-0 py-px leading-none"
+      : "px-1 py-2";
+  const teamPad = large
+    ? "px-4 py-2.5 sm:px-5 sm:py-3"
+    : isCompact
+      ? "px-1 py-px pr-0.5 leading-tight"
+      : "px-3 py-2";
+  const headPad = large
+    ? "px-2 py-2.5 sm:px-2.5 sm:py-3"
+    : isCompact
+      ? "px-0 py-px leading-none"
+      : "px-1 py-2";
+  const teamHeadPad = large
+    ? "px-4 py-2.5 sm:px-5 sm:py-3"
+    : isCompact
+      ? "px-1 py-px pr-0.5 leading-none"
+      : "px-3 py-2";
+  const innW = large
+    ? "w-11 min-w-[2.5rem] px-1 sm:w-12 sm:min-w-[2.85rem] sm:px-1.5"
+    : isCompact
+      ? "w-3 min-w-[0.65rem] max-w-[0.7rem] px-0"
+      : "w-9";
+  const rHEW = large
+    ? "w-12 min-w-[2.65rem] px-1 sm:w-14 sm:min-w-[3rem] sm:px-1.5"
+    : isCompact
+      ? "w-4 min-w-[0.85rem] max-w-[1.15rem] px-0"
+      : "w-9";
+  const tableText = large
+    ? "text-left text-base tabular-nums sm:text-lg"
+    : isCompact
+      ? "text-left text-[9px] leading-none sm:text-[10px]"
+      : "text-left text-sm";
+  const headText = large
+    ? "text-sm font-bold sm:text-base"
+    : isCompact
+      ? "text-[8px] leading-none sm:text-[9px]"
+      : "text-xs";
+  const tableWidth = large || isCompact ? "w-auto" : "w-full min-w-0";
+  /** Room for full club names without harsh ellipsis; numbers stay tight. */
+  const teamColCompact =
+    "w-[min(12rem,42vw)] min-w-[7.5rem] max-w-[13rem] whitespace-normal break-words align-top leading-snug";
+  const teamColLarge =
+    "min-w-[11rem] max-w-[min(100%,20rem)] whitespace-normal break-words align-middle leading-snug sm:min-w-[13rem] sm:max-w-[22rem]";
+  const teamColClass = large ? teamColLarge : isCompact ? teamColCompact : "";
+  const wrapClass =
+    bare && (isCompact || large)
+      ? "inline-block w-max max-w-full overflow-x-auto"
+      : isCompact
+        ? "inline-block w-max max-w-full overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--bg-card)]"
+        : "overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--bg-card)]";
+
   return (
-    <section className="overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--bg-card)]">
-      <table className="w-full min-w-[320px] border-collapse text-left text-sm">
+    <section className={wrapClass}>
+      <table className={`${tableWidth} border-collapse ${tableText}`}>
         <thead>
           <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
-            <th className="font-display px-3 py-2 text-xs font-semibold uppercase tracking-wider text-white">
+            <th
+              className={`font-display ${teamHeadPad} ${headText} ${large ? "" : "font-semibold"} uppercase tracking-wider text-white ${teamColClass}`}
+            >
               Team
             </th>
             {INNINGS.map((i) => (
               <th
                 key={i}
-                className="font-display w-9 px-1 py-2 text-center text-xs font-semibold uppercase tracking-wider text-white"
+                className={`font-display ${innW} ${headPad} text-center ${headText} ${large ? "" : "font-semibold"} uppercase tracking-wider text-white`}
               >
                 {i}
               </th>
             ))}
-            <th className="font-display w-9 border-l border-[var(--border)] px-1 py-2 text-center text-xs font-semibold uppercase tracking-wider text-white">
+            <th
+              className={`font-display ${rHEW} border-l border-[var(--border)] ${headPad} text-center ${headText} ${large ? "" : "font-semibold"} uppercase tracking-wider text-white`}
+            >
               R
             </th>
-            <th className="font-display w-9 px-1 py-2 text-center text-xs font-semibold uppercase tracking-wider text-white">
+            <th
+              className={`font-display ${rHEW} ${headPad} text-center ${headText} ${large ? "" : "font-semibold"} uppercase tracking-wider text-white`}
+            >
               H
             </th>
-            <th className="font-display w-9 px-1 py-2 text-center text-xs font-semibold uppercase tracking-wider text-white">
+            <th
+              className={`font-display ${rHEW} ${headPad} text-center ${headText} ${large ? "" : "font-semibold"} uppercase tracking-wider text-white`}
+            >
               E
             </th>
           </tr>
@@ -67,35 +136,45 @@ export function BoxScore({ game, pas }: BoxScoreProps) {
         <tbody>
           {/* Away bats in top half */}
           <tr className="border-b border-[var(--border)]">
-            <td className="px-3 py-2 font-medium text-[var(--text)]">
+            <td
+              className={`${teamPad} ${large ? "font-semibold" : "font-medium"} text-[var(--text)] ${teamColClass}`}
+              title={game.away_team}
+            >
               {game.away_team}
             </td>
             {INNINGS.map((i) => (
-              <td key={i} className="px-1 py-2 text-center tabular-nums text-[var(--text)]">
+              <td key={i} className={`${cellPad} text-center tabular-nums text-[var(--text)]`}>
                 {(awayStats.runsByInning[i] ?? 0) || "0"}
               </td>
             ))}
-            <td className="border-l border-[var(--border)] px-1 py-2 text-center tabular-nums font-medium text-[var(--text)]">
+            <td
+              className={`border-l border-[var(--border)] ${cellPad} text-center tabular-nums ${large ? "font-bold" : "font-medium"} text-[var(--text)]`}
+            >
               {awayR}
             </td>
-            <td className="px-1 py-2 text-center tabular-nums text-[var(--text)]">{awayStats.hits}</td>
-            <td className="px-1 py-2 text-center tabular-nums text-[var(--text)]">{awayE}</td>
+            <td className={`${cellPad} text-center tabular-nums text-[var(--text)]`}>{awayStats.hits}</td>
+            <td className={`${cellPad} text-center tabular-nums text-[var(--text)]`}>{awayE}</td>
           </tr>
           {/* Home bats in bottom half */}
           <tr className="border-b border-[var(--border)]">
-            <td className="px-3 py-2 font-medium text-[var(--text)]">
+            <td
+              className={`${teamPad} ${large ? "font-semibold" : "font-medium"} text-[var(--text)] ${teamColClass}`}
+              title={game.home_team}
+            >
               {game.home_team}
             </td>
             {INNINGS.map((i) => (
-              <td key={i} className="px-1 py-2 text-center tabular-nums text-[var(--text)]">
+              <td key={i} className={`${cellPad} text-center tabular-nums text-[var(--text)]`}>
                 {(homeStats.runsByInning[i] ?? 0) || "0"}
               </td>
             ))}
-            <td className="border-l border-[var(--border)] px-1 py-2 text-center tabular-nums font-medium text-[var(--text)]">
+            <td
+              className={`border-l border-[var(--border)] ${cellPad} text-center tabular-nums ${large ? "font-bold" : "font-medium"} text-[var(--text)]`}
+            >
               {homeR}
             </td>
-            <td className="px-1 py-2 text-center tabular-nums text-[var(--text)]">{homeStats.hits}</td>
-            <td className="px-1 py-2 text-center tabular-nums text-[var(--text)]">{homeE}</td>
+            <td className={`${cellPad} text-center tabular-nums text-[var(--text)]`}>{homeStats.hits}</td>
+            <td className={`${cellPad} text-center tabular-nums text-[var(--text)]`}>{homeE}</td>
           </tr>
         </tbody>
       </table>

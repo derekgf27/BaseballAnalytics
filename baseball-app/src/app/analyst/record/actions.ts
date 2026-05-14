@@ -148,17 +148,31 @@ export async function saveRecordGameLineupAction(
   }
 }
 
-/** Set final score snapshot for a game ("Finalize game"). */
+/** Set final score snapshot for a game ("Finalize game") and optional official W / SV credits. */
 export async function finalizeGameScoreAction(
   gameId: string,
   finalHome: number,
-  finalAway: number
+  finalAway: number,
+  options?: {
+    winningPitcherId?: string | null;
+    savePitcherId?: string | null;
+    losingPitcherId?: string | null;
+  }
 ): Promise<{ ok: boolean; error?: string }> {
   if (isDemoId(gameId)) return { ok: false, error: "Cannot finalize demo game." };
   try {
+    const winId = options?.winningPitcherId?.trim() || null;
+    let saveId = options?.savePitcherId?.trim() || null;
+    let lossId = options?.losingPitcherId?.trim() || null;
+    if (saveId && winId && saveId === winId) saveId = null;
+    if (lossId && winId && lossId === winId) lossId = null;
+    if (lossId && saveId && lossId === saveId) lossId = null;
     await updateGame(gameId, {
       final_score_home: Math.max(0, finalHome),
       final_score_away: Math.max(0, finalAway),
+      winning_pitcher_id: winId,
+      save_pitcher_id: saveId,
+      losing_pitcher_id: lossId,
     });
     return { ok: true };
   } catch (e) {

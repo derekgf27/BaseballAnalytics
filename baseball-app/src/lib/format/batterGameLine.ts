@@ -53,10 +53,11 @@ function abbrevForResultCore(r: PAResult): string | null {
 function abbrevForPa(pa: PlateAppearance): string | null {
   const base = abbrevForResultCore(pa.result);
   if (!base) return null;
-  const hitPlusE =
+  const plusE =
     pa.error_fielder_id &&
-    (pa.result === "single" || pa.result === "double" || pa.result === "triple");
-  return hitPlusE ? `${base}+E` : base;
+    pa.result !== "reached_on_error" &&
+    pa.result !== "hr";
+  return plusE ? `${base}+E` : base;
 }
 
 /**
