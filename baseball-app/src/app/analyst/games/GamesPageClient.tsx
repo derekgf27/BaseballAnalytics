@@ -155,9 +155,13 @@ export function GamesPageClient({
           /row-level security|rls policy/i.test(raw) || /permission denied/i.test(raw)
             ? " Use the app Log in so your session is authenticated — many Supabase setups only allow writes for signed-in users."
             : "";
+        const prodDigestHint =
+          /Server Components render|digest/i.test(raw)
+            ? " If you deploy without running the latest Supabase migrations, apply files under baseball-app/supabase/migrations/ (especially games columns for save / win / loss pitcher). "
+            : "";
         setMessage({
           type: "err",
-          text: `Could not add game: ${raw}.${rlsHint}`,
+          text: `Could not add game: ${raw}.${prodDigestHint}${rlsHint}`,
         });
       }
     }
