@@ -13,7 +13,13 @@ import {
   sprayResultMatchesFilter,
   type SprayResultFilterKey,
 } from "@/lib/sprayChartFilters";
-import type { HitDirection, Player, BattingStatsWithSplits } from "@/lib/types";
+import {
+  hasPitchingProfileStats,
+  PlayerPitchingProfileSections,
+} from "@/components/analyst/PlayerPitchingProfileSections";
+import { PlayerProfileHero } from "@/components/shared/PlayerProfileHero";
+import { isPitcherPlayer } from "@/lib/opponentUtils";
+import type { HitDirection, Player, BattingStatsWithSplits, PitchingStatsWithSplits } from "@/lib/types";
 
 const TREND_STYLES = {
   hot: "bg-[var(--decision-hot-dim)] text-[var(--decision-hot)] border-[var(--decision-hot)]/30",
@@ -24,6 +30,7 @@ const TREND_STYLES = {
 interface CoachPlayerDetailClientProps {
   player: Player;
   battingSplits: BattingStatsWithSplits | null;
+  pitchingSplits: PitchingStatsWithSplits | null;
   spraySplits:
     | ({
         mode: "batting";
@@ -60,20 +67,11 @@ function parseLocalDate(isoDate: string): Date {
   return new Date(y, m - 1, d);
 }
 
-function normalizeHand(hand: string | null | undefined): string | null {
-  if (hand == null || hand === "") return null;
-  const code = hand.toUpperCase();
-  if (code.startsWith("L")) return "Left";
-  if (code.startsWith("R")) return "Right";
-  if (code.startsWith("S")) return "Switch";
-  return hand;
-}
-
 function formatAvg(n: number): string {
   return fmtDecimalNoLeadingZero(n, 3);
 }
 
-export function CoachPlayerDetailClient({ player, battingSplits, spraySplits }: CoachPlayerDetailClientProps) {
+export function CoachPlayerDetailClient({ player, battingSplits, pitchingSplits, spraySplits }: CoachPlayerDetailClientProps) {
   const isSwitch = player.bats?.toUpperCase().startsWith("S") ?? false;
   const [sprayResultFilter, setSprayResultFilter] = useState<SprayResultFilterKey>("both");
 
@@ -130,79 +128,36 @@ export function CoachPlayerDetailClient({ player, battingSplits, spraySplits }: 
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   };
 
-  const batsLabel = normalizeHand(player.bats);
-  const throwsLabel = normalizeHand(player.throws);
+  const heightWeight =
+    player.height_in != null || player.weight_lb != null
+      ? `${player.height_in != null ? formatHeight(player.height_in) : ""}${
+          player.height_in != null && player.weight_lb != null ? " " : ""
+        }${player.weight_lb != null ? `${player.weight_lb} lb` : ""}`.trim()
+      : null;
 
-  const info = {
-    jersey: player.jersey != null && player.jersey !== "" ? `#${player.jersey}` : null,
-    positions: player.positions?.length ? player.positions.join(", ") : null,
-    batsThrows:
-      batsLabel != null || throwsLabel != null
-        ? `${batsLabel ?? "—"} / ${throwsLabel ?? "—"}`
-        : null,
-    heightWeight:
-      player.height_in != null || player.weight_lb != null
-        ? `${player.height_in != null ? formatHeight(player.height_in) : ""}${
-            player.height_in != null && player.weight_lb != null ? " " : ""
-          }${player.weight_lb != null ? `${player.weight_lb} lb` : ""}`.trim()
-        : null,
-    hometown: player.hometown?.trim() || null,
-    birthday: player.birth_date ? formatBirthDate(player.birth_date) : null,
-    age: age != null ? `${age} yrs` : null,
-  };
-
-  const rows = [
-    info.jersey && { label: "Jersey", value: info.jersey },
-    info.positions && { label: "Positions", value: info.positions },
-    info.batsThrows && { label: "Bats / Throws", value: info.batsThrows },
-    info.heightWeight && { label: "Height · Weight", value: info.heightWeight },
-    info.hometown && { label: "Hometown", value: info.hometown },
-    info.birthday && { label: "Birthday", value: info.birthday },
-    info.age && { label: "Age", value: info.age },
+  const secondaryFacts = [
+    player.positions?.length ? { label: "Positions", value: player.positions.join(", ") } : null,
+    heightWeight ? { label: "Height · Weight", value: heightWeight } : null,
+    player.hometown?.trim() ? { label: "Hometown", value: player.hometown.trim() } : null,
+    player.birth_date ? { label: "Birthday", value: formatBirthDate(player.birth_date) } : null,
+    age != null ? { label: "Age", value: `${age} yrs` } : null,
   ].filter(Boolean) as { label: string; value: string }[];
 
   return (
     <div className="space-y-6 pb-8">
-      {/* Profile header – mirror Analyst player profile layout */}
-      <section className="card-tech flex flex-col gap-5 p-4 sm:flex-row sm:items-start">
-        <div className="flex shrink-0 flex-row items-center gap-4 sm:w-36 sm:flex-col sm:items-center sm:gap-2">
-          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-[var(--accent-coach-dim)] text-xl font-bold text-[var(--accent-coach)] sm:h-24 sm:w-24 sm:text-2xl">
-            {player.name
-              .split(/\s+/)
-              .map((w) => w[0])
-              .join("")
-              .slice(0, 2)
-              .toUpperCase()}
-          </div>
-          <div className="min-w-0 flex-1 sm:flex sm:w-full sm:flex-col sm:items-center sm:gap-2">
-            <p className="text-left text-base font-semibold text-[var(--text)] sm:text-center sm:text-lg">
-              {player.name}
-            </p>
-            <span
-              className={`mt-1 inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium sm:mt-0 ${trendStyle}`}
-            >
-              {trendLabel}
-            </span>
-          </div>
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="grid grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
-            {rows.map(({ label, value }) => (
-              <div key={label} className="min-w-0">
-                <p className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-                  {label}
-                </p>
-                <p className="mt-0.5 break-words text-sm font-semibold text-[var(--text)] sm:text-base">
-                  {value}
-                </p>
-              </div>
-            ))}
-          </div>
-          <div className="mt-4">
-            <PlayerTagList tags={[]} />
-          </div>
-        </div>
-      </section>
+      <PlayerProfileHero
+        player={player}
+        secondaryFacts={secondaryFacts}
+        titleExtra={
+          <span
+            className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${trendStyle}`}
+          >
+            {trendLabel}
+          </span>
+        }
+      >
+        <PlayerTagList tags={[]} />
+      </PlayerProfileHero>
 
       {/* Season stats summary row (same columns as batting stats table) */}
       {battingSplits && (
@@ -322,6 +277,10 @@ export function CoachPlayerDetailClient({ player, battingSplits, spraySplits }: 
           </div>
         </section>
       )}
+
+      {pitchingSplits && hasPitchingProfileStats(pitchingSplits) ? (
+        <PlayerPitchingProfileSections pitchingSplits={pitchingSplits} />
+      ) : null}
 
       <Card>
         <CardTitle>Strengths & weaknesses</CardTitle>

@@ -147,9 +147,15 @@ export function coachPitchCountBlocksNewPitchType(
   return coachPitchCountNewPitchTypeBlockReason(pitches) != null;
 }
 
+type CoachPitchPadPitchRow = {
+  pitch_number: number;
+  result: PitchTrackerLogResult | null;
+  pitch_type?: string | null;
+};
+
 /** Why new coach pitch types are blocked, if at all. */
 export function coachPitchCountNewPitchTypeBlockReason(
-  pitches: { pitch_number: number; result: PitchTrackerLogResult | null }[]
+  pitches: CoachPitchPadPitchRow[]
 ): "strikes" | "balls" | null {
   const withResult = pitches
     .filter((p): p is typeof p & { result: PitchTrackerLogResult } => p.result != null)
@@ -165,6 +171,17 @@ export function coachPitchCountNewPitchTypeBlockReason(
   const ballPitches = withResult.filter((p) => p.result === "ball").length;
   if (ballPitches >= 4) return "balls";
   return null;
+}
+
+/**
+ * Coach pitch pad: terminal count blocks inserting another pitch row, but Record may have logged
+ * called/whiff/etc. before the coach tagged `pitch_type` — still allow filling those rows.
+ */
+export function coachPitchPadBlocksNewPitchRow(
+  pitches: CoachPitchPadPitchRow[]
+): "strikes" | "balls" | null {
+  if (pitches.some((p) => p.pitch_type == null)) return null;
+  return coachPitchCountNewPitchTypeBlockReason(pitches);
 }
 
 /** Derive pitches_seen, strikes_thrown, first_pitch_strike, final count from a full sequence. */

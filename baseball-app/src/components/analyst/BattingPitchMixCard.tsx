@@ -52,22 +52,100 @@ function pitcherIdsInOrder(pas: PlateAppearance[]): string[] {
 }
 
 /** Shared shell for the Record batter / pitcher pitch-data pair (equal padding, stretch in grid). */
-function pitchDataPairCardShellClass(compact: boolean): string {
-  const pad = compact ? "px-2 py-1.5" : "px-2.5 py-2";
+function pitchDataPairCardShellClass(
+  compact: boolean,
+  coachPad = false,
+  coachPadDense = false,
+  coachPadExpanded = false
+): string {
+  if (coachPad && coachPadExpanded) {
+    return "batting-pitch-mix-card-root flex h-full min-h-0 min-w-0 flex-col px-1 py-1 md:px-2 md:py-2";
+  }
+  const pad = compact
+    ? coachPad
+      ? coachPadDense
+        ? "px-1.5 py-1 md:px-2 md:py-1.5"
+        : "px-2 py-1.5 md:px-3 md:py-2.5"
+      : "px-2 py-1.5"
+    : "px-2.5 py-2";
   return `batting-pitch-mix-card-root rounded-lg border border-[var(--border)] bg-[var(--bg-card)] ${pad} flex h-full min-h-0 min-w-0 flex-col`;
 }
 
-function pitchDataCardNameClass(compact: boolean): string {
-  return (
-    "truncate font-display font-semibold text-[var(--accent)] " +
-    (compact ? "text-sm sm:text-base" : "text-base sm:text-lg")
-  );
+function pitchDataCardNameClass(
+  compact: boolean,
+  coachPad = false,
+  coachPadDense = false,
+  coachPadExpanded = false
+): string {
+  const size =
+    coachPad && coachPadExpanded
+      ? "text-lg md:text-xl"
+      : coachPad && coachPadDense
+        ? "text-xs sm:text-sm md:text-base"
+        : coachPad
+          ? "text-sm sm:text-base lg:text-lg"
+          : compact
+            ? "text-sm sm:text-base"
+            : "text-base sm:text-lg";
+  return `truncate font-display font-semibold text-[var(--accent)] ${size}`;
 }
 
-function pitchDataCardHeaderStatClass(compact: boolean): string {
-  return `min-w-0 flex-1 text-right font-semibold tabular-nums leading-tight text-[var(--text)] ${
-    compact ? "text-sm sm:text-base" : "text-base sm:text-lg"
-  }`;
+function pitchDataCardHeaderStatClass(
+  compact: boolean,
+  coachPad = false,
+  coachPadDense = false,
+  coachPadExpanded = false
+): string {
+  const size =
+    coachPad && coachPadExpanded
+      ? "text-base md:text-lg"
+      : coachPad && coachPadDense
+        ? "text-xs sm:text-sm md:text-base"
+        : coachPad
+          ? "text-sm sm:text-base lg:text-lg"
+          : compact
+            ? "text-sm sm:text-base"
+            : "text-base sm:text-lg";
+  return `min-w-0 flex-1 text-right font-semibold tabular-nums leading-tight text-[var(--text)] ${size}`;
+}
+
+function coachPadStatTypography(coachPadExpanded: boolean) {
+  return {
+    label: coachPadExpanded
+      ? "shrink-0 font-semibold text-white text-xs leading-none md:text-sm"
+      : "shrink-0 font-semibold text-white",
+    val: coachPadExpanded
+      ? "tabular-nums font-bold leading-none text-[var(--accent)] text-base md:text-lg"
+      : "tabular-nums font-semibold text-[var(--accent)]",
+    missing: coachPadExpanded
+      ? "tabular-nums font-medium leading-none text-[var(--text-muted)] text-base md:text-lg"
+      : "tabular-nums font-medium text-[var(--text-muted)]",
+    sub: coachPadExpanded
+      ? "tabular-nums font-semibold text-[var(--accent)]/85 text-[10px] leading-none md:text-[11px]"
+      : "text-[var(--accent)]/85",
+  };
+}
+
+/** Inline label:value; expanded uses slightly larger type without stacked tiles (avoids grid overlap). */
+function coachPadStatWrap(
+  coachPadExpanded: boolean,
+  label: string,
+  title: string,
+  compact: boolean,
+  value: ReactNode
+) {
+  const stat = coachPadStatTypography(coachPadExpanded);
+  return (
+    <span
+      className={`inline-flex min-w-0 max-w-full flex-wrap items-baseline gap-x-1 gap-y-0 ${
+        coachPadExpanded ? "leading-none" : "leading-snug"
+      }`}
+      title={compact && !coachPadExpanded ? undefined : title}
+    >
+      <span className={stat.label}>{label}</span>
+      {value}
+    </span>
+  );
 }
 
 function formatPct(rate: number | null): string {
@@ -91,7 +169,7 @@ function countBaseRunners(baseState: string | null | undefined): number {
   return (bits.match(/1/g) || []).length;
 }
 
-function lobByPitcherFromPas(pas: PlateAppearance[]): Map<string, number> {
+export function lobByPitcherFromPas(pas: PlateAppearance[]): Map<string, number> {
   const out = new Map<string, number>();
   const sorted = [...pas].sort(paChronological);
   for (const pa of sorted) {
@@ -136,29 +214,73 @@ const EMPTY_TWO_STRIKE_AGG: TwoStrikePitchAgg = {
   foulsAtTwoStrikes: 0,
 };
 
-const pitchMixMiniGridClass = (compact: boolean) =>
+const pitchMixMiniGridClass = (
+  compact: boolean,
+  coachPad = false,
+  coachPadDense = false,
+  coachPadExpanded = false,
+  coachPadFullGame = false
+) =>
   compact
-    ? "grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs leading-tight sm:text-sm"
+    ? coachPad
+      ? coachPadExpanded
+        ? coachPadFullGame
+          ? "grid grid-cols-3 content-start gap-x-2 gap-y-1.5 md:gap-x-2.5 md:gap-y-2"
+          : "grid grid-cols-2 content-start gap-x-2 gap-y-2 md:gap-x-2.5 md:gap-y-2"
+        : coachPadDense
+          ? "grid grid-cols-2 gap-x-2 gap-y-1 text-[10px] leading-tight sm:gap-x-2.5"
+          : "grid grid-cols-2 gap-x-3 gap-y-2 text-xs leading-tight sm:text-sm sm:gap-x-4 lg:text-base lg:leading-snug"
+      : "grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs leading-tight sm:text-sm"
     : "grid grid-cols-2 gap-x-4 gap-y-2 text-base leading-tight";
 
 /** Pitch-type mix strip: three columns to avoid a wide empty gap between two sparse columns. */
-const pitchMixDistributionGridClass = (compact: boolean) =>
+const pitchMixDistributionGridClass = (
+  compact: boolean,
+  coachPad = false,
+  coachPadDense = false,
+  coachPadExpanded = false
+) =>
   compact
-    ? "grid grid-cols-3 gap-x-2 gap-y-1.5 text-xs leading-tight sm:gap-x-3 sm:text-sm"
+    ? coachPad
+      ? coachPadExpanded
+        ? "grid grid-cols-3 content-start gap-x-1.5 gap-y-1.5 sm:gap-x-2 sm:gap-y-2"
+        : coachPadDense
+          ? "grid grid-cols-3 gap-x-1.5 gap-y-1 text-[10px] leading-tight"
+          : "grid grid-cols-2 gap-x-2.5 gap-y-2 text-xs leading-tight sm:grid-cols-3 sm:gap-x-3 sm:text-sm lg:text-base lg:leading-snug"
+      : "grid grid-cols-3 gap-x-2 gap-y-1.5 text-xs leading-tight sm:gap-x-3 sm:text-sm"
     : "grid grid-cols-3 gap-x-3 gap-y-2 text-base leading-tight";
 
 function PitchMixDistributionBlock({
   dist,
   compact,
+  coachPad = false,
+  coachPadDense = false,
+  coachPadExpanded = false,
 }: {
   dist: PitchTypeDistributionResult;
   compact: boolean;
+  coachPad?: boolean;
+  coachPadDense?: boolean;
+  coachPadExpanded?: boolean;
 }) {
-  const valClass = "tabular-nums font-semibold text-[var(--accent)]";
+  const stat = coachPadStatTypography(coachPadExpanded);
+  /** Mix lists up to 7 types — values one step smaller than Rates/Contact on coach pad. */
+  const valClass =
+    coachPad && coachPadExpanded
+      ? "tabular-nums font-bold leading-none text-[var(--accent)] text-sm md:text-base"
+      : stat.val;
   if (dist.typedTotal <= 0 || dist.entries.length === 0) {
     return (
       <p
-        className={`leading-snug text-[var(--text-muted)] ${compact ? "text-xs" : "text-sm"}`}
+        className={`leading-snug text-[var(--text-muted)] ${
+          coachPadExpanded
+            ? "text-sm leading-snug md:text-base"
+            : compact
+              ? coachPad
+                ? "text-xs md:text-sm"
+                : "text-xs"
+              : "text-sm"
+        }`}
       >
         No typed pitches in log yet
       </p>
@@ -166,21 +288,28 @@ function PitchMixDistributionBlock({
   }
   return (
     <div
-      className={pitchMixDistributionGridClass(compact)}
+      className={pitchMixDistributionGridClass(compact, coachPad, coachPadDense, coachPadExpanded)}
       role="group"
       aria-label="Pitch type mix among logged pitches with a type"
     >
       {dist.entries.map((e) => {
         const full = pitchTrackerTypeLabel(e.type);
-        return (
-          <span
-            key={e.type}
-            className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1"
-          >
-            <span
-              className="min-w-0 font-semibold text-white"
-              title={`${pitchTrackerAbbrev(e.type)} — ${full}`}
-            >
+        const mixTitle = `${pitchTrackerAbbrev(e.type)} — ${full}`;
+        return coachPadExpanded ? (
+          <span key={e.type} className="inline-flex min-w-0 max-w-full flex-wrap items-baseline gap-x-1 leading-none">
+            {coachPadStatWrap(
+              true,
+              `${pitchTrackerAbbrev(e.type)}:`,
+              mixTitle,
+              compact,
+              <span className={valClass}>
+                {formatPct(e.pct)} ({e.count})
+              </span>
+            )}
+          </span>
+        ) : (
+          <span key={e.type} className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
+            <span className="min-w-0 font-semibold text-white" title={mixTitle}>
               {full}:
             </span>
             <span className={valClass}>
@@ -196,20 +325,22 @@ function PitchMixDistributionBlock({
 function PitchMixExtrasBlock({
   agg,
   compact,
+  coachPad = false,
+  coachPadDense = false,
+  coachPadExpanded = false,
+  coachPadFullGame = false,
 }: {
   agg: PitchMixExtrasAgg | undefined;
   compact: boolean;
+  coachPad?: boolean;
+  coachPadDense?: boolean;
+  coachPadExpanded?: boolean;
+  coachPadFullGame?: boolean;
 }) {
   const eff = agg ?? EMPTY_EXTRAS;
-
-  const lab = (label: string, full: string) => (
-    <span className="shrink-0 font-semibold text-white" title={compact ? undefined : full}>
-      {label}
-    </span>
-  );
-
-  const valClass = "tabular-nums font-semibold text-[var(--accent)]";
-  const missingClass = "tabular-nums font-medium text-[var(--text-muted)]";
+  const stat = coachPadStatTypography(coachPadExpanded);
+  const valClass = stat.val;
+  const missingClass = stat.missing;
 
   const pl = eff.pitchesLogged;
   const bip = eff.bipTyped;
@@ -222,14 +353,10 @@ function PitchMixExtrasBlock({
   const fbPct = bip > 0 ? eff.fb / bip : null;
   const iffPct = bip > 0 ? eff.iff / bip : null;
 
-  const cell = (label: string, title: string, value: ReactNode) => (
-    <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
-      {lab(label, title)}
-      {value}
-    </span>
-  );
+  const cell = (label: string, title: string, value: ReactNode) =>
+    coachPadStatWrap(coachPadExpanded, label, title, compact, value);
 
-  const emptyCell = <span className="min-h-[1em]" aria-hidden />;
+  const emptyCell = coachPadExpanded ? null : <span className="min-h-[1em]" aria-hidden />;
 
   const swingSw = cell("Sw%:", "Swings ÷ pitches logged", <span className={valClass}>{formatPct(swingPct)}</span>);
   const swingWhiff = cell(
@@ -244,9 +371,30 @@ function PitchMixExtrasBlock({
   const bipFb = cell("FB%:", "Fly balls ÷ tagged balls in play", <span className={valClass}>{formatPct(fbPct)}</span>);
   const bipIff = cell("IFF%:", "Infield flies ÷ tagged balls in play", <span className={valClass}>{formatPct(iffPct)}</span>);
 
+  const fullGameContactGrid =
+    "grid content-start gap-x-2 gap-y-1.5 md:gap-x-2.5 md:gap-y-2";
+
+  if (coachPadFullGame) {
+    return (
+      <div className="flex min-w-0 flex-col gap-1.5 md:gap-2" role="group" aria-label="Pitch log rates and batted ball mix">
+        <div className={`${fullGameContactGrid} grid-cols-4`}>
+          {bipGb}
+          {bipLd}
+          {bipFb}
+          {bipIff}
+        </div>
+        <div className={`${fullGameContactGrid} grid-cols-3`}>
+          {swingSw}
+          {swingFoul}
+          {swingWhiff}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
-      className={pitchMixMiniGridClass(compact)}
+      className={pitchMixMiniGridClass(compact, coachPad, coachPadDense, coachPadExpanded, coachPadFullGame)}
       role="group"
       aria-label="Pitch log rates and batted ball mix"
     >
@@ -265,19 +413,54 @@ function PitchMixExtrasBlock({
 function PitchMixMiniCard({
   title,
   compact,
+  coachPad = false,
+  coachPadDense = false,
+  coachPadExpanded = false,
+  coachPadFullGame = false,
+  mixScroll = false,
   children,
 }: {
   title: string;
   compact: boolean;
+  coachPad?: boolean;
+  coachPadDense?: boolean;
+  coachPadExpanded?: boolean;
+  coachPadFullGame?: boolean;
+  /** Full-game Mix panel: scroll when pitch types overflow. */
+  mixScroll?: boolean;
   children: ReactNode;
 }) {
   const titleClass = compact
-    ? "mb-0.5 font-display text-[8px] font-semibold uppercase tracking-wider text-white/75"
+    ? coachPad
+      ? coachPadExpanded
+        ? "mb-1 font-display text-xs font-bold uppercase tracking-wider text-white/90 md:text-sm"
+        : coachPadDense
+        ? "mb-0.5 font-display text-[8px] font-semibold uppercase tracking-wider text-white/75 sm:text-[9px]"
+        : "mb-1 font-display text-[9px] font-semibold uppercase tracking-wider text-white/75 md:text-[11px]"
+      : "mb-0.5 font-display text-[8px] font-semibold uppercase tracking-wider text-white/75"
     : "mb-1 font-display text-[9px] font-semibold uppercase tracking-wider text-white/80 sm:text-[10px]";
+  const shellClass =
+    coachPad && coachPadExpanded
+      ? "flex h-full min-h-0 min-w-0 flex-col break-inside-avoid rounded-lg border border-[var(--border)]/60 bg-[var(--bg-elevated)]/40 px-2 py-1.5 md:px-2 md:py-1.5"
+      : coachPad && coachPadDense
+        ? "flex min-w-0 flex-col break-inside-avoid rounded-md border border-[var(--border)]/55 bg-[var(--bg-elevated)]/30 px-1.5 py-1 sm:px-2 sm:py-1.5"
+        : coachPad
+          ? "flex min-w-0 flex-col break-inside-avoid rounded-md border border-[var(--border)]/55 bg-[var(--bg-elevated)]/30 px-2 py-1.5 sm:px-2.5 sm:py-2 md:px-3 md:py-2.5"
+          : "flex min-w-0 flex-col break-inside-avoid rounded-md border border-[var(--border)]/55 bg-[var(--bg-elevated)]/30 px-2 py-1.5 sm:px-2.5 sm:py-2";
+  const contentScroll = coachPadExpanded && (!coachPadFullGame || mixScroll);
+
   return (
-    <div className="flex min-w-0 flex-col break-inside-avoid rounded-md border border-[var(--border)]/55 bg-[var(--bg-elevated)]/30 px-2 py-1.5 sm:px-2.5 sm:py-2">
+    <div className={shellClass}>
       <p className={titleClass}>{title}</p>
-      <div className="min-w-0">{children}</div>
+      <div
+        className={
+          contentScroll
+            ? "min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y"
+            : "min-h-0 min-w-0 flex-1 overflow-hidden"
+        }
+      >
+        {children}
+      </div>
     </div>
   );
 }
@@ -286,102 +469,138 @@ function PitchMixRatesLine({
   mix,
   lob,
   compact,
+  coachPad = false,
+  coachPadDense = false,
+  coachPadExpanded = false,
   ariaLabel,
   extras,
   showLob,
+  hidePitchesInRates = false,
+  coachPadFullGame = false,
 }: {
   mix: PitchMixLine;
   lob: number;
   compact: boolean;
+  coachPad?: boolean;
+  coachPadDense?: boolean;
+  coachPadExpanded?: boolean;
   ariaLabel: string;
   extras?: PitchMixExtrasAgg;
   showLob: boolean;
+  /** Coach full-game strip: pitches shown in the pitcher header instead. */
+  hidePitchesInRates?: boolean;
+  /** Coach full-game strip: 3-column Rates grid so P/PA stays visible. */
+  coachPadFullGame?: boolean;
 }) {
-  const lab = (label: string, full: string) => (
-    <span className="shrink-0 font-semibold text-white" title={compact ? undefined : full}>
-      {label}
-    </span>
-  );
-
-  const valClass = "tabular-nums font-semibold text-[var(--accent)]";
-  const missingClass = "tabular-nums font-medium text-[var(--text-muted)]";
+  const stat = coachPadStatTypography(coachPadExpanded);
+  const valClass = stat.val;
+  const missingClass = stat.missing;
 
   const pitchLog = extras != null && extras.pitchesLogged > 0;
-  const emptyCell = <span className="min-h-[1em]" aria-hidden />;
+  const emptyCell = coachPadExpanded ? null : <span className="min-h-[1em]" aria-hidden />;
 
-  const fpsBlock = (
-    <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
-      {lab("FPS:", "First pitch strikes")}
-      <span className={mix.firstPitchOpportunities > 0 ? valClass : missingClass}>
-        {mix.firstPitchOpportunities > 0
-          ? `${mix.firstPitchStrikes} / ${mix.firstPitchOpportunities}`
-          : "—"}
-        {mix.firstPitchStrikePct != null && mix.firstPitchOpportunities > 0 ? (
-          <span className="text-[var(--accent)]/85">
-            {" "}
-            ({formatPct(mix.firstPitchStrikePct)})
-          </span>
-        ) : null}
-      </span>
+  const fpsBlock = coachPadStatWrap(
+    coachPadExpanded,
+    "FPS:",
+    "First pitch strikes",
+    compact,
+    <span className={mix.firstPitchOpportunities > 0 ? valClass : missingClass}>
+      {mix.firstPitchOpportunities > 0
+        ? `${mix.firstPitchStrikes} / ${mix.firstPitchOpportunities}`
+        : "—"}
+      {mix.firstPitchStrikePct != null && mix.firstPitchOpportunities > 0 ? (
+        <span className={stat.sub}> ({formatPct(mix.firstPitchStrikePct)})</span>
+      ) : null}
     </span>
   );
-  const strikePctBlock = (
-    <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
-      {lab("Strike %:", "Strike percentage")}
-      <span className={mix.strikePct != null ? valClass : missingClass}>{formatPct(mix.strikePct)}</span>
+  const strikePctBlock = coachPadStatWrap(
+    coachPadExpanded,
+    "Strike %:",
+    "Strike percentage",
+    compact,
+    <span className={mix.strikePct != null ? valClass : missingClass}>{formatPct(mix.strikePct)}</span>
+  );
+  const ballsBlock = coachPadStatWrap(
+    coachPadExpanded,
+    "Balls:",
+    "Balls thrown (pitch log)",
+    compact,
+    <span className={pitchLog ? valClass : missingClass}>{pitchLog ? extras!.balls : "—"}</span>
+  );
+  const strikesBlock = coachPadStatWrap(
+    coachPadExpanded,
+    "Strikes:",
+    "Strikes thrown (pitch log; fouls and BIP count +1 each)",
+    compact,
+    <span className={pitchLog ? valClass : missingClass}>
+      {pitchLog ? extras!.strikesThrown : "—"}
     </span>
   );
-  const ballsBlock = (
-    <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
-      {lab("Balls:", "Balls thrown (pitch log)")}
-      <span className={pitchLog ? valClass : missingClass}>
-        {pitchLog ? extras!.balls : "—"}
-      </span>
+  const pitchesBlock = coachPadStatWrap(
+    coachPadExpanded,
+    "Pitches:",
+    "Pitches thrown",
+    compact,
+    <span className={mix.plateAppearancesWithPitchCount > 0 ? valClass : missingClass}>
+      {mix.plateAppearancesWithPitchCount > 0 ? mix.pitchesTotal : "—"}
     </span>
   );
-  const strikesBlock = (
-    <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
-      {lab("Strikes:", "Strikes thrown (pitch log; fouls and BIP count +1 each)")}
-      <span className={pitchLog ? valClass : missingClass}>
-        {pitchLog ? extras!.strikesThrown : "—"}
-      </span>
-    </span>
+  const ppaBlock = coachPadStatWrap(
+    coachPadExpanded,
+    "P/PA:",
+    "Pitches per plate appearance",
+    compact,
+    <span className={valClass}>{formatPpa(mix.pitchesPerPA)}</span>
   );
-  const pitchesBlock = (
-    <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
-      {lab("Pitches:", "Pitches thrown")}
-      <span className={mix.plateAppearancesWithPitchCount > 0 ? valClass : missingClass}>
-        {mix.plateAppearancesWithPitchCount > 0 ? mix.pitchesTotal : "—"}
-      </span>
-    </span>
-  );
-  const ppaBlock = (
-    <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
-      {lab("P/PA:", "Pitches per plate appearance")}
-      <span className={valClass}>{formatPpa(mix.pitchesPerPA)}</span>
-    </span>
-  );
-  const lobBlock = showLob ? (
-    <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
-      {lab("LOB:", "Left on base")}
-      <span className={valClass}>{lob}</span>
-    </span>
-  ) : null;
+  const lobBlock = showLob
+    ? coachPadStatWrap(
+        coachPadExpanded,
+        "LOB:",
+        "Left on base",
+        compact,
+        <span className={valClass}>{lob}</span>
+      )
+    : null;
 
   return (
-    <div className={pitchMixMiniGridClass(compact)} role="group" aria-label={ariaLabel}>
-      {fpsBlock}
-      {strikePctBlock}
-      {ballsBlock}
-      {strikesBlock}
-      {pitchesBlock}
-      {ppaBlock}
-      {showLob ? (
+    <div
+      className={pitchMixMiniGridClass(compact, coachPad, coachPadDense, coachPadExpanded, coachPadFullGame)}
+      role="group"
+      aria-label={ariaLabel}
+    >
+      {coachPadFullGame ? (
         <>
-          {lobBlock}
-          {emptyCell}
+          {strikesBlock}
+          {ballsBlock}
+          {ppaBlock}
+          {fpsBlock}
+          {strikePctBlock}
         </>
-      ) : null}
+      ) : coachPadExpanded ? (
+        <>
+          {hidePitchesInRates ? emptyCell : pitchesBlock}
+          {strikesBlock}
+          {ballsBlock}
+          {fpsBlock}
+          {strikePctBlock}
+          {ppaBlock}
+        </>
+      ) : (
+        <>
+          {fpsBlock}
+          {strikePctBlock}
+          {ballsBlock}
+          {strikesBlock}
+          {hidePitchesInRates ? emptyCell : pitchesBlock}
+          {ppaBlock}
+          {showLob ? (
+            <>
+              {lobBlock}
+              {emptyCell}
+            </>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }
@@ -389,23 +608,24 @@ function PitchMixRatesLine({
 function TwoStrikePitchMetricsRow({
   agg,
   compact,
+  coachPad = false,
+  coachPadDense = false,
+  coachPadExpanded = false,
   perspective,
   embedded = false,
 }: {
   agg: TwoStrikePitchAgg;
   compact: boolean;
+  coachPad?: boolean;
+  coachPadDense?: boolean;
+  coachPadExpanded?: boolean;
   perspective: "batter" | "pitcher";
   /** Inside a titled mini card: no top border or duplicate “2 strikes” label. */
   embedded?: boolean;
 }) {
-  const valClass = "tabular-nums font-semibold text-[var(--accent)]";
-  const missingClass = "tabular-nums font-medium text-[var(--text-muted)]";
-
-  const lab = (label: string, full: string) => (
-    <span className="shrink-0 font-semibold text-white" title={full}>
-      {label}
-    </span>
-  );
+  const stat = coachPadStatTypography(coachPadExpanded);
+  const valClass = stat.val;
+  const missingClass = stat.missing;
 
   const p = agg.pitchesAtTwoStrikes;
   const swingPct = p > 0 ? agg.swingsAtTwoStrikes / p : null;
@@ -424,7 +644,7 @@ function TwoStrikePitchMetricsRow({
       ? "Pitcher: pitches at two-strike counts"
       : "Batter: two-strike count behavior";
 
-  const gridClass = pitchMixMiniGridClass(compact);
+  const gridClass = pitchMixMiniGridClass(compact, coachPad, coachPadDense, coachPadExpanded);
 
   const inner = (
     <div className={gridClass} role="group" aria-label={aria}>
@@ -440,22 +660,34 @@ function TwoStrikePitchMetricsRow({
           2 strikes
         </span>
       )}
-      <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
-        {lab("Sw%:", "Swings ÷ pitches at 2 strikes")}
+      {coachPadStatWrap(
+        coachPadExpanded,
+        "Sw%:",
+        "Swings ÷ pitches at 2 strikes",
+        compact,
         <span className={swingPct != null ? valClass : missingClass}>{formatPct(swingPct)}</span>
-      </span>
-      <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
-        {lab("Whiff%:", "Swinging strikes ÷ swings at 2 strikes")}
+      )}
+      {coachPadStatWrap(
+        coachPadExpanded,
+        "Whiff%:",
+        "Swinging strikes ÷ swings at 2 strikes",
+        compact,
         <span className={whiffPct != null ? valClass : missingClass}>{formatPct(whiffPct)}</span>
-      </span>
-      <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
-        {lab("Foul%:", "Fouls ÷ pitches at 2 strikes (spoiling / fighting pitches off)")}
+      )}
+      {coachPadStatWrap(
+        coachPadExpanded,
+        "Foul%:",
+        "Fouls ÷ pitches at 2 strikes (spoiling / fighting pitches off)",
+        compact,
         <span className={foulPct != null ? valClass : missingClass}>{formatPct(foulPct)}</span>
-      </span>
-      <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
-        {lab(countLabel, countTitle)}
+      )}
+      {coachPadStatWrap(
+        coachPadExpanded,
+        countLabel,
+        countTitle,
+        compact,
         <span className={valClass}>{p}</span>
-      </span>
+      )}
     </div>
   );
 
@@ -486,6 +718,11 @@ function PitchMixRow({
   omitName = false,
   layout = "grid",
   stripTypeDistribution = null,
+  coachPad = false,
+  coachPadDense = false,
+  coachPadExpanded = false,
+  hidePitchesInRates = false,
+  coachPadFullGame = false,
 }: {
   name: string;
   mix: PitchMixLine;
@@ -495,6 +732,11 @@ function PitchMixRow({
   twoStrikeAgg?: TwoStrikePitchAgg | null;
   nameClass: string;
   compact: boolean;
+  coachPad?: boolean;
+  /** Coach iPad: tighter mini-cards + 2×2 strip stack (Rates/2stk vs Contact/Mix). */
+  coachPadDense?: boolean;
+  /** Coach iPad matchup: fill panel height with larger readable stats in a 2×2 grid. */
+  coachPadExpanded?: boolean;
   multi: boolean;
   variant?: "pitcher" | "team";
   /** Team totals render as `div` inside a styled footer; pitcher rows use `li`. */
@@ -511,6 +753,8 @@ function PitchMixRow({
   layout?: "grid" | "strip";
   /** When set, adds a full-width “Mix” row below the grid or as the second row in strip layout. */
   stripTypeDistribution?: PitchTypeDistributionResult | null;
+  hidePitchesInRates?: boolean;
+  coachPadFullGame?: boolean;
 }) {
   /** Keep name + stat mini-cards on one printed page (PDF / print dialog). */
   const breakKeepClass = "break-inside-avoid";
@@ -520,7 +764,11 @@ function PitchMixRow({
       ? "px-2 py-2 sm:px-3"
       : "rounded border border-[var(--border)]/50 bg-[var(--bg-elevated)]/25 px-3 py-2.5";
   const outerClass =
-    Tag === "div" ? `min-w-0 ${breakKeepClass}` : `${itemPad} ${breakKeepClass}`;
+    Tag === "div"
+      ? `min-w-0 ${
+          coachPadExpanded ? "flex min-h-0 flex-1 flex-col" : ""
+        } ${breakKeepClass}`
+      : `${itemPad} ${breakKeepClass}`;
 
   const perspective = twoStrikePerspective ?? (showLob ? "pitcher" : "batter");
 
@@ -531,44 +779,64 @@ function PitchMixRow({
 
   const stripWrap = (child: ReactNode) =>
     layout === "strip" ? (
-      <div className="min-w-0 flex-1 basis-[min(100%,11rem)] sm:basis-[10.5rem]">{child}</div>
+      <div className={coachPad ? "min-w-0" : "min-w-0 flex-1 basis-[min(100%,11rem)] sm:basis-[10.5rem]"}>
+        {child}
+      </div>
     ) : (
       child
     );
 
   const gridClass = `pitch-mix-pdf-grid grid grid-cols-1 gap-2 lg:items-stretch ${
-    showExtras ? "lg:grid-cols-3" : "lg:grid-cols-2"
-  }`;
+    coachPad ? "lg:gap-3" : ""
+  } ${showExtras ? "lg:grid-cols-3" : "lg:grid-cols-2"}`;
 
-  const stripTopRowClass =
-    "flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch";
+  const stripTopRowClass = coachPadDense
+    ? "grid min-w-0 grid-cols-1 gap-1.5 sm:grid-cols-2 sm:items-stretch"
+    : coachPad
+      ? "grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-3"
+      : "flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch";
 
+  const padProps = { coachPad, coachPadDense, coachPadExpanded, coachPadFullGame };
   const ratesMini = (
-    <PitchMixMiniCard title="Rates" compact={compact}>
+    <PitchMixMiniCard title="Rates" compact={compact} {...padProps}>
       <PitchMixRatesLine
         mix={mix}
         lob={lob}
         compact={compact}
+        {...padProps}
         ariaLabel={ratesAria}
         extras={extras}
         showLob={showLob}
+        hidePitchesInRates={hidePitchesInRates}
+        coachPadFullGame={coachPadFullGame}
       />
     </PitchMixMiniCard>
   );
   const contactMini = (
-    <PitchMixMiniCard title="Contact" compact={compact}>
-      <PitchMixExtrasBlock agg={aggEff} compact={compact} />
+    <PitchMixMiniCard title="Contact" compact={compact} {...padProps}>
+      <PitchMixExtrasBlock agg={aggEff} compact={compact} {...padProps} />
     </PitchMixMiniCard>
   );
   const twoStrikeMini = (
-    <PitchMixMiniCard title="2 strikes" compact={compact}>
+    <PitchMixMiniCard title="2 strikes" compact={compact} {...padProps}>
       <TwoStrikePitchMetricsRow
         agg={twoStrikeData}
         compact={compact}
+        {...padProps}
         perspective={perspective}
         embedded
       />
     </PitchMixMiniCard>
+  );
+  const mixMini =
+    stripTypeDistribution != null ? (
+      <PitchMixMiniCard title="Mix" compact={compact} {...padProps} mixScroll={coachPadFullGame}>
+        <PitchMixDistributionBlock dist={stripTypeDistribution} compact={compact} {...padProps} />
+      </PitchMixMiniCard>
+    ) : null;
+
+  const expandedCell = (child: ReactNode) => (
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">{child}</div>
   );
 
   return (
@@ -579,19 +847,45 @@ function PitchMixRow({
         </p>
       ) : null}
       {layout === "strip" ? (
-        <div className="flex min-w-0 flex-col gap-2">
-          <div className={stripTopRowClass}>
-            {stripWrap(ratesMini)}
-            {showExtras ? stripWrap(contactMini) : null}
-            {stripWrap(twoStrikeMini)}
-          </div>
-          {stripTypeDistribution != null ? (
-            <div className="min-w-0 w-full">
-              <PitchMixMiniCard title="Mix" compact={compact}>
-                <PitchMixDistributionBlock dist={stripTypeDistribution} compact={compact} />
-              </PitchMixMiniCard>
+        <div
+          className={
+            coachPadExpanded
+              ? "flex min-h-0 min-w-0 flex-1 flex-col gap-2"
+              : `flex min-w-0 flex-col ${
+                  coachPadDense ? "gap-1.5" : coachPad ? "gap-3 md:gap-3.5" : "gap-2"
+                }`
+          }
+        >
+          {coachPad && coachPadExpanded ? (
+            <div className="grid h-full min-h-0 flex-1 grid-cols-2 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-2 sm:gap-x-2 sm:gap-y-3 md:gap-y-3 lg:gap-2.5">
+              {expandedCell(ratesMini)}
+              {showExtras ? expandedCell(contactMini) : null}
+              {expandedCell(twoStrikeMini)}
+              {mixMini != null ? expandedCell(mixMini) : null}
             </div>
-          ) : null}
+          ) : coachPad && coachPadDense ? (
+            <div className={stripTopRowClass}>
+              <div className="flex min-h-0 min-w-0 flex-col gap-1.5">
+                {stripWrap(ratesMini)}
+                {stripWrap(twoStrikeMini)}
+              </div>
+              <div className="flex min-h-0 min-w-0 flex-col gap-1.5">
+                {showExtras ? stripWrap(contactMini) : null}
+                {mixMini != null ? stripWrap(mixMini) : null}
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className={stripTopRowClass}>
+                {stripWrap(ratesMini)}
+                {showExtras ? stripWrap(contactMini) : null}
+                {stripWrap(twoStrikeMini)}
+              </div>
+              {mixMini != null ? (
+                <div className="min-w-0 w-full">{stripWrap(mixMini)}</div>
+              ) : null}
+            </>
+          )}
         </div>
       ) : (
         <>
@@ -600,12 +894,8 @@ function PitchMixRow({
             {showExtras ? stripWrap(contactMini) : null}
             {stripWrap(twoStrikeMini)}
           </div>
-          {stripTypeDistribution != null ? (
-            <div className="mt-2 min-w-0 w-full">
-              <PitchMixMiniCard title="Mix" compact={compact}>
-                <PitchMixDistributionBlock dist={stripTypeDistribution} compact={compact} />
-              </PitchMixMiniCard>
-            </div>
+          {mixMini != null ? (
+            <div className="mt-2 min-w-0 w-full">{mixMini}</div>
           ) : null}
         </>
       )}
@@ -624,12 +914,29 @@ export function MatchupPitchMixStrip({
   distributionPitchEvents,
   currentPitcherId,
   compact = true,
+  coachPad = false,
+  coachPadDense = false,
+  coachPadExpanded = false,
+  hidePitchesInRates = false,
+  hideLobInRates = false,
+  coachPadFullGame = false,
 }: {
   pas: PlateAppearance[];
   pitchEvents?: PitchEvent[];
   distributionPitchEvents?: PitchEvent[];
   currentPitcherId: string | null;
   compact?: boolean;
+  /** Coach iPad pitch pad: larger stat text on md+ while keeping compact layout. */
+  coachPad?: boolean;
+  /** Coach iPad: tighter mini-cards + 2×2 strip stack. */
+  coachPadDense?: boolean;
+  /** Coach iPad: oversized stat tiles filling available panel height. */
+  coachPadExpanded?: boolean;
+  hidePitchesInRates?: boolean;
+  /** Coach full-game strip: LOB shown in the pitcher header instead. */
+  hideLobInRates?: boolean;
+  /** Coach full-game strip: 3-column Rates / Contact grids. */
+  coachPadFullGame?: boolean;
 }) {
   const eventsByPaId = useMemo(() => groupPitchEventsByPaId(pitchEvents), [pitchEvents]);
   const eventsByPaIdForDistribution = useMemo(
@@ -673,6 +980,12 @@ export function MatchupPitchMixStrip({
       omitName
       layout="strip"
       stripTypeDistribution={row.stripTypeDistribution}
+      coachPad={coachPad}
+      coachPadDense={coachPadDense}
+      coachPadExpanded={coachPadExpanded}
+      hidePitchesInRates={hidePitchesInRates}
+      showLob={!hideLobInRates}
+      coachPadFullGame={coachPadFullGame}
     />
   );
 }
@@ -1012,6 +1325,10 @@ export function CurrentBatterPitchDataCard({
   /** When set (e.g. coach pad), used only for “Mix” so typed pitches count before Record sets `result`. */
   distributionPitchEvents,
   compact = false,
+  coachPad = false,
+  /** Coach iPad: tighter stat blocks + 2×2 strip stack inside pitch mix. */
+  coachPadDense = false,
+  coachPadExpanded = false,
   /** When true, only name + game line (e.g. coach pad shows pitch mix in page header). */
   omitPitchMixRow = false,
 }: {
@@ -1020,6 +1337,9 @@ export function CurrentBatterPitchDataCard({
   pitchEvents?: PitchEvent[];
   distributionPitchEvents?: PitchEvent[];
   compact?: boolean;
+  coachPad?: boolean;
+  coachPadDense?: boolean;
+  coachPadExpanded?: boolean;
   omitPitchMixRow?: boolean;
 }) {
   const eventsByPaId = useMemo(() => groupPitchEventsByPaId(pitchEvents), [pitchEvents]);
@@ -1054,23 +1374,30 @@ export function CurrentBatterPitchDataCard({
     [pasForGameStatLine]
   );
 
-  const nameClass = pitchDataCardNameClass(compact);
+  const nameClass = pitchDataCardNameClass(compact, coachPad, coachPadDense, coachPadExpanded);
 
   return (
-    <div className={pitchDataPairCardShellClass(compact)} aria-label="Batter pitch data">
-      <div className="mb-1.5 flex flex-wrap items-start gap-x-3 gap-y-0.5">
+    <div
+      className={pitchDataPairCardShellClass(compact, coachPad, coachPadDense, coachPadExpanded)}
+      aria-label="Batter pitch data"
+    >
+      <div
+        className={`flex flex-wrap items-start gap-x-3 ${
+          coachPadExpanded ? "mb-1.5 shrink-0 gap-y-0.5 md:mb-2" : coachPad ? "mb-1.5 gap-y-1 md:mb-2" : "mb-1.5 gap-y-0.5"
+        }`}
+      >
         <p className={`min-w-0 flex-1 ${nameClass}`} title={batterName}>
           {batterName}
         </p>
         <p
-          className={pitchDataCardHeaderStatClass(compact)}
+          className={pitchDataCardHeaderStatClass(compact, coachPad, coachPadDense, coachPadExpanded)}
           title="This game — completed PAs: H-AB, results in order, RBI (current PA on the form is not included)"
         >
           {gameStatLine}
         </p>
       </div>
       {omitPitchMixRow ? null : (
-        <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <PitchMixRow
             name={batterName}
             mix={mix}
@@ -1080,11 +1407,15 @@ export function CurrentBatterPitchDataCard({
             twoStrikePerspective="batter"
             nameClass={nameClass}
             compact={compact}
+            coachPad={coachPad}
+            coachPadDense={coachPadDense}
+            coachPadExpanded={coachPadExpanded}
             multi={false}
             showLob={false}
             flush
             as="div"
             omitName
+            layout={coachPad ? "strip" : "grid"}
             stripTypeDistribution={stripTypeDistribution}
           />
         </div>

@@ -1,11 +1,15 @@
 "use client";
 
-import { runsOnPaForLinescore, totalErrorsChargedToAway, totalErrorsChargedToHome } from "@/lib/compute/boxScore";
-import { REGULATION_INNINGS } from "@/lib/leagueConfig";
+import { useMemo } from "react";
+import {
+  boxScoreInningColumnCount,
+  runsOnPaForLinescore,
+  totalErrorsChargedToAway,
+  totalErrorsChargedToHome,
+} from "@/lib/compute/boxScore";
 import type { Game, PlateAppearance } from "@/lib/types";
 
 const HIT_RESULTS = ["single", "double", "triple", "hr"] as const;
-const INNINGS = Array.from({ length: REGULATION_INNINGS }, (_, i) => i + 1);
 
 function computeBoxScoreFromPAs(pas: PlateAppearance[]) {
   const runsByInning: Record<number, number> = {};
@@ -22,6 +26,8 @@ interface BoxScoreProps {
   game: Game;
   /** All plate appearances for the game (caller passes full game list). */
   pas: PlateAppearance[];
+  /** Current inning on Record (extends columns for live games). Omit on Review / PDF. */
+  liveInning?: number;
   /** Tighter typography and cell padding (e.g. review page beside pitcher credits). */
   compact?: boolean;
   /** Large table for emphasis (e.g. game review); wins over `compact` when both set. */
@@ -30,7 +36,19 @@ interface BoxScoreProps {
   bare?: boolean;
 }
 
-export function BoxScore({ game, pas, compact = false, large = false, bare = false }: BoxScoreProps) {
+export function BoxScore({
+  game,
+  pas,
+  liveInning = 0,
+  compact = false,
+  large = false,
+  bare = false,
+}: BoxScoreProps) {
+  const innings = useMemo(() => {
+    const n = boxScoreInningColumnCount(pas, liveInning);
+    return Array.from({ length: n }, (_, i) => i + 1);
+  }, [pas, liveInning]);
+
   const pasAway = pas.filter((p) => p.inning_half === "top");
   const pasHome = pas.filter((p) => p.inning_half === "bottom");
   const awayStats = computeBoxScoreFromPAs(pasAway);
@@ -108,7 +126,7 @@ export function BoxScore({ game, pas, compact = false, large = false, bare = fal
             >
               Team
             </th>
-            {INNINGS.map((i) => (
+            {innings.map((i) => (
               <th
                 key={i}
                 className={`font-display ${innW} ${headPad} text-center ${headText} ${large ? "" : "font-semibold"} uppercase tracking-wider text-white`}
@@ -142,7 +160,7 @@ export function BoxScore({ game, pas, compact = false, large = false, bare = fal
             >
               {game.away_team}
             </td>
-            {INNINGS.map((i) => (
+            {innings.map((i) => (
               <td key={i} className={`${cellPad} text-center tabular-nums text-[var(--text)]`}>
                 {(awayStats.runsByInning[i] ?? 0) || "0"}
               </td>
@@ -163,7 +181,7 @@ export function BoxScore({ game, pas, compact = false, large = false, bare = fal
             >
               {game.home_team}
             </td>
-            {INNINGS.map((i) => (
+            {innings.map((i) => (
               <td key={i} className={`${cellPad} text-center tabular-nums text-[var(--text)]`}>
                 {(homeStats.runsByInning[i] ?? 0) || "0"}
               </td>

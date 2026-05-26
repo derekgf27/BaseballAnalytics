@@ -11,7 +11,6 @@ export const PITCH_TRACKER_TYPES: readonly PitchTrackerPitchType[] = [
   "sinker",
   "cutter",
   "slider",
-  "sweeper",
   "curveball",
   "changeup",
   "splitter",

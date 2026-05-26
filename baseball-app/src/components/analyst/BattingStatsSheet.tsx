@@ -27,6 +27,14 @@ import {
   formatBattingSheetNumber,
 } from "./battingStatsSheetModel";
 import { isBasesEmpty, isBasesLoaded, isRisp, isRunnersOn } from "@/lib/compute/battingStats";
+import { GroupedStatsFiltersPanel } from "@/components/analyst/GroupedStatsFiltersPanel";
+
+const RUNNERS_FILTER_LABEL: Record<Exclude<StatsRunnersFilterKey, "all">, string> = {
+  basesEmpty: "Bases empty",
+  runnersOn: "Runners on",
+  risp: "RISP",
+  basesLoaded: "Bases loaded",
+};
 type BattingColumnMode = "standard" | "contact";
 
 /** Platoon slice for the stat sheet (runner situation is a separate control). */
@@ -392,6 +400,22 @@ export function BattingStatsSheet({
     setSortDir("asc");
   }, [columnMode]);
 
+  const groupedFiltersSummary = useMemo(() => {
+    const parts: string[] = [];
+    if (runnersFilter !== "all") parts.push(RUNNERS_FILTER_LABEL[runnersFilter]);
+    if (finalCountBucket) {
+      const label = FINAL_COUNT_BUCKET_OPTIONS.find((o) => o.value === finalCountBucket)?.label;
+      if (label) parts.push(label);
+    }
+    if (matchupToolbar?.opponentKey) {
+      const opp = matchupToolbar.opponents.find((o) => o.key === matchupToolbar.opponentKey);
+      parts.push(opp ? `vs ${opp.label}` : "Opponent");
+    }
+    if (matchupToolbar?.pitcherId) parts.push("Pitcher");
+    if (search.trim()) parts.push("Search");
+    return parts.length > 0 ? parts.join(" · ") : null;
+  }, [runnersFilter, finalCountBucket, matchupToolbar, search]);
+
   const pitchCountStateContactByPlayer = useMemo(
     () =>
       columnMode === "contact" && finalCountBucket != null
@@ -520,12 +544,7 @@ export function BattingStatsSheet({
 
       {toolbarVariant === "grouped" ? (
         <div className="flex flex-col gap-3">
-          <div className="min-w-0 rounded-lg border border-[var(--border)]/55 bg-[var(--bg-elevated)]/30 px-4 py-3">
-            <div className="mb-3">
-              <p className="font-display text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                Filters
-              </p>
-            </div>
+          <GroupedStatsFiltersPanel activeSummary={groupedFiltersSummary}>
             <div
               className={`grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3 ${
                 matchupToolbar
@@ -701,7 +720,7 @@ export function BattingStatsSheet({
                 </div>
               </div>
             </div>
-          </div>
+          </GroupedStatsFiltersPanel>
           {toolbarEnd ? <div className="flex shrink-0 justify-end">{toolbarEnd}</div> : null}
         </div>
       ) : (

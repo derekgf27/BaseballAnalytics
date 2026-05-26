@@ -23,6 +23,15 @@ import { aggregatePitchingTeamLine } from "@/lib/compute/pitchingStats";
 import { isBasesEmpty, isBasesLoaded, isRisp, isRunnersOn } from "@/lib/compute/battingStats";
 import { normalizePitchTypeBucket } from "@/lib/compute/pitchTypeProfileFromPas";
 import { pitchOutcomeIsSwing } from "@/lib/compute/pitchSequence";
+import { GroupedStatsFiltersPanel } from "@/components/analyst/GroupedStatsFiltersPanel";
+import { PITCH_TYPE_BAA_HELPER_TEXT, PITCH_TYPE_COLUMNS_MODE_LABEL, pitchTypeBaaColumnLabel } from "@/lib/pitchTypeBaaDisplay";
+
+const RUNNERS_FILTER_LABEL: Record<Exclude<StatsRunnersFilterKey, "all">, string> = {
+  basesEmpty: "Bases empty",
+  runnersOn: "Runners on",
+  risp: "RISP",
+  basesLoaded: "Bases loaded",
+};
 
 const THROWS_LABEL: Record<string, string> = { L: "L", R: "R" };
 
@@ -436,63 +445,63 @@ const PITCH_TYPE_PITCH_COLUMNS: (typeof COLUMNS)[number][] = [
   },
   {
     key: "plBaaFB",
-    label: "FB AVG",
+    label: pitchTypeBaaColumnLabel("FB"),
     align: "right",
     format: "avgPitchType",
     tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plBaaFBPitch,
   },
   {
     key: "plBaaSI",
-    label: "SI AVG",
+    label: pitchTypeBaaColumnLabel("SI"),
     align: "right",
     format: "avgPitchType",
     tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plBaaSIPitch,
   },
   {
     key: "plBaaFC",
-    label: "FC AVG",
+    label: pitchTypeBaaColumnLabel("FC"),
     align: "right",
     format: "avgPitchType",
     tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plBaaFCPitch,
   },
   {
     key: "plBaaSL",
-    label: "SL AVG",
+    label: pitchTypeBaaColumnLabel("SL"),
     align: "right",
     format: "avgPitchType",
     tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plBaaSLPitch,
   },
   {
     key: "plBaaSW",
-    label: "SW AVG",
+    label: pitchTypeBaaColumnLabel("SW"),
     align: "right",
     format: "avgPitchType",
     tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plBaaSWPitch,
   },
   {
     key: "plBaaCB",
-    label: "CB AVG",
+    label: pitchTypeBaaColumnLabel("CB"),
     align: "right",
     format: "avgPitchType",
     tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plBaaCBPitch,
   },
   {
     key: "plBaaCH",
-    label: "CH AVG",
+    label: pitchTypeBaaColumnLabel("CH"),
     align: "right",
     format: "avgPitchType",
     tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plBaaCHPitch,
   },
   {
     key: "plBaaSP",
-    label: "SP AVG",
+    label: pitchTypeBaaColumnLabel("SP"),
     align: "right",
     format: "avgPitchType",
     tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plBaaSPPitch,
   },
   {
     key: "plBaaOT",
-    label: "OT AVG",
+    label: pitchTypeBaaColumnLabel("OT"),
     align: "right",
     format: "avgPitchType",
     tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plBaaOTPitch,
@@ -1133,6 +1142,22 @@ export function PitchingStatsSheet({
     setSortDir("asc");
   }, [columnMode]);
 
+  const groupedFiltersSummary = useMemo(() => {
+    const parts: string[] = [];
+    if (runnersFilter !== "all") parts.push(RUNNERS_FILTER_LABEL[runnersFilter]);
+    if (finalCountBucket) {
+      const label = FINAL_COUNT_BUCKET_OPTIONS.find((o) => o.value === finalCountBucket)?.label;
+      if (label) parts.push(label);
+    }
+    if (matchupToolbar?.opponentKey) {
+      const opp = matchupToolbar.opponents.find((o) => o.key === matchupToolbar.opponentKey);
+      parts.push(opp ? `vs ${opp.label}` : "Opponent");
+    }
+    if (matchupToolbar?.batterId) parts.push("Batter");
+    if (search.trim()) parts.push("Search");
+    return parts.length > 0 ? parts.join(" · ") : null;
+  }, [runnersFilter, finalCountBucket, matchupToolbar, search]);
+
   const pitchTypeCountStateRatesByPitcher = useMemo(
     () =>
       columnMode === "pitchTypes" && finalCountBucket != null
@@ -1284,12 +1309,7 @@ export function PitchingStatsSheet({
 
       {toolbarVariant === "grouped" ? (
         <div className="flex flex-col gap-3">
-          <div className="min-w-0 rounded-lg border border-[var(--border)]/55 bg-[var(--bg-elevated)]/30 px-4 py-3">
-            <div className="mb-3">
-              <p className="font-display text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                Filters
-              </p>
-            </div>
+          <GroupedStatsFiltersPanel activeSummary={groupedFiltersSummary}>
             <div
               className={`grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3 ${
                 matchupToolbar
@@ -1438,7 +1458,7 @@ export function PitchingStatsSheet({
                   >
                     <option value="standard">Standard</option>
                     <option value="contact">Discipline &amp; BIP</option>
-                    <option value="pitchTypes">Pitch types</option>
+                    <option value="pitchTypes">{PITCH_TYPE_COLUMNS_MODE_LABEL}</option>
                   </select>
                 </div>
                 <div
@@ -1464,7 +1484,7 @@ export function PitchingStatsSheet({
                 </div>
               </div>
             </div>
-          </div>
+          </GroupedStatsFiltersPanel>
           {toolbarEnd ? <div className="flex shrink-0 justify-end">{toolbarEnd}</div> : null}
         </div>
       ) : (
@@ -1515,7 +1535,7 @@ export function PitchingStatsSheet({
               >
                 <option value="standard">Standard</option>
                 <option value="contact">Discipline &amp; BIP</option>
-                <option value="pitchTypes">Pitch types</option>
+                <option value="pitchTypes">{PITCH_TYPE_COLUMNS_MODE_LABEL}</option>
               </select>
             </label>
             <label className="flex min-w-0 items-center gap-2 text-sm text-white">
@@ -1625,6 +1645,10 @@ export function PitchingStatsSheet({
             </>
           )}
         </p>
+      )}
+
+      {columnMode === "pitchTypes" && (
+        <p className="text-xs leading-snug text-[var(--text-muted)]">{PITCH_TYPE_BAA_HELPER_TEXT}</p>
       )}
 
       <div className="overflow-x-auto rounded-lg border border-[var(--border)]">

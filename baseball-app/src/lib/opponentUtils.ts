@@ -159,6 +159,16 @@ export function gamesVsOpponent(games: Game[], opponentName: string): Game[] {
   return games.filter((g) => opponentNameKey(opponentTeamName(g)) === target);
 }
 
+/** Games that appear in a PA sample (ignores orphan game rows with no logged PAs). */
+export function gamesReferencedByPas(
+  pas: { game_id: string | null }[],
+  games: Game[]
+): Game[] {
+  const ids = new Set(pas.map((p) => p.game_id).filter(Boolean) as string[]);
+  if (ids.size === 0) return [];
+  return games.filter((g) => ids.has(g.id));
+}
+
 /**
  * Merge opponent names from games (first, preserves game-derived order) with manually tracked names.
  * Dedupes by {@link opponentNameKey}.

@@ -456,6 +456,79 @@ export interface PitchingRateLine {
   plTxHSP?: number;
   plTxAbOT?: number;
   plTxHOT?: number;
+  /** Extended per–pitch-type profile (usage, command, results). */
+  plBuckets?: Partial<Record<PitchTypeBucketKey, PitchTypeBucketProfile>>;
+  /** Raw tallies used when pooling staff rows (not shown in UI). */
+  plBucketCounts?: Partial<Record<PitchTypeBucketKey, PitchTypeBucketCounts>>;
+}
+
+export type PitchTypeBucketKey = PitchTrackerPitchType | "other";
+
+/** Raw pitch-type tallies before rate conversion. */
+export interface PitchTypeBucketCounts {
+  n: number;
+  balls: number;
+  calledStrikes: number;
+  swingingStrikes: number;
+  fouls: number;
+  swings: number;
+  whiffs: number;
+  strikesThrown: number;
+  twoStrikePitches: number;
+  twoStrikeSwings: number;
+  twoStrikeWhiffs: number;
+  aheadPitches: number;
+  behindPitches: number;
+  evenPitches: number;
+  firstPitch: number;
+  paEnds: number;
+  terminalAb: number;
+  terminalH: number;
+  terminalSo: number;
+  terminalBb: number;
+  terminalIbb: number;
+  terminalHbp: number;
+  terminalHr: number;
+  terminal2b: number;
+  terminal3b: number;
+  terminalSingle: number;
+  terminalBip: number;
+  terminalGb: number;
+  terminalLd: number;
+  terminalFb: number;
+  terminalIff: number;
+}
+
+/** Derived rates + count hints for one coach pitch category. */
+export interface PitchTypeBucketProfile {
+  pitches: number;
+  mix?: number;
+  firstPitchMix?: number;
+  mixAhead?: number;
+  mixBehind?: number;
+  mixEven?: number;
+  strikePct?: number;
+  ballPct?: number;
+  calledStrikePct?: number;
+  foulPct?: number;
+  swingPct?: number;
+  whiffPct?: number;
+  twoStrikeWhiffPct?: number;
+  contactPct?: number;
+  paEndPct?: number;
+  paEnds?: number;
+  ab?: number;
+  h?: number;
+  baa?: number;
+  kPct?: number;
+  bbPct?: number;
+  hrPct?: number;
+  xbhPct?: number;
+  slg?: number;
+  iso?: number;
+  gbPct?: number;
+  ldPct?: number;
+  fbPct?: number;
 }
 
 /** Pitching stats derived from PAs where this player is `pitcher_id` (not stored). */

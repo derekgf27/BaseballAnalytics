@@ -1,9 +1,9 @@
 /**
- * Full-viewport pitch tracker: escapes coach shell padding/sidebar visually.
+ * Full-viewport pitch tracker: always covers coach nav and shell padding (iPad landscape included).
  */
 export default function CoachPitchTrackerLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-[400] overflow-auto bg-zinc-950 lg:relative lg:inset-auto lg:z-auto lg:min-h-0 lg:flex-1 lg:bg-transparent">
+    <div className="fixed inset-0 z-[400] flex flex-col overflow-hidden bg-zinc-950">
       {children}
     </div>
   );

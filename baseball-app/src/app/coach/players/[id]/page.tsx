@@ -1,6 +1,7 @@
 import {
   getPlayers,
   getBattingStatsWithSplitsForPlayers,
+  getPitchingStatsForPlayers,
   getPlateAppearancesByBatter,
   getPlateAppearancesByPitcher,
 } from "@/lib/db/queries";
@@ -20,9 +21,10 @@ export default async function CoachPlayerDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [players, statsWithSplits, pasAsBatter, pasAsPitcher] = await Promise.all([
+  const [players, statsWithSplits, pitchingStats, pasAsBatter, pasAsPitcher] = await Promise.all([
     getPlayers(),
     getBattingStatsWithSplitsForPlayers([id]),
+    getPitchingStatsForPlayers([id]),
     getPlateAppearancesByBatter(id),
     getPlateAppearancesByPitcher(id),
   ]);
@@ -30,6 +32,7 @@ export default async function CoachPlayerDetailPage({
   if (!player) notFound();
 
   const battingSplits = statsWithSplits[id] ?? null;
+  const pitchingSplits = pitchingStats[id] ?? null;
 
   function bipSprayRow(pa: PlateAppearance): { hit_direction: HitDirection; result: string } | null {
     if (!pa.hit_direction || !isValidSprayHitDirection(pa.hit_direction)) return null;
@@ -144,5 +147,12 @@ export default async function CoachPlayerDetailPage({
           : null,
       };
 
-  return <CoachPlayerDetailClient player={player} battingSplits={battingSplits} spraySplits={spraySplits} />;
+  return (
+    <CoachPlayerDetailClient
+      player={player}
+      battingSplits={battingSplits}
+      pitchingSplits={pitchingSplits}
+      spraySplits={spraySplits}
+    />
+  );
 }

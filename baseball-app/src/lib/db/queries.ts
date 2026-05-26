@@ -28,7 +28,7 @@ import {
 } from "@/lib/compute/pitchingStats";
 import { kPctToKRate, type PlayerStatsForWatch } from "@/lib/playersToWatch";
 import { isSprayChartBipResult } from "@/lib/sprayChartFilters";
-import { isClubRosterPlayer, isPitcherPlayer } from "@/lib/opponentUtils";
+import { gamesReferencedByPas, isClubRosterPlayer, isPitcherPlayer } from "@/lib/opponentUtils";
 import { isGameFinalized } from "@/lib/gameRecord";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isDemoId } from "./mockData";
@@ -250,8 +250,15 @@ export async function getClubBattingMatchupPayload(playerIds: string[]): Promise
 
   const paIds = pas.map((p) => p.id).filter(Boolean) as string[];
   const pitchEvents = paIds.length > 0 ? await getPitchEventsForPaIds(paIds) : [];
+  const gamesInSample = gamesReferencedByPas(pas, games);
 
-  return { pas, games, baserunningByPlayerId: brTotals, startedGameIdsByPlayer, pitchEvents };
+  return {
+    pas,
+    games: gamesInSample,
+    baserunningByPlayerId: brTotals,
+    startedGameIdsByPlayer,
+    pitchEvents,
+  };
 }
 
 export async function getClubPitchingMatchupPayload(pitcherIds: string[]): Promise<ClubPitchingMatchupPayload> {
@@ -308,8 +315,9 @@ export async function getClubPitchingMatchupPayload(pitcherIds: string[]): Promi
 
   const paIds = pas.map((p) => p.id).filter(Boolean) as string[];
   const pitchEvents = paIds.length > 0 ? await getPitchEventsForPaIds(paIds) : [];
+  const gamesInSample = gamesReferencedByPas(pas, games);
 
-  return { pas, games, starterGameIdsByPlayer, batterBatsById, pitchEvents };
+  return { pas, games: gamesInSample, starterGameIdsByPlayer, batterBatsById, pitchEvents };
 }
 
 export interface TrackedOpponentRow {

@@ -80,7 +80,6 @@ export const PITCHING_COMPARE_STANDARD_COLUMNS: PitchCompareColumnDef[] = [
   { key: "strikePct", label: "Strike%", format: "pct", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.strikePctPitch },
   { key: "fpsPct", label: "FPS%", format: "pct", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.fpsPctPitch },
   { key: "pPa", label: "P/PA", format: "pPa", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.pPaPitch },
-  { key: "e", label: "E", format: "int", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.e },
 ];
 
 const LOWER_IS_BETTER = new Set<PitchCompareSortKey>([
@@ -101,7 +100,6 @@ const LOWER_IS_BETTER = new Set<PitchCompareSortKey>([
   "hr7",
   "bbPct",
   "pPa",
-  "e",
   "l",
 ]);
 
@@ -117,7 +115,7 @@ function formatOppBattingAvg(stats: PitchingStats): string {
 }
 
 export function pitchingCompareStatBorderLeft(key: PitchCompareSortKey): boolean {
-  return key === "h" || key === "so" || key === "era" || key === "k7" || key === "strikePct" || key === "e";
+  return key === "h" || key === "so" || key === "era" || key === "k7" || key === "strikePct";
 }
 
 export function getPitchingCompareNumericValue(

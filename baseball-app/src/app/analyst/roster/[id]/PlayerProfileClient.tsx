@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatHeight } from "@/lib/height";
 import { BATTING_STAT_HEADER_TOOLTIPS } from "@/lib/statHeaderTooltips";
@@ -15,13 +14,19 @@ import {
 } from "@/components/analyst/battingStatsSheetModel";
 import type { AnalystPlayerSpraySplits } from "@/lib/analystPlayerSpraySplits";
 import { PlayerSprayChartsSection } from "@/components/analyst/PlayerSprayChartsSection";
+import {
+  hasPitchingProfileStats,
+  PlayerPitchingProfileSections,
+} from "@/components/analyst/PlayerPitchingProfileSections";
 import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
+import { PlayerProfileHero } from "@/components/shared/PlayerProfileHero";
 import { isDemoId } from "@/lib/db/mockData";
 import { deletePlayerAction, getPlayerDeletionPreviewAction } from "../actions";
 import { analystComparePlayersHref } from "@/lib/analystRoutes";
 import type {
   BattingFinalCountBucketKey,
   BattingStatsWithSplits,
+  PitchingStatsWithSplits,
   Player,
   PlayerDeletionPreview,
   Ratings,
@@ -38,6 +43,7 @@ interface PlayerProfileClientProps {
   /** When true (Supabase configured), show delete control. */
   canEdit?: boolean;
   battingSplits: BattingStatsWithSplits | null;
+  pitchingSplits: PitchingStatsWithSplits | null;
   spraySplits: AnalystPlayerSpraySplits | null;
 }
 
@@ -224,6 +230,7 @@ export function PlayerProfileClient({
   ageYears = null,
   birthdayDisplay = null,
   battingSplits,
+  pitchingSplits,
   spraySplits,
   canEdit = false,
 }: PlayerProfileClientProps) {
@@ -249,42 +256,17 @@ export function PlayerProfileClient({
 
   const isSwitch = player.bats?.toUpperCase().startsWith("S") ?? false;
 
-  const normalizeHand = (hand: string | null | undefined, isBat: boolean): string | null => {
-    if (hand == null || hand === "") return null;
-    const code = hand.toUpperCase();
-    if (code.startsWith("L")) return "Left";
-    if (code.startsWith("R")) return "Right";
-    if (code.startsWith("S")) return "Switch";
-    return hand;
-  };
+  const heightWeight =
+    player.height_in != null || player.weight_lb != null
+      ? `${player.height_in != null ? formatHeight(player.height_in) : ""}${player.height_in != null && player.weight_lb != null ? " " : ""}${player.weight_lb != null ? `${player.weight_lb} lb` : ""}`.trim()
+      : null;
 
-  const batsLabel = normalizeHand(player.bats, true);
-  const throwsLabel = normalizeHand(player.throws, false);
-
-  const info = {
-    jersey: player.jersey != null && player.jersey !== "" ? `#${player.jersey}` : null,
-    positions: player.positions?.length ? player.positions.join(", ") : null,
-    batsThrows:
-      batsLabel != null || throwsLabel != null
-        ? `${batsLabel ?? "—"} / ${throwsLabel ?? "—"}`
-        : null,
-    heightWeight:
-      player.height_in != null || player.weight_lb != null
-        ? `${player.height_in != null ? formatHeight(player.height_in) : ""}${player.height_in != null && player.weight_lb != null ? " " : ""}${player.weight_lb != null ? `${player.weight_lb} lb` : ""}`.trim()
-        : null,
-    hometown: player.hometown?.trim() || null,
-    birthday: birthdayDisplay,
-    age: ageYears != null ? `${ageYears} yrs` : null,
-  };
-
-  const rows = [
-    info.jersey && { label: "Jersey", value: info.jersey },
-    info.positions && { label: "Positions", value: info.positions },
-    info.batsThrows && { label: "Bats / Throws", value: info.batsThrows },
-    info.heightWeight && { label: "Height · Weight", value: info.heightWeight },
-    info.hometown && { label: "Hometown", value: info.hometown },
-    info.birthday && { label: "Birthday", value: info.birthday },
-    info.age && { label: "Age", value: info.age },
+  const secondaryFacts = [
+    player.positions?.length ? { label: "Positions", value: player.positions.join(", ") } : null,
+    heightWeight ? { label: "Height · Weight", value: heightWeight } : null,
+    player.hometown?.trim() ? { label: "Hometown", value: player.hometown.trim() } : null,
+    birthdayDisplay ? { label: "Birthday", value: birthdayDisplay } : null,
+    ageYears != null ? { label: "Age", value: `${ageYears} yrs` } : null,
   ].filter(Boolean) as { label: string; value: string }[];
 
   const profileDeleteDescription =
@@ -311,41 +293,11 @@ export function PlayerProfileClient({
 
   return (
     <div className="space-y-6">
-      <div className="card-tech flex flex-col gap-5 p-4 sm:flex-row sm:items-start">
-        <div className="flex shrink-0 flex-row items-center gap-4 sm:flex-col sm:items-center sm:gap-2 sm:w-36">
-          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-[var(--accent-dim)] text-xl font-bold text-[var(--accent)] sm:h-24 sm:w-24 sm:text-2xl">
-            {player.name
-              .split(/\s+/)
-              .map((w) => w[0])
-              .join("")
-              .slice(0, 2)
-              .toUpperCase()}
-          </div>
-          <div className="min-w-0 flex-1 text-left sm:flex-none sm:text-center">
-            <p className="text-base font-semibold text-[var(--text)] sm:text-lg">{player.name}</p>
-            <Link
-              href={analystComparePlayersHref({ p1: player.id })}
-              className="mt-1 inline-block text-xs font-medium text-[var(--accent)] hover:underline"
-            >
-              Compare with…
-            </Link>
-          </div>
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="grid grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
-          {rows.map(({ label, value }) => (
-              <div key={label} className="min-w-0">
-              <p className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-                {label}
-              </p>
-                <p className="mt-0.5 break-words text-sm font-semibold text-[var(--text)] sm:text-base">
-                  {value}
-                </p>
-            </div>
-          ))}
-          </div>
-        </div>
-      </div>
+      <PlayerProfileHero
+        player={player}
+        compareHref={analystComparePlayersHref({ p1: player.id })}
+        secondaryFacts={secondaryFacts}
+      />
 
       {battingSplits ? (
         <PlayerBattingProfileSections
@@ -353,6 +305,10 @@ export function PlayerProfileClient({
           battingColumnMode={battingColumnMode}
           setBattingColumnMode={setBattingColumnMode}
         />
+      ) : null}
+
+      {pitchingSplits && hasPitchingProfileStats(pitchingSplits) ? (
+        <PlayerPitchingProfileSections pitchingSplits={pitchingSplits} />
       ) : null}
 
       <PlayerSprayChartsSection spraySplits={spraySplits} isSwitch={isSwitch} />

@@ -5,6 +5,7 @@ import {
   getPlateAppearancesByBatter,
   getPlateAppearancesByPitcher,
   getBattingStatsWithSplitsForPlayers,
+  getPitchingStatsForPlayers,
 } from "@/lib/db/queries";
 import { hasSupabase } from "@/lib/db/client";
 import { ratingsFromEvents } from "@/lib/compute";
@@ -19,12 +20,13 @@ export default async function PlayerProfilePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [players, storedRating, pasAsBatter, pasAsPitcher, statsWithSplits] = await Promise.all([
+  const [players, storedRating, pasAsBatter, pasAsPitcher, statsWithSplits, pitchingStats] = await Promise.all([
     getPlayers(),
     getPlayerRating(id),
     getPlateAppearancesByBatter(id),
     getPlateAppearancesByPitcher(id),
     getBattingStatsWithSplitsForPlayers([id]),
+    getPitchingStatsForPlayers([id]),
   ]);
   const player = players.find((p) => p.id === id);
   if (!player) notFound();
@@ -45,6 +47,7 @@ export default async function PlayerProfilePage({
       : null;
   const ratings = stored ?? computed;
   const battingSplits = statsWithSplits[id] ?? null;
+  const pitchingSplits = pitchingStats[id] ?? null;
   const spraySplits = buildAnalystPlayerSpraySplits(player, players, pasAsBatter, pasAsPitcher);
 
   const canEdit = hasSupabase();
@@ -61,6 +64,7 @@ export default async function PlayerProfilePage({
         ageYears={ageYears}
         birthdayDisplay={birthdayDisplay}
         battingSplits={battingSplits}
+        pitchingSplits={pitchingSplits}
         spraySplits={spraySplits}
         canEdit={canEdit}
       />

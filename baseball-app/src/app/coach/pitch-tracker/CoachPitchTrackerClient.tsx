@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type Dispatch,
   type SetStateAction,
@@ -17,14 +18,16 @@ import {
   pitchTypeMixEventsFromCoachTrackerRows,
 } from "@/lib/compute/pitchTrackerCount";
 import {
-  coachPitchCountNewPitchTypeBlockReason,
+  coachPitchPadBlocksNewPitchRow,
   countAfterPitch,
   replayCountAtEndOfSequence,
 } from "@/lib/compute/pitchSequence";
 import type { PitchSequenceEntry } from "@/lib/compute/pitchSequence";
+import { pitchMixFromPlateAppearancesOrPitchLog } from "@/lib/compute/battingStats";
+import { groupPitchEventsByPaId } from "@/lib/compute/contactProfileFromPas";
 import { pitchingStatsFromPAs } from "@/lib/compute/pitchingStats";
 import { isDemoId } from "@/lib/db/mockData";
-import { formatDateMMDDYYYY, formatPPa } from "@/lib/format";
+import { formatDateMMDDYYYY } from "@/lib/format";
 import { isGameFinalized } from "@/lib/gameRecord";
 import { matchupLabelUsFirst } from "@/lib/opponentUtils";
 import {
@@ -37,6 +40,7 @@ import {
 } from "@/lib/pitchTrackerUi";
 import {
   CurrentBatterPitchDataCard,
+  lobByPitcherFromPas,
   MatchupPitchMixStrip,
 } from "@/components/analyst/BattingPitchMixCard";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
@@ -137,6 +141,18 @@ function battingOrderOrdinal(spot: number): string {
   if (n === 2) return "2nd";
   if (n === 3) return "3rd";
   return `${n}th`;
+}
+
+/** Scale batter name down in the narrow lineup column so the full name stays visible (no ellipsis). */
+function lineupBatterNameClass(name: string): string {
+  const n = name.trim().length;
+  const base = "min-w-0 font-semibold text-zinc-100";
+  if (n <= 10) return `${base} text-sm leading-tight md:text-base`;
+  if (n <= 14) return `${base} text-xs leading-tight md:text-sm`;
+  if (n <= 18) return `${base} text-[11px] leading-tight md:text-xs`;
+  if (n <= 22) return `${base} text-[10px] leading-tight md:text-[11px]`;
+  if (n <= 28) return `${base} text-[9px] leading-tight md:text-[10px]`;
+  return `${base} text-[9px] leading-snug break-words md:text-[10px]`;
 }
 
 type Props = {
@@ -285,9 +301,35 @@ async function fetchPitchTrackerSyncFromGame(
 
 type CoachPitcherSnapshotUi = {
   name: string;
+  jersey: string | null;
   line1: string;
-  line2: string;
 };
+
+const COACH_LANDSCAPE_TIP_KEY = "coach_pitch_pad_landscape_tip_v1";
+/** Brief pause after a saved pitch so panic-tapping does not log multiple pitches. */
+const COACH_PITCH_TYPE_COOLDOWN_MS = 400;
+
+function isDuplicatePitchNumberError(message: string): boolean {
+  return (
+    message.includes("pitches_tracker_group_id_pitch_number_key") ||
+    message.includes("duplicate key value violates unique constraint")
+  );
+}
+
+function formatCoachPitchSaveError(message: string, offline: boolean): string {
+  if (isDuplicatePitchNumberError(message)) {
+    return "That pitch is already logged for this at-bat — check This AB. Wait a moment before tapping again.";
+  }
+  return message + (offline ? " You appear offline — reconnect and try again." : "");
+}
+
+/** Next pitch # in this tracker session (all rows in the group, not per batter). */
+function nextOpenPitchNumber(rows: PitchTrackerPitch[]): number {
+  const occupied = new Set(rows.map((r) => r.pitch_number));
+  let n = 1;
+  while (occupied.has(n)) n += 1;
+  return n;
+}
 
 /** Count before → after this pitch (muted → amber), one-row sidebar. */
 function CoachPitchCountTransition({
@@ -301,12 +343,12 @@ function CoachPitchCountTransition({
 }) {
   const tail = after == null ? "—" : `${after.balls}-${after.strikes}`;
   return (
-    <span className="inline-flex shrink-0 items-center gap-x-1.5 rounded-md border border-amber-500/40 bg-zinc-950/80 px-2 py-1 tabular-nums leading-none">
-      <span className="text-xs text-zinc-500 sm:text-[13px]">{beforeBalls}-{beforeStrikes}</span>
-      <span className="text-xs text-zinc-500 sm:text-[13px]" aria-hidden>
+    <span className="inline-flex shrink-0 items-center gap-x-1.5 rounded-md border border-amber-500/40 bg-zinc-950/80 px-2 py-1 tabular-nums leading-none md:gap-x-2 md:px-2.5 md:py-1.5">
+      <span className="text-xs text-zinc-500 sm:text-sm">{beforeBalls}-{beforeStrikes}</span>
+      <span className="text-xs text-zinc-500 sm:text-sm" aria-hidden>
         →
       </span>
-      <span className="text-xs font-bold text-amber-400 sm:text-[13px]">{tail}</span>
+      <span className="text-xs font-bold text-amber-400 sm:text-sm">{tail}</span>
     </span>
   );
 }
@@ -322,6 +364,7 @@ function CoachPitchPad({
   countStrikes,
 }: TrackerSession) {
   const [rows, setRows] = useState<PitchTrackerPitch[]>([]);
+  const sequenceListRef = useRef<HTMLOListElement>(null);
   const [flashType, setFlashType] = useState<PitchTrackerPitchType | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -347,9 +390,60 @@ function CoachPitchPad({
   const [pitcherGamePas, setPitcherGamePas] = useState<PlateAppearance[]>([]);
   const [pitcherGameEvents, setPitcherGameEvents] = useState<PitchEvent[]>([]);
   const [pitcherGameIntelLoading, setPitcherGameIntelLoading] = useState(false);
+  const [networkOnline, setNetworkOnline] = useState(true);
+  /** Pitches table realtime subscription — false while reconnecting / error. */
+  const [pitchesRealtimeOk, setPitchesRealtimeOk] = useState(true);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const [showLandscapeTip, setShowLandscapeTip] = useState(false);
+  const [pitchLogBusy, setPitchLogBusy] = useState(false);
+  const [pitchTypeCooldown, setPitchTypeCooldown] = useState(false);
+  const pitchLogInFlightRef = useRef(false);
+  const pitchCooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const supabase = getSupabaseBrowserClient();
   const canLogPitch = !!(supabase && gameId && groupId && batterId);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setPrefersReducedMotion(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    const sync = () => setNetworkOnline(navigator.onLine);
+    sync();
+    window.addEventListener("online", sync);
+    window.addEventListener("offline", sync);
+    return () => {
+      window.removeEventListener("online", sync);
+      window.removeEventListener("offline", sync);
+    };
+  }, []);
+
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(COACH_LANDSCAPE_TIP_KEY) === "1") return;
+    } catch {
+      /* ignore */
+    }
+    const mq = window.matchMedia("(orientation: portrait)");
+    const sync = () => {
+      try {
+        if (window.localStorage.getItem(COACH_LANDSCAPE_TIP_KEY) === "1") {
+          setShowLandscapeTip(false);
+          return;
+        }
+      } catch {
+        /* ignore */
+      }
+      setShowLandscapeTip(mq.matches);
+    };
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
 
   /** Opponent = other dugout: `home` lineup if we are `away`, and vice versa. */
   const loadOpponentLineup = useCallback(async () => {
@@ -700,17 +794,50 @@ function CoachPitchPad({
           void refresh();
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") setPitchesRealtimeOk(true);
+        else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          setPitchesRealtimeOk(false);
+        }
+      });
     return () => {
       void supabase.removeChannel(channel);
     };
   }, [supabase, groupId, refresh]);
 
+  /** Record undo / pitch log updates `games.pitch_tracker_*` — refetch pitches when count changes. */
+  const prevTrackerCountRef = useRef({ balls: countBalls, strikes: countStrikes });
+  useEffect(() => {
+    const prev = prevTrackerCountRef.current;
+    if (prev.balls === countBalls && prev.strikes === countStrikes) return;
+    prevTrackerCountRef.current = { balls: countBalls, strikes: countStrikes };
+    void refresh();
+  }, [countBalls, countStrikes, refresh]);
+
+  useEffect(() => {
+    void refresh();
+  }, [batterId, refresh]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!groupId || pitchesRealtimeOk) return;
+    const id = window.setInterval(() => void refresh(), 4000);
+    return () => window.clearInterval(id);
+  }, [groupId, pitchesRealtimeOk, refresh]);
+
   useEffect(() => {
     if (!flashType) return;
-    const t = window.setTimeout(() => setFlashType(null), 220);
+    const ms = prefersReducedMotion ? 40 : 220;
+    const t = window.setTimeout(() => setFlashType(null), ms);
     return () => clearTimeout(t);
-  }, [flashType]);
+  }, [flashType, prefersReducedMotion]);
 
   useEffect(() => {
     if (!toast) return;
@@ -727,6 +854,27 @@ function CoachPitchPad({
     if (!batterId) return [];
     return sequenceRows.filter((r) => r.batter_id === batterId);
   }, [sequenceRows, batterId]);
+
+  const lastPitchRowId =
+    sequenceRowsThisBatter.length > 0
+      ? (sequenceRowsThisBatter[sequenceRowsThisBatter.length - 1]?.id ?? null)
+      : null;
+
+  useEffect(() => {
+    const list = sequenceListRef.current;
+    if (!list || !lastPitchRowId) return;
+    const scrollToLatest = () => {
+      list.scrollTop = list.scrollHeight;
+    };
+    scrollToLatest();
+    requestAnimationFrame(scrollToLatest);
+  }, [lastPitchRowId, sequenceRowsThisBatter.length]);
+
+  const batterMissingFromOpposingLineup = useMemo(() => {
+    if (!batterId || opponentLineupLoading) return false;
+    if (Object.keys(opponentLineupByPlayerId).length === 0) return false;
+    return opponentLineupByPlayerId[batterId] == null;
+  }, [batterId, opponentLineupLoading, opponentLineupByPlayerId]);
 
   const logDerivedCount = useMemo(
     () => displayCountFromPitchTrackerRows(sequenceRowsThisBatter),
@@ -786,90 +934,16 @@ function CoachPitchPad({
     [pitcherGameEvents, livePitchTypeMixEvents]
   );
 
-  const lineupEntry = useMemo(
-    () => (batterId ? opponentLineupByPlayerId[batterId] : null),
-    [batterId, opponentLineupByPlayerId]
-  );
+  const pitcherFullGameMix = useMemo(() => {
+    if (!pitcherId) return null;
+    const pitcherPas = gamePitchMixPasMerged.filter((p) => p.pitcher_id === pitcherId);
+    if (pitcherPas.length === 0) return null;
+    const eventsByPaId = groupPitchEventsByPaId(gamePitchMixEventsMerged);
+    return pitchMixFromPlateAppearancesOrPitchLog(pitcherPas, eventsByPaId);
+  }, [pitcherId, gamePitchMixPasMerged, gamePitchMixEventsMerged]);
 
   const lineupGuardLoading = ourLineupPlayerIds === null;
   const isOurTeamBatting = !!(batterId && ourLineupPlayerIds && ourLineupPlayerIds.has(batterId));
-
-  const atBatPanel = useMemo(() => {
-    type Segment = { key: string; text: string; className: string };
-    if (!batterId) {
-      return {
-        title: "Set the batter on Record",
-        segments: [{ key: "empty", text: "—", className: "text-zinc-500" }] as Segment[],
-      };
-    }
-    if (opponentLineupLoading || batterProfileLoading) {
-      return {
-        title: undefined as string | undefined,
-        segments: [{ key: "load", text: "…", className: "text-zinc-500" }] as Segment[],
-      };
-    }
-    if (isOurTeamBatting) {
-      return {
-        title: "Our team is hitting — opponent pitcher on the mound",
-        segments: [
-          {
-            key: "our-ab",
-            text: "Our lineup (not shown)",
-            className: "text-zinc-400 italic",
-          },
-        ] as Segment[],
-      };
-    }
-    /** Always prefer `players` for the synced batter id — lineup card can be wrong-side if `our_side`/lineups mismatch. */
-    const name = batterProfile?.name ?? lineupEntry?.name ?? null;
-    const jersey = batterProfile?.jersey ?? lineupEntry?.jersey ?? null;
-    const bats = batterProfile?.bats ?? lineupEntry?.bats ?? null;
-    const battingOrder =
-      batterSlot ??
-      lineupBattingOrderByPlayerId[batterId] ??
-      lineupEntry?.slot ??
-      null;
-    const jerseyPart = jersey != null ? `#${jersey}` : "—";
-    const batsPart = batsHandLabel(bats);
-    const displayName = name ?? "Unknown";
-    const segments: Segment[] = [];
-    if (battingOrder != null) {
-      segments.push({
-        key: "order",
-        text: battingOrderOrdinal(battingOrder),
-        className: "text-amber-400 tabular-nums",
-      });
-    }
-    const identityClass = "text-zinc-100";
-    segments.push({
-      key: "name",
-      text: displayName,
-      className: identityClass,
-    });
-    segments.push({
-      key: "jersey",
-      text: jerseyPart,
-      className: `${identityClass} font-mono tabular-nums`,
-    });
-    segments.push({
-      key: "bats",
-      text: batsPart,
-      className: batsHandChipClass(bats, "prominent"),
-    });
-    const title = [battingOrder != null ? `${battingOrderOrdinal(battingOrder)} in lineup` : null, displayName, jersey != null ? `jersey #${jersey}` : null, bats != null ? `${batsHandLabel(bats)}-handed` : null]
-      .filter(Boolean)
-      .join(", ");
-    return { title, segments };
-  }, [
-    batterId,
-    batterSlot,
-    lineupEntry,
-    batterProfile,
-    lineupBattingOrderByPlayerId,
-    opponentLineupLoading,
-    batterProfileLoading,
-    isOurTeamBatting,
-  ]);
 
   const opposingLineupBoard = useMemo(() => {
     const ordered: CoachOpposingLineupRow[] = Object.entries(opponentLineupByPlayerId)
@@ -903,13 +977,30 @@ function CoachPitchPad({
   }, [batterId, batterProfile, opponentLineupByPlayerId]);
 
   const pitchTypeBlockReason = useMemo(
-    () => coachPitchCountNewPitchTypeBlockReason(sequenceRowsThisBatter),
+    () => coachPitchPadBlocksNewPitchRow(sequenceRowsThisBatter),
     [sequenceRowsThisBatter]
   );
   const pitchTypesLocked = pitchTypeBlockReason != null;
   /** Pitch-type pad is only for when we're on defense (opponent batting). */
   const pitchDefenseOnlyBlocked = lineupGuardLoading || isOurTeamBatting;
   const canLogPitchType = canLogPitch && !pitchTypesLocked && !pitchDefenseOnlyBlocked;
+  const pitchDockLocked = pitchLogBusy || pitchTypeCooldown;
+
+  useEffect(() => {
+    return () => {
+      if (pitchCooldownTimerRef.current != null) clearTimeout(pitchCooldownTimerRef.current);
+    };
+  }, []);
+
+  const startPitchTypeCooldown = useCallback(() => {
+    if (prefersReducedMotion) return;
+    setPitchTypeCooldown(true);
+    if (pitchCooldownTimerRef.current != null) clearTimeout(pitchCooldownTimerRef.current);
+    pitchCooldownTimerRef.current = setTimeout(() => {
+      setPitchTypeCooldown(false);
+      pitchCooldownTimerRef.current = null;
+    }, COACH_PITCH_TYPE_COOLDOWN_MS);
+  }, [prefersReducedMotion]);
 
   useEffect(() => {
     if (pitchTypesLocked) return;
@@ -928,19 +1019,18 @@ function CoachPitchPad({
     setPitchSnapLoading(true);
     try {
       const [{ data: playerRow }, { data: pasRows }] = await Promise.all([
-        supabase.from("players").select("name").eq("id", pitcherId).maybeSingle(),
+        supabase.from("players").select("name, jersey").eq("id", pitcherId).maybeSingle(),
         supabase.from("plate_appearances").select("*").eq("game_id", gameId).eq("pitcher_id", pitcherId),
       ]);
-      const name =
-        playerRow && typeof (playerRow as { name?: string }).name === "string"
-          ? (playerRow as { name: string }).name
-          : "Pitcher";
+      const row = playerRow as { name?: string; jersey?: string | null } | null;
+      const name = row && typeof row.name === "string" ? row.name : "Pitcher";
+      const jersey = normalizeJersey(row?.jersey ?? null);
       const pas = (pasRows ?? []) as PlateAppearance[];
       if (pas.length === 0) {
         setPitchSnap({
           name,
+          jersey,
           line1: "No plate appearances logged to this pitcher in this game yet.",
-          line2: "",
         });
         return;
       }
@@ -949,31 +1039,14 @@ function CoachPitchPad({
       });
       const s = split?.overall;
       if (!s) {
-        setPitchSnap({ name, line1: "—", line2: "" });
+        setPitchSnap({ name, jersey, line1: "—" });
         return;
       }
-      const r = s.rates;
-      const strikePctStr =
-        r.strikePct != null ? `${Math.round(r.strikePct * 100)}% strikes` : "Strike% —";
-      const pPaStr = r.pPa != null ? `${formatPPa(r.pPa)} P/PA` : "P/PA —";
-      let pitchesTotal = 0;
-      let paWithPitches = 0;
-      for (const pa of pas) {
-        const pv = pa.pitches_seen;
-        if (pv != null && !Number.isNaN(pv) && pv >= 0) {
-          pitchesTotal += pv;
-          paWithPitches += 1;
-        }
-      }
-      const pitchesStr =
-        paWithPitches > 0
-          ? `${pitchesTotal} pitches on ${paWithPitches} PA with counts`
-          : "Pitch counts not on PAs yet — strike% / P/PA fill in when Record saves them.";
+      const lob = lobByPitcherFromPas(pas).get(pitcherId) ?? 0;
       const line1 = `${s.ipDisplay} IP · ${s.h} H · ${s.r} R · ${s.er} ER · ${s.bb} BB · ${s.so} K · ERA ${
         s.ip > 0 ? s.era.toFixed(2) : "—"
-      } · WHIP ${s.ip > 0 ? s.whip.toFixed(2) : "—"}`;
-      const line2 = `${pitchesStr} · ${strikePctStr} · ${pPaStr}`;
-      setPitchSnap({ name, line1, line2 });
+      } · WHIP ${s.ip > 0 ? s.whip.toFixed(2) : "—"} · LOB ${lob}`;
+      setPitchSnap({ name, jersey, line1 });
     } catch {
       setPitchSnap(null);
     } finally {
@@ -1010,78 +1083,218 @@ function CoachPitchPad({
   /** Pitch type only — ball/strike outcomes live on the analyst PA form. Fills first typeless row if Record created it. */
   const logPitch = async (pitch_type: PitchTrackerPitchType) => {
     if (!supabase || !gameId || !groupId || !batterId) return;
-    if (pitchDefenseOnlyBlocked) return;
-    const batterRows = batterId ? rows.filter((r) => r.batter_id === batterId) : rows;
-    const block = coachPitchCountNewPitchTypeBlockReason(
-      [...batterRows].sort((a, b) => a.pitch_number - b.pitch_number)
-    );
-    if (block === "strikes") {
-      setError("This AB already has 3 strikes — finish the PA in Record, or Undo / Reset AB.");
-      return;
-    }
-    if (block === "balls") {
-      setError("This AB already has 4 balls — finish the PA in Record, or Undo / Reset AB.");
-      return;
-    }
-    setError(null);
+    if (pitchDefenseOnlyBlocked || pitchLogInFlightRef.current || pitchDockLocked) return;
+
+    pitchLogInFlightRef.current = true;
+    setPitchLogBusy(true);
+
+    const offline =
+      typeof navigator !== "undefined" && !navigator.onLine;
+    const batterRows = rows.filter((r) => r.batter_id === batterId);
+    const sortedBatterRows = [...batterRows].sort((a, b) => a.pitch_number - b.pitch_number);
+    const awaitingType = sortedBatterRows.filter((r) => r.pitch_type == null)[0] ?? null;
+
     try {
-      if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
-        navigator.vibrate(12);
+      if (!awaitingType) {
+        const block = coachPitchPadBlocksNewPitchRow(sortedBatterRows);
+        if (block === "strikes") {
+          setError("This AB already has 3 strikes — finish the PA in Record, or Undo / Reset AB.");
+          return;
+        }
+        if (block === "balls") {
+          setError("This AB already has 4 balls — finish the PA in Record, or Undo / Reset AB.");
+          return;
+        }
       }
-    } catch {
-      /* ignore */
+
+      setError(null);
+      try {
+        if (
+          typeof navigator !== "undefined" &&
+          typeof navigator.vibrate === "function" &&
+          !prefersReducedMotion
+        ) {
+          navigator.vibrate(12);
+        }
+      } catch {
+        /* ignore */
+      }
+
+      const applyTypeToRow = async (rowId: string) => {
+        const { error: upErr } = await supabase
+          .from("pitches")
+          .update({ pitch_type, pitcher_id: pitcherId })
+          .eq("id", rowId);
+        if (upErr) {
+          setError(formatCoachPitchSaveError(upErr.message, offline));
+          return false;
+        }
+        return true;
+      };
+
+      if (awaitingType) {
+        const ok = await applyTypeToRow(awaitingType.id);
+        if (!ok) return;
+      } else {
+        const pitch_number = nextOpenPitchNumber(sequenceRows);
+        const localSlot = sequenceRows.find((r) => r.pitch_number === pitch_number);
+
+        if (localSlot != null && localSlot.pitch_type == null) {
+          const ok = await applyTypeToRow(localSlot.id);
+          if (!ok) return;
+        } else if (localSlot == null) {
+          const { error: insErr } = await supabase.from("pitches").insert({
+            game_id: gameId,
+            at_bat_id: null,
+            tracker_group_id: groupId,
+            pitch_number,
+            pitch_type,
+            result: null,
+            batter_id: batterId,
+            pitcher_id: pitcherId,
+          });
+
+          if (insErr) {
+            if (isDuplicatePitchNumberError(insErr.message)) {
+              const { data: existing, error: readErr } = await supabase
+                .from("pitches")
+                .select("id, pitch_type, batter_id")
+                .eq("tracker_group_id", groupId)
+                .eq("pitch_number", pitch_number)
+                .maybeSingle();
+
+              if (readErr) {
+                setError(formatCoachPitchSaveError(readErr.message, offline));
+                return;
+              }
+
+              const row = existing as {
+                id: string;
+                pitch_type: PitchTrackerPitchType | null;
+                batter_id: string;
+              } | null;
+
+              if (row && row.batter_id === batterId) {
+                if (row.pitch_type == null) {
+                  const ok = await applyTypeToRow(row.id);
+                  if (!ok) return;
+                } else {
+                  setError(
+                    "That pitch already has a type — check This AB or use Undo if it was a mistake."
+                  );
+                  return;
+                }
+              } else {
+                setError(formatCoachPitchSaveError(insErr.message, offline));
+                await refresh();
+                return;
+              }
+            } else {
+              setError(formatCoachPitchSaveError(insErr.message, offline));
+              return;
+            }
+          }
+        } else {
+          setError(
+            "That pitch already has a type — check This AB or use Undo if it was a mistake."
+          );
+          return;
+        }
+      }
+
+      setFlashType(pitch_type);
+      await refresh();
+      startPitchTypeCooldown();
+    } finally {
+      pitchLogInFlightRef.current = false;
+      setPitchLogBusy(false);
     }
-    const awaitingType = [...batterRows]
-      .filter((r) => r.pitch_type == null)
-      .sort((a, b) => a.pitch_number - b.pitch_number)[0];
-    if (awaitingType) {
-      const { error: upErr } = await supabase
-        .from("pitches")
-        .update({ pitch_type, pitcher_id: pitcherId })
-        .eq("id", awaitingType.id);
-      if (upErr) {
-        setError(upErr.message);
-        return;
-      }
-    } else {
-      const maxNum = batterRows.length > 0 ? Math.max(...batterRows.map((r) => r.pitch_number)) : 0;
-      const pitch_number = maxNum + 1;
-      const { error: insErr } = await supabase.from("pitches").insert({
-        game_id: gameId,
-        at_bat_id: null,
-        tracker_group_id: groupId,
-        pitch_number,
-        pitch_type,
-        result: null,
-        batter_id: batterId,
-        pitcher_id: pitcherId,
-      });
-      if (insErr) {
-        setError(insErr.message);
-        return;
-      }
-    }
-    setFlashType(pitch_type);
-    setToast(`${pitchTrackerTypeLabel(pitch_type)} recorded`);
-    void refresh();
   };
 
   const undoLast = async () => {
+    if (pitchLogInFlightRef.current || pitchLogBusy) return;
     const pool = batterId ? rows.filter((r) => r.batter_id === batterId) : rows;
     if (!supabase || !groupId || pool.length === 0) return;
-    const last = pool.reduce((a, b) => (a.pitch_number >= b.pitch_number ? a : b));
-    const { error: delErr } = await supabase.from("pitches").delete().eq("id", last.id);
-    if (delErr) setError(delErr.message);
-    else void refresh();
+
+    pitchLogInFlightRef.current = true;
+    setPitchLogBusy(true);
+    try {
+      const last = pool.reduce((a, b) => (a.pitch_number >= b.pitch_number ? a : b));
+      const removedLabel =
+        last.pitch_type != null ? pitchTrackerTypeLabel(last.pitch_type) : "last pitch";
+      const { error: delErr } = await supabase.from("pitches").delete().eq("id", last.id);
+      if (delErr) setError(delErr.message);
+      else {
+        setToast(`Removed · ${removedLabel}`);
+        await refresh();
+      }
+    } finally {
+      pitchLogInFlightRef.current = false;
+      setPitchLogBusy(false);
+    }
   };
 
   const resetAtBat = async () => {
+    if (pitchLogInFlightRef.current || pitchLogBusy) return;
     if (!supabase || !groupId) return;
-    let q = supabase.from("pitches").delete().eq("tracker_group_id", groupId);
-    if (batterId) q = q.eq("batter_id", batterId);
-    const { error: delErr } = await q;
-    if (delErr) setError(delErr.message);
-    else void refresh();
+    if (
+      !window.confirm(
+        "Clear all pitches logged for this batter in this at-bat? This cannot be undone."
+      )
+    ) {
+      return;
+    }
+
+    pitchLogInFlightRef.current = true;
+    setPitchLogBusy(true);
+    try {
+      let q = supabase.from("pitches").delete().eq("tracker_group_id", groupId);
+      if (batterId) q = q.eq("batter_id", batterId);
+      const { error: delErr } = await q;
+      if (delErr) setError(delErr.message);
+      else {
+        setToast("At-bat sequence cleared");
+        await refresh();
+      }
+    } finally {
+      pitchLogInFlightRef.current = false;
+      setPitchLogBusy(false);
+    }
+  };
+
+  const renderPitchTypeButton = (t: PitchTrackerPitchType) => {
+    const flashed = flashType === t;
+    const label = pitchTrackerTypeLabel(t);
+    const motionSafe = prefersReducedMotion;
+    const disabled = !canLogPitchType || pitchDockLocked;
+    return (
+      <button
+        key={t}
+        type="button"
+        disabled={disabled}
+        aria-label={label}
+        aria-busy={pitchLogBusy ? true : undefined}
+        title={
+          pitchLogBusy
+            ? "Saving…"
+            : pitchTypeCooldown
+              ? "Wait a moment before the next pitch"
+              : label
+        }
+        onClick={() => void logPitch(t)}
+        className={`touch-manipulation flex h-[3.25rem] w-[3.25rem] shrink-0 items-center justify-center rounded-full border-2 shadow transition-none active:scale-100 sm:h-14 sm:w-14 sm:transition sm:active:scale-[0.98] disabled:opacity-40 md:h-[3.75rem] md:w-[3.75rem] ${pitchTrackerCoachButtonClass(t)} ${
+          flashed && !motionSafe
+            ? "ring-2 ring-white/80 ring-offset-2 ring-offset-zinc-950 sm:ring-offset-2"
+            : flashed && motionSafe
+              ? "brightness-110"
+              : ""
+        }`}
+      >
+        <span className="text-xs font-bold leading-none tracking-tight sm:text-sm">
+          {pitchTrackerAbbrev(t)}
+        </span>
+      </button>
+    );
   };
 
   if (!supabase) {
@@ -1093,77 +1306,131 @@ function CoachPitchPad({
   }
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-zinc-950 text-zinc-100">
-      <header className="shrink-0 border-b border-zinc-800 px-4 py-3 sm:px-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
-          <section className="min-w-0 shrink-0 lg:max-w-md" aria-label="Pitcher this game">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-              Pitcher (this game)
-            </p>
-            {!pitcherId ? (
-              <p className="mt-1 text-[11px] leading-snug text-zinc-500">
-                Set the pitcher on Record (PA form mound pitcher).
-              </p>
-            ) : pitchSnapLoading ? (
-              <p className="mt-1 text-xs text-zinc-500">Loading pitcher…</p>
-            ) : pitchSnap ? (
-              <div className="mt-2 min-w-0 space-y-2">
-                <p className="truncate text-base font-bold tracking-tight text-zinc-100 sm:text-lg">
-                  {pitchSnap.name}
-                </p>
-                <p className="text-sm font-semibold leading-relaxed tracking-tight text-zinc-200 tabular-nums sm:text-base">
-                  {pitchSnap.line1}
-                </p>
-                {pitchSnap.line2 ? (
-                  <p className="text-xs font-medium leading-relaxed text-zinc-400 tabular-nums sm:text-sm">
-                    {pitchSnap.line2}
-                  </p>
-                ) : null}
-              </div>
-            ) : (
-              <p className="mt-1 text-[11px] text-zinc-500">Could not load pitcher stats.</p>
-            )}
-          </section>
-          {pitcherId ? (
-            <section
-              className="min-w-0 flex-1 border-t border-zinc-800 pt-3 lg:border-l lg:border-t-0 lg:pt-0 lg:pl-5"
-              aria-label="Full game pitch data for this pitcher"
-            >
-              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400 sm:text-sm">
-                Pitch data · full game vs {pitchSnapLoading ? "…" : (pitchSnap?.name ?? "pitcher")}
-              </p>
-              {pitcherGameIntelLoading ? (
-                <p className="mt-2 text-sm text-zinc-500">Loading game pitch data…</p>
-              ) : (
-                <div className="mt-2 min-w-0">
-                  <MatchupPitchMixStrip
-                    pas={gamePitchMixPasMerged}
-                    pitchEvents={gamePitchMixEventsMerged}
-                    distributionPitchEvents={gamePitchMixDistributionEventsMerged}
-                    currentPitcherId={pitcherId}
-                    compact
-                  />
-                </div>
-              )}
-            </section>
-          ) : null}
-        </div>
-        {toast ? (
-          <p
-            className="mt-2 shrink-0 rounded-lg bg-zinc-800 px-3 py-1.5 text-sm font-medium text-emerald-300 sm:mt-3"
-            role="status"
-          >
-            {toast}
-          </p>
-        ) : null}
-      </header>
+    <div className="coach-pitch-pad flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-zinc-950 text-zinc-100">
+      {toast ? (
+        <p
+          className="shrink-0 border-b border-emerald-900/50 bg-emerald-950/90 px-3 py-2 text-center text-sm font-medium text-emerald-200"
+          role="status"
+        >
+          {toast}
+        </p>
+      ) : null}
 
       {error ? (
         <p className="shrink-0 bg-red-950/80 px-4 py-2 text-center text-sm text-red-200">{error}</p>
       ) : null}
 
-      <main className="flex min-h-0 flex-1 flex-col gap-2 p-3 pb-[env(safe-area-inset-bottom)] sm:gap-3 sm:p-4 md:flex-row md:items-stretch">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 md:pr-1">
+      {!networkOnline ? (
+        <p className="shrink-0 border-b border-amber-900/40 bg-amber-950/95 px-4 py-2 text-center text-sm font-medium text-amber-100" role="status">
+          Offline — logging may fail until you&apos;re back on Wi‑Fi or cellular. What you tap might not save.
+        </p>
+      ) : null}
+
+      {networkOnline && !pitchesRealtimeOk ? (
+        <p className="shrink-0 border-b border-zinc-700 bg-zinc-800/95 px-4 py-2 text-center text-sm leading-snug text-zinc-200" role="status">
+          Live pitch sync paused — check connectivity or keep Record open; this pad will retry every few seconds. You can still use Undo / Reset on this device.
+        </p>
+      ) : null}
+
+      {batterMissingFromOpposingLineup ? (
+        <p
+          className="shrink-0 border-b border-sky-800 bg-sky-950/80 px-4 py-2 text-center text-sm leading-snug text-sky-100"
+          role="status"
+        >
+          Sync note — Record&apos;s batter isn&apos;t on the opposing lineup card. Confirm the correct dugout / lineup on Record before trusting OD markers here.
+        </p>
+      ) : null}
+
+      {showLandscapeTip ? (
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-emerald-900/50 bg-emerald-950/85 px-3 py-2 text-emerald-50">
+          <p className="min-w-0 flex-1 text-xs leading-snug sm:text-sm">
+            This pitch pad is laid out for <strong className="font-semibold">iPad landscape</strong> — rotate for the widest matchup + sequence columns.
+          </p>
+          <button
+            type="button"
+            className="touch-manipulation shrink-0 rounded-md border border-emerald-600/60 bg-emerald-900/50 px-3 py-1.5 text-xs font-semibold text-emerald-100 active:bg-emerald-900/80"
+            onClick={() => {
+              try {
+                window.localStorage.setItem(COACH_LANDSCAPE_TIP_KEY, "1");
+              } catch {
+                /* ignore */
+              }
+              setShowLandscapeTip(false);
+            }}
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row md:gap-3 md:p-3">
+        {/* Line-up: first = easy to scan; fixed width on tablet landscape */}
+        <section
+          className="flex max-h-[38vh] min-h-0 shrink-0 flex-col overflow-hidden border-b border-zinc-800 px-2 py-2 md:max-h-none md:w-[min(15.25rem,27vw)] md:shrink-0 md:self-stretch md:rounded-xl md:border md:border-zinc-700/80 md:bg-zinc-900/50 md:px-2 md:py-2"
+          aria-label="Opposing lineup"
+        >
+          <div className="mb-1.5 flex items-baseline justify-between gap-1">
+            <h2 className="text-[10px] font-bold uppercase tracking-wide text-amber-400/90 sm:text-xs">
+              Opposing lineup
+            </h2>
+            <span className="shrink-0 text-[9px] text-zinc-500 sm:text-[10px]">AB / OD</span>
+          </div>
+          {opponentLineupLoading ? (
+            <p className="text-xs text-zinc-500">Loading…</p>
+          ) : opposingLineupBoard.ordered.length === 0 ? (
+            <p className="text-xs text-zinc-500">Set the lineup on Record.</p>
+          ) : (
+            <ul className="grid min-h-0 flex-1 grid-cols-2 gap-x-1 gap-y-1.5 overflow-y-auto overscroll-contain sm:gap-x-1.5 sm:gap-y-2 md:flex md:flex-col md:gap-1.5">
+              {opposingLineupBoard.ordered.map((row) => {
+                const atBat = !!(batterId && row.playerId === batterId);
+                const onDeck =
+                  !atBat &&
+                  opposingLineupBoard.onDeckPlayerId != null &&
+                  row.playerId === opposingLineupBoard.onDeckPlayerId;
+                const jerseyStr = row.jersey != null ? `#${row.jersey}` : "—";
+                return (
+                  <li
+                    key={row.playerId}
+                    className={`flex min-h-0 min-w-0 items-center gap-2 rounded-lg border px-1.5 py-1.5 text-sm md:flex-1 md:gap-2.5 md:px-2.5 md:py-2 md:text-base ${
+                      atBat
+                        ? "border-amber-500/60 bg-amber-950/55 ring-1 ring-amber-500/30"
+                        : onDeck
+                          ? "border-zinc-500/50 bg-zinc-800/90"
+                          : "border-zinc-700/50 bg-zinc-900/70"
+                    }`}
+                  >
+                    <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-amber-400 md:w-8 md:text-base">
+                      {battingOrderOrdinal(row.slot)}
+                    </span>
+                    <div className="min-w-0 flex-1 leading-snug md:leading-normal">
+                      <p className={lineupBatterNameClass(row.name)} title={row.name}>
+                        {row.name}
+                      </p>
+                      <p className="truncate text-xs text-zinc-400 md:text-sm">
+                        {jerseyStr}{" "}
+                        <span className={batsHandChipClass(row.bats, "compact")}>{batsHandLabel(row.bats)}</span>
+                      </p>
+                    </div>
+                    <div className="shrink-0">
+                      {atBat ? (
+                        <span className="rounded-md bg-amber-600/40 px-1 py-0.5 text-[10px] font-bold uppercase leading-none text-amber-100 md:px-1.5 md:py-1 md:text-xs">
+                          AB
+                        </span>
+                      ) : onDeck ? (
+                        <span className="rounded-md bg-zinc-600 px-1 py-0.5 text-[10px] font-bold uppercase leading-none text-zinc-200 md:px-1.5 md:py-1 md:text-xs">
+                          OD
+                        </span>
+                      ) : null}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
+        {/* Center: primary coaching focus */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden p-2 pb-1 md:p-0 md:pb-0">
           {lineupGuardLoading ? (
             <p
               className="shrink-0 rounded-lg border border-sky-700/50 bg-sky-950/30 px-3 py-2 text-center text-sm leading-snug text-sky-100/95"
@@ -1187,268 +1454,264 @@ function CoachPitchPad({
               role="status"
             >
               {pitchTypeBlockReason === "strikes"
-                ? "3 strikes — log the out in Record, or Undo last pitch / Reset AB to keep tracking."
-                : "4 balls — log the walk in Record, or Undo last pitch / Reset AB to keep tracking."}
+                ? "Full count at 3 strikes — finish this PA in Record (out / reached base). Undo last pitch or Reset AB here only if you need to adjust coaching pitches."
+                : "Four balls — finish this PA in Record (walk or strike ’em out elsewhere). Undo last pitch or Reset AB here only if you need to adjust coaching pitches."}
             </p>
           ) : null}
-          <div className="grid w-full shrink-0 grid-cols-4 content-start items-start gap-2 auto-rows-auto sm:gap-3 md:gap-4">
-            {PITCH_TRACKER_TYPES.map((t) => {
-              const flashed = flashType === t;
-              return (
-                <button
-                  key={t}
-                  type="button"
-                  disabled={!canLogPitchType}
-                  onClick={() => void logPitch(t)}
-                  className={`flex h-16 max-h-16 min-h-0 w-full min-w-0 shrink-0 items-center justify-center self-start rounded-lg border-2 px-1.5 py-2 shadow transition active:scale-[0.98] disabled:opacity-40 sm:h-20 sm:max-h-20 sm:px-2 sm:py-2.5 ${pitchTrackerCoachButtonClass(t)} ${
-                    flashed ? "ring-2 ring-white/80 ring-offset-2 ring-offset-zinc-950" : ""
-                  }`}
+
+          {pitcherId ? (
+            <section
+              className="flex min-h-[min(36dvh,20rem)] min-w-0 flex-[1.35] flex-col overflow-hidden md:min-h-[14rem] lg:min-h-[12.5rem]"
+              aria-label="Full game pitch data for this pitcher"
+            >
+              <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden md:gap-2">
+                <div
+                  className="shrink-0 border-b border-zinc-800/80 pb-2"
+                  aria-label="Pitcher game line from Record"
                 >
-                  <span className="line-clamp-2 max-w-full min-h-0 break-words text-center text-base font-semibold leading-[1.08] text-balance sm:text-lg">
-                    {pitchTrackerTypeLabel(t)}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="flex shrink-0 flex-wrap justify-center gap-2 pt-1">
-            <button
-              type="button"
-              disabled={!supabase || !groupId || sequenceRowsThisBatter.length === 0}
-              onClick={() => void undoLast()}
-              className="min-h-[44px] min-w-[120px] rounded-lg border border-zinc-600 bg-zinc-900 px-4 text-sm font-semibold text-zinc-200 active:bg-zinc-800 disabled:opacity-35"
-            >
-              Undo last
-            </button>
-            <button
-              type="button"
-              disabled={!supabase || !groupId || sequenceRowsThisBatter.length === 0}
-              onClick={() => void resetAtBat()}
-              className="min-h-[44px] min-w-[120px] rounded-lg border border-amber-700/60 bg-amber-950/40 px-4 text-sm font-semibold text-amber-100 active:bg-amber-950/70 disabled:opacity-35"
-            >
-              Reset AB
-            </button>
-          </div>
-
-          <div className="mt-2 flex min-h-0 min-w-0 flex-1 flex-col gap-3 lg:flex-row lg:items-stretch lg:gap-4">
-            <section
-              className="w-full max-w-[min(17.5rem,calc(100%-0.5rem))] shrink-0 rounded-xl border border-zinc-800 bg-zinc-900/50 px-2 py-2 sm:max-w-[min(19.5rem,calc(100%-0.5rem))] sm:px-2.5 sm:py-2 lg:self-start"
-              aria-label="Opposing lineup"
-            >
-              <h3 className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-                Opposing lineup
-              </h3>
-              {opponentLineupLoading ? (
-                <p className="mt-2 text-xs text-zinc-500">Loading lineup…</p>
-              ) : opposingLineupBoard.ordered.length === 0 ? (
-                <p className="mt-2 text-xs leading-snug text-zinc-500">
-                  No opponent lineup in this game yet (set lineups on Record).
-                </p>
-              ) : (
-                <ul className="mt-1.5 space-y-1">
-                  {opposingLineupBoard.ordered.map((row) => {
-                    const atBat = !!(batterId && row.playerId === batterId);
-                    const onDeck =
-                      !atBat &&
-                      opposingLineupBoard.onDeckPlayerId != null &&
-                      row.playerId === opposingLineupBoard.onDeckPlayerId;
-                    const jerseyStr =
-                      row.jersey != null ? `#${row.jersey}` : "—";
-                    return (
-                      <li
-                        key={row.playerId}
-                        className={`flex min-w-0 items-center gap-1.5 rounded-lg py-0.5 pl-0.5 pr-1 text-xs sm:gap-2 sm:text-[13px] ${
-                          atBat
-                            ? "bg-amber-950/45 ring-1 ring-amber-600/40"
-                            : onDeck
-                              ? "bg-zinc-800/80 ring-1 ring-zinc-600/50"
-                              : ""
-                        }`}
-                      >
-                        <span className="w-8 shrink-0 tabular-nums font-semibold text-amber-400 sm:w-9">
-                          {battingOrderOrdinal(row.slot)}
+                  {pitchSnapLoading ? (
+                    <p className="text-center text-sm text-zinc-500 md:text-left">Loading pitcher…</p>
+                  ) : pitchSnap ? (
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3 md:gap-4">
+                      <div className="flex shrink-0 flex-wrap items-baseline justify-center gap-x-2 gap-y-0.5 sm:justify-start">
+                        <p className="text-base font-bold leading-tight text-zinc-100 sm:text-lg">
+                          {pitchSnap.name}
+                        </p>
+                        <span className="text-sm font-semibold tabular-nums text-zinc-400 sm:text-base">
+                          {pitchSnap.jersey != null ? `#${pitchSnap.jersey}` : "—"}
                         </span>
-                        <div className="flex min-w-0 flex-1 items-center gap-x-1">
-                          <span className="min-w-0 truncate font-medium text-zinc-100">
-                            {row.name}
-                          </span>
-                          <span className="shrink-0 font-mono tabular-nums text-zinc-100">
-                            {jerseyStr}
-                          </span>
-                          <span className={batsHandChipClass(row.bats, "compact")}>
-                            {batsHandLabel(row.bats)}
-                          </span>
-                        </div>
-                        <div className="flex w-7 shrink-0 justify-end">
-                          {atBat ? (
-                            <span
-                              className="rounded bg-amber-600/25 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200"
-                              title="At bat"
-                            >
-                              AB
-                            </span>
-                          ) : onDeck ? (
-                            <span
-                              className="rounded bg-zinc-700/80 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-300"
-                              title="On deck"
-                            >
-                              OD
-                            </span>
-                          ) : null}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
+                        <span
+                          className="text-sm font-semibold tabular-nums text-zinc-300 sm:text-base"
+                          title="Pitches thrown this game"
+                        >
+                          {pitcherGameIntelLoading
+                            ? "…"
+                            : pitcherFullGameMix != null &&
+                                pitcherFullGameMix.plateAppearancesWithPitchCount > 0
+                              ? `${pitcherFullGameMix.pitchesTotal} pitches`
+                              : "— pitches"}
+                        </span>
+                      </div>
+                      {pitchSnap.line1 ? (
+                        <p className="min-w-0 flex-1 text-center text-sm font-semibold leading-snug text-zinc-200 sm:text-left sm:text-base">
+                          {pitchSnap.line1}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+                {pitcherGameIntelLoading ? (
+                  <p className="text-xs text-zinc-500">Loading pitch mix…</p>
+                ) : (
+                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                    <MatchupPitchMixStrip
+                      pas={gamePitchMixPasMerged}
+                      pitchEvents={gamePitchMixEventsMerged}
+                      distributionPitchEvents={gamePitchMixDistributionEventsMerged}
+                      currentPitcherId={pitcherId}
+                      compact
+                      coachPad
+                      coachPadExpanded
+                      hidePitchesInRates
+                      hideLobInRates
+                      coachPadFullGame
+                    />
+                  </div>
+                )}
+              </div>
             </section>
+          ) : null}
 
+          <div className="flex min-h-0 min-w-0 flex-col gap-1.5 overflow-hidden pt-1.5 md:max-h-[18dvh] md:flex-row md:gap-2 lg:max-h-[20dvh] xl:max-h-none xl:gap-3 xl:pt-2">
             <section
-              className="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-zinc-800 bg-zinc-900/50 px-2 py-2 sm:px-2.5 sm:py-2"
+              className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border-2 border-amber-600/35 bg-gradient-to-b from-zinc-900/90 to-zinc-950/95 p-1.5 shadow-[0_0_0_1px_rgba(251,191,36,0.12)] md:min-h-0 md:min-w-0 md:flex-1 md:p-1.5 xl:p-2.5"
               aria-label="This game: batter vs current pitcher"
             >
-              <h3 className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-                This game vs{" "}
-                <span className="text-zinc-400">
-                  {pitcherId
-                    ? pitchSnapLoading
-                      ? "…"
-                      : (pitchSnap?.name ?? "pitcher")
-                    : "pitcher"}
-                </span>
-              </h3>
+              <div className="shrink-0 border-b border-amber-600/25 pb-1 md:pb-1 xl:pb-2">
+                <h3 className="text-center text-xs font-bold uppercase tracking-wide text-amber-200/95 sm:text-sm">
+                  Matchup · vs {pitchSnapLoading ? "…" : (pitchSnap?.name ?? "pitcher")}
+                </h3>
+              </div>
               {!batterId ? (
-                <p className="mt-2 text-xs leading-snug text-zinc-500">
-                  Set the batter on Record to see pitch mix and results from earlier PAs in this game.
+                <p className="mt-3 text-center text-sm text-zinc-500">
+                  Set the batter on Record to see how this hitter has done against your pitcher today.
                 </p>
               ) : !pitcherId ? (
-                <p className="mt-2 text-xs leading-snug text-zinc-500">
-                  Set the pitcher on Record (mound pitcher on the PA form) to see how this batter has
-                  fared against them today.
+                <p className="mt-3 text-center text-sm text-zinc-500">
+                  Set the pitcher on Record (mound pitcher on the PA form).
                 </p>
               ) : isOurTeamBatting ? (
-                <p className="mt-2 text-xs leading-snug text-zinc-500">
-                  Pitch mix for this spot is hidden while we hit. It shows again when an opponent batter
-                  is synced from Record.
+                <p className="mt-3 text-center text-sm text-zinc-500">
+                  Pitch mix is hidden while we hit.
                 </p>
               ) : batterIntelLoading ? (
-                <p className="mt-2 text-xs text-zinc-500">Loading matchup…</p>
+                <p className="mt-3 text-center text-sm text-zinc-500">Loading matchup…</p>
               ) : (
-                <div className="mt-2 min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain">
+                <div className="mt-1 flex min-h-0 flex-1 flex-col overflow-hidden md:mt-1.5 xl:mt-3">
                   <CurrentBatterPitchDataCard
                     batterName={batterIntelDisplayName}
                     pas={matchupPasMerged}
                     pitchEvents={matchupEventsMerged}
                     distributionPitchEvents={matchupDistributionEventsMerged}
                     compact
+                    coachPad
+                    coachPadExpanded
                   />
-                  {batterIntelPas.length === 0 && livePitchEventsForCard.length === 0 ? (
-                    <p className="text-[11px] leading-snug text-zinc-500">
-                      No completed plate appearances vs this pitcher in this game yet. Numbers fill in
-                      as Record saves PAs and pitch logs.
-                    </p>
-                  ) : null}
                 </div>
               )}
             </section>
-          </div>
-        </div>
 
-        <aside
-          className="flex max-h-[min(52dvh,28rem)] min-h-0 w-full shrink-0 flex-col rounded-xl border border-zinc-800 bg-zinc-900/60 md:max-h-[calc(100dvh-8rem)] md:min-w-[13rem] md:w-[min(46vw,20rem)] md:max-w-[50%] md:self-stretch lg:min-w-[15rem] lg:w-[min(42vw,22rem)]"
-          aria-label="This at-bat pitch sequence"
-        >
-          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-zinc-800 px-3 py-1.5 sm:px-3.5 sm:py-2">
-            <span className="shrink-0 text-xs font-semibold text-zinc-400 sm:text-sm">At bat</span>
-            <span
-              className="min-w-0 truncate text-right text-xs font-semibold sm:text-sm"
-              title={atBatPanel.title}
+            <aside
+              className="flex max-h-[min(24dvh,13rem)] min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900/70 md:max-h-full md:min-h-0 md:w-[min(22rem,36vw)] md:shrink-0 xl:max-h-none xl:self-stretch"
+              aria-label="This at-bat pitch sequence"
             >
-              {atBatPanel.segments.map((seg, i) => (
-                <span key={seg.key}>
-                  {i > 0 ? (
-                    <span className="font-semibold text-zinc-600" aria-hidden>
-                      {" "}
-                      ·{" "}
-                    </span>
-                  ) : null}
-                  <span className={seg.className}>{seg.text}</span>
-                </span>
-              ))}
-            </span>
-          </div>
-          <div className="shrink-0 border-b border-zinc-800 px-3 py-2 sm:px-3.5 sm:py-2.5">
-            <p className="text-sm text-zinc-400">
-              Count{" "}
-              <span className="font-mono text-base font-bold tabular-nums text-white sm:text-lg">
-                {headerCountBalls}-{headerCountStrikes}
-              </span>
-              <span className="mx-2 text-zinc-600">·</span>
-              <span className="text-sm text-zinc-300">{outs} out{outs === 1 ? "" : "s"}</span>
-            </p>
-          </div>
-          <h2 className="shrink-0 border-b border-zinc-800 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 sm:px-3.5 sm:text-xs">
-            This AB
-          </h2>
-          {sequenceRowsThisBatter.length === 0 ? (
-            <p className="px-3 py-3 text-sm leading-snug text-zinc-500 sm:px-4">
-              {pitchDefenseOnlyBlocked
-                ? lineupGuardLoading
-                  ? "…"
-                  : "No pitch types while we bat. When the opponent is up, tap pitch types here."
-                : "No pitches yet — tap a pitch type. Log ball/strike on the PA form in Record."}
-            </p>
-          ) : (
-            <ol className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain px-2.5 py-2.5 sm:gap-2 sm:px-3 sm:py-3">
-              {sequenceRowsThisBatter.map((r, idx) => {
-                const resultLabel = pitchTrackerLogResultShortLabel(r.result);
-                const priorEntries: PitchSequenceEntry[] = sequenceRowsThisBatter
-                  .slice(0, idx)
-                  .filter((p): p is typeof p & { result: PitchTrackerLogResult } => p.result != null)
-                  .map((p) => ({
-                    balls_before: 0,
-                    strikes_before: 0,
-                    outcome: p.result as PitchOutcome,
-                  }));
-                const countBefore = replayCountAtEndOfSequence(priorEntries);
-                const countAfter =
-                  r.result != null
-                    ? countAfterPitch(countBefore.balls, countBefore.strikes, r.result as PitchOutcome)
-                    : null;
-                return (
-                  <li
-                    key={r.id}
-                    className="rounded-lg border border-amber-500/25 bg-zinc-950/50 px-2.5 py-2 sm:px-3 sm:py-2.5"
+              <div className="shrink-0 border-b border-zinc-700 px-2 py-1 sm:px-2.5 md:py-1.5 xl:py-2.5">
+                <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-1">
+                  <h2 className="text-xs font-bold uppercase tracking-wide text-zinc-400 sm:text-sm">
+                    This AB
+                  </h2>
+                  <div
+                    className="flex shrink-0 items-baseline gap-3 sm:gap-4"
+                    aria-label={`Count ${headerCountBalls} and ${headerCountStrikes}, ${outs} out${outs === 1 ? "" : "s"}`}
                   >
-                    <div className="flex items-center gap-2.5 sm:gap-3">
-                      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-                        <span className="shrink-0 tabular-nums text-xs font-semibold text-zinc-500 sm:text-sm">
-                          #{r.pitch_number}
-                        </span>
-                        <span className="min-w-0 shrink-0 text-sm font-semibold leading-tight text-zinc-100 sm:text-base">
-                          {resultLabel}
-                        </span>
-                        <CoachPitchCountTransition
-                          beforeBalls={countBefore.balls}
-                          beforeStrikes={countBefore.strikes}
-                          after={countAfter}
-                        />
-                      </div>
-                      <span
-                        className={`inline-flex h-7 min-w-[2.25rem] shrink-0 items-center justify-center rounded-md border px-1.5 text-xs font-bold leading-none sm:h-8 sm:min-w-[2.5rem] sm:text-sm ${pitchTrackerTypeChipClass(r.pitch_type)}`}
-                        title={pitchTrackerTypeLabel(r.pitch_type)}
-                      >
-                        {pitchTrackerAbbrev(r.pitch_type)}
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-[9px] font-semibold uppercase tracking-wide text-zinc-500 sm:text-[10px]">
+                        Count
+                      </span>
+                      <span className="font-mono text-3xl font-bold tabular-nums leading-none text-white sm:text-4xl">
+                        {headerCountBalls}-{headerCountStrikes}
                       </span>
                     </div>
-                  </li>
-                );
-              })}
-            </ol>
-          )}
-        </aside>
+                    <span className="text-xs font-semibold tabular-nums text-zinc-400 sm:text-sm">
+                      {outs} out{outs === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              {sequenceRowsThisBatter.length === 0 ? (
+                <p className="px-3 py-3 text-center text-sm leading-snug text-zinc-500">
+                  {pitchDefenseOnlyBlocked
+                    ? lineupGuardLoading
+                      ? "…"
+                      : "No pitches while we bat."
+                    : "No pitches yet — tap a type below."}
+                </p>
+              ) : (
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                  <ol
+                    ref={sequenceListRef}
+                    className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain px-2 py-1.5 sm:px-2.5 md:gap-2 md:py-2 xl:px-3"
+                  >
+                    {sequenceRowsThisBatter.map((r) => {
+                      const fullIdx = sequenceRowsThisBatter.findIndex((x) => x.id === r.id);
+                      const resultLabel = pitchTrackerLogResultShortLabel(r.result);
+                      const priorEntries: PitchSequenceEntry[] = sequenceRowsThisBatter
+                        .slice(0, fullIdx >= 0 ? fullIdx : 0)
+                        .filter((p): p is typeof p & { result: PitchTrackerLogResult } => p.result != null)
+                        .map((p) => ({
+                          balls_before: 0,
+                          strikes_before: 0,
+                          outcome: p.result as PitchOutcome,
+                        }));
+                      const countBefore = replayCountAtEndOfSequence(priorEntries);
+                      const countAfter =
+                        r.result != null
+                          ? countAfterPitch(countBefore.balls, countBefore.strikes, r.result as PitchOutcome)
+                          : null;
+                      const isLatest = lastPitchRowId != null && r.id === lastPitchRowId;
+                      return (
+                        <li
+                          key={r.id}
+                          className={`rounded-lg border px-2.5 py-2 sm:px-3 ${
+                            isLatest
+                              ? "border-amber-400/70 bg-amber-950/40 shadow-[0_0_0_1px_rgba(251,191,36,0.35)] ring-1 ring-amber-400/25"
+                              : "border-amber-500/25 bg-zinc-950/50"
+                          }`}
+                        >
+                        <div className="flex items-center gap-2 sm:gap-2.5">
+                          <span className="w-6 shrink-0 text-xs font-semibold tabular-nums text-zinc-500 sm:w-7 sm:text-sm">
+                            #{r.pitch_number}
+                          </span>
+                          <span className="w-[3.75rem] shrink-0 whitespace-nowrap text-sm font-semibold text-zinc-100 sm:w-[4.25rem]">
+                            {resultLabel}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <CoachPitchCountTransition
+                              beforeBalls={countBefore.balls}
+                              beforeStrikes={countBefore.strikes}
+                              after={countAfter}
+                            />
+                          </div>
+                          <span
+                            className={`inline-flex h-7 min-w-[2.25rem] shrink-0 items-center justify-center rounded-md border px-1 text-xs font-bold ${pitchTrackerTypeChipClass(r.pitch_type)}`}
+                            title={pitchTrackerTypeLabel(r.pitch_type)}
+                          >
+                            {pitchTrackerAbbrev(r.pitch_type)}
+                          </span>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+                </div>
+              )}
+            </aside>
+          </div>
+        </div>
       </main>
+
+      <footer className="relative z-20 shrink-0 border-t-2 border-zinc-700 bg-zinc-900 px-2 py-3 shadow-[0_-14px_48px_rgba(0,0,0,0.55)] sm:px-4 sm:py-3.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        {pitchLogBusy ? (
+          <p className="mb-2 text-center text-xs font-medium text-amber-200 sm:text-sm" role="status">
+            Saving pitch…
+          </p>
+        ) : pitchTypeCooldown ? (
+          <p className="mb-2 text-center text-xs text-zinc-500 sm:text-sm" role="status">
+            Ready for next pitch
+          </p>
+        ) : null}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+          <Link
+            href="/coach"
+            className="touch-manipulation inline-flex h-11 shrink-0 items-center justify-center gap-1.5 self-center rounded-lg border border-zinc-600 bg-zinc-800 px-4 text-sm font-semibold text-zinc-100 transition hover:bg-zinc-700 active:bg-zinc-600 sm:min-h-[44px] sm:self-auto"
+            aria-label="Back to coach home"
+          >
+            <span className="text-base leading-none" aria-hidden>
+              ←
+            </span>
+            <span>Back</span>
+          </Link>
+          <div
+            className="flex min-w-0 flex-1 flex-wrap items-center justify-center gap-4 sm:gap-5"
+            role="group"
+            aria-label="Pitch type"
+          >
+            {PITCH_TRACKER_TYPES.map((t) => renderPitchTypeButton(t))}
+          </div>
+          <div className="flex shrink-0 items-center justify-center gap-3">
+            <button
+              type="button"
+              disabled={
+                pitchLogBusy || !supabase || !groupId || sequenceRowsThisBatter.length === 0
+              }
+              onClick={() => void undoLast()}
+              className="touch-manipulation min-h-[44px] min-w-[5.75rem] rounded-lg border border-zinc-600 bg-zinc-800 px-4 text-sm font-semibold text-zinc-100 active:bg-zinc-700 disabled:opacity-35"
+            >
+              Undo
+            </button>
+            <button
+              type="button"
+              disabled={
+                pitchLogBusy || !supabase || !groupId || sequenceRowsThisBatter.length === 0
+              }
+              onClick={() => void resetAtBat()}
+              className="touch-manipulation min-h-[44px] min-w-[5.75rem] rounded-lg border border-amber-600/70 bg-amber-950/50 px-4 text-sm font-semibold text-amber-100 active:bg-amber-950/80 disabled:opacity-35"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
@@ -1698,6 +1961,16 @@ export default function CoachPitchTrackerClient({
   return (
     <div className="flex min-h-[100dvh] flex-col bg-zinc-950 px-4 py-8 text-zinc-100">
       <div className="mx-auto w-full max-w-md space-y-6">
+        <Link
+          href="/coach"
+          className="touch-manipulation inline-flex h-11 items-center gap-1.5 rounded-lg border border-zinc-600 bg-zinc-800/90 px-3 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-700 active:bg-zinc-600"
+          aria-label="Back to coach home"
+        >
+          <span className="text-base leading-none" aria-hidden>
+            ←
+          </span>
+          <span>Back</span>
+        </Link>
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Pitch pad</h1>
           <p className="mt-2 text-sm text-zinc-400">
@@ -1749,13 +2022,6 @@ export default function CoachPitchTrackerClient({
         <p className="text-center text-xs text-zinc-500">
           Short links only need <code className="text-zinc-400">gameId</code>.
         </p>
-
-        <Link
-          href="/coach"
-          className="block text-center text-sm text-zinc-400 underline hover:text-zinc-200"
-        >
-          Back to coach home
-        </Link>
       </div>
     </div>
   );

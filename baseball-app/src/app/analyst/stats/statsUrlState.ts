@@ -2,6 +2,7 @@
  * Shared stats page query parsing (no "use client") — safe to call from Server Components.
  */
 
+import { opponentNameKey } from "@/lib/opponentUtils";
 import type { StatsRunnersFilterKey } from "@/lib/types";
 
 /** Display labels for Runners toolbar + active-filter summary */
@@ -35,12 +36,19 @@ export function firstStringParam(
   return null;
 }
 
+/** Match dropdown `option` values ({@link opponentNameKey}) even when the URL uses display casing. */
+function normalizeOpponentFilterParam(raw: string | null): string {
+  const s = raw?.trim();
+  if (!s) return "";
+  return opponentNameKey(s);
+}
+
 export function buildStatsUrlState(get: (key: string) => string | null): StatsPageUrlState {
   return {
     tab: get("tab"),
-    bo: get("bo") ?? "",
+    bo: normalizeOpponentFilterParam(get("bo")),
     bp: get("bp") ?? "",
-    po: get("po") ?? "",
+    po: normalizeOpponentFilterParam(get("po")),
     pb: get("pb") ?? "",
     bfc: get("bfc"),
     pfc: get("pfc"),

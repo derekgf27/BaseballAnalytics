@@ -2,10 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { clearAllStatsAction } from "@/app/analyst/games/actions";
 import { BattingStatsSheet } from "@/components/analyst/BattingStatsSheet";
 import { FINAL_COUNT_BUCKET_OPTIONS } from "@/components/analyst/battingStatsSheetModel";
-import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
 import { PitchingStatsSheet } from "@/components/analyst/PitchingStatsSheet";
 import { computeBattingStatsWithSplitsFromPas } from "@/lib/compute/battingStatsWithSplitsFromPas";
 import { computePitchingStatsWithSplitsForRoster } from "@/lib/compute/pitchingStats";
@@ -103,8 +101,6 @@ interface StatsPageClientProps {
   statsUrlState: StatsPageUrlState;
   /** Player name links (e.g. coach portal uses `/coach/players/...`). */
   playerProfileHref?: (playerId: string) => string;
-  /** When false, hide destructive “clear all stats” (coach stats page). */
-  showDataManagement?: boolean;
 }
 
 export function StatsPageClient({
@@ -118,7 +114,6 @@ export function StatsPageClient({
   playerIdToName = {},
   statsUrlState,
   playerProfileHref = analystPlayerProfileHref,
-  showDataManagement = true,
 }: StatsPageClientProps) {
   const batters = initialBatters ?? initialPlayers ?? [];
   const batterIds = useMemo(() => batters.map((p) => p.id), [batters]);
@@ -128,6 +123,44 @@ export function StatsPageClient({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const url = useHydrationSafeStatsUrl(statsUrlState, searchParams);
+
+  /**
+   * Optimistic overlay while `router.replace` updates search params. Without this, a URL→state
+   * sync effect can reset the filter before the query string catches up (stats stay full season).
+   */
+  const [optimisticBatOpponent, setOptimisticBatOpponent] = useState<string | null>(null);
+  const [optimisticBatPitcher, setOptimisticBatPitcher] = useState<string | null>(null);
+  const [optimisticPitchOpponent, setOptimisticPitchOpponent] = useState<string | null>(null);
+  const [optimisticPitchBatter, setOptimisticPitchBatter] = useState<string | null>(null);
+
+  const batOpponentKey = optimisticBatOpponent !== null ? optimisticBatOpponent : url.bo;
+  const batPitcherId = optimisticBatPitcher !== null ? optimisticBatPitcher : url.bp;
+  const pitchOpponentKey = optimisticPitchOpponent !== null ? optimisticPitchOpponent : url.po;
+  const pitchBatterId = optimisticPitchBatter !== null ? optimisticPitchBatter : url.pb;
+
+  useEffect(() => {
+    if (optimisticBatOpponent !== null && url.bo === optimisticBatOpponent) {
+      setOptimisticBatOpponent(null);
+    }
+  }, [url.bo, optimisticBatOpponent]);
+
+  useEffect(() => {
+    if (optimisticBatPitcher !== null && url.bp === optimisticBatPitcher) {
+      setOptimisticBatPitcher(null);
+    }
+  }, [url.bp, optimisticBatPitcher]);
+
+  useEffect(() => {
+    if (optimisticPitchOpponent !== null && url.po === optimisticPitchOpponent) {
+      setOptimisticPitchOpponent(null);
+    }
+  }, [url.po, optimisticPitchOpponent]);
+
+  useEffect(() => {
+    if (optimisticPitchBatter !== null && url.pb === optimisticPitchBatter) {
+      setOptimisticPitchBatter(null);
+    }
+  }, [url.pb, optimisticPitchBatter]);
 
   const replaceQuery = useCallback(
     (mutate: (p: URLSearchParams) => void) => {
@@ -140,10 +173,6 @@ export function StatsPageClient({
   );
 
   const tab: StatsTab = url.tab === "p" ? "pitching" : "batting";
-  const matchupOpponentKey = url.bo;
-  const matchupPitcherId = url.bp;
-  const pitchMatchupOpponentKey = url.po;
-  const pitchMatchupBatterId = url.pb;
   const battingFinalCount = parseFinalCountParam(url.bfc);
   const pitchingFinalCount = parseFinalCountParam(url.pfc);
   const battingRunners = parseRunnersParam(url.bbs);
@@ -154,32 +183,52 @@ export function StatsPageClient({
       p.set("tab", t === "pitching" ? "p" : "b");
     });
   };
-  const setMatchupOpponentKey = (key: string) => {
-    replaceQuery((p) => {
-      if (key) p.set("bo", key);
-      else p.delete("bo");
-      p.delete("bp");
-    });
-  };
-  const setMatchupPitcherId = (id: string) => {
-    replaceQuery((p) => {
-      if (id) p.set("bp", id);
-      else p.delete("bp");
-    });
-  };
-  const setPitchMatchupOpponentKey = (key: string) => {
-    replaceQuery((p) => {
-      if (key) p.set("po", key);
-      else p.delete("po");
-      p.delete("pb");
-    });
-  };
-  const setPitchMatchupBatterId = (id: string) => {
-    replaceQuery((p) => {
-      if (id) p.set("pb", id);
-      else p.delete("pb");
-    });
-  };
+  const setMatchupOpponentKey = useCallback(
+    (key: string) => {
+      const norm = key ? opponentNameKey(key) : "";
+      setOptimisticBatOpponent(norm);
+      setOptimisticBatPitcher("");
+      replaceQuery((p) => {
+        if (norm) p.set("bo", norm);
+        else p.delete("bo");
+        p.delete("bp");
+      });
+    },
+    [replaceQuery]
+  );
+  const setMatchupPitcherId = useCallback(
+    (id: string) => {
+      setOptimisticBatPitcher(id);
+      replaceQuery((p) => {
+        if (id) p.set("bp", id);
+        else p.delete("bp");
+      });
+    },
+    [replaceQuery]
+  );
+  const setPitchMatchupOpponentKey = useCallback(
+    (key: string) => {
+      const norm = key ? opponentNameKey(key) : "";
+      setOptimisticPitchOpponent(norm);
+      setOptimisticPitchBatter("");
+      replaceQuery((p) => {
+        if (norm) p.set("po", norm);
+        else p.delete("po");
+        p.delete("pb");
+      });
+    },
+    [replaceQuery]
+  );
+  const setPitchMatchupBatterId = useCallback(
+    (id: string) => {
+      setOptimisticPitchBatter(id);
+      replaceQuery((p) => {
+        if (id) p.set("pb", id);
+        else p.delete("pb");
+      });
+    },
+    [replaceQuery]
+  );
   const setBattingFinalCount = useCallback(
     (v: BattingFinalCountBucketKey | null) => {
       replaceQuery((p) => {
@@ -220,16 +269,16 @@ export function StatsPageClient({
   );
 
   const resetAllStatsFilters = useCallback(() => {
+    setOptimisticBatOpponent("");
+    setOptimisticBatPitcher("");
+    setOptimisticPitchOpponent("");
+    setOptimisticPitchBatter("");
     replaceQuery((p) => {
       for (const k of ["bo", "bp", "bbs", "bfc", "po", "pb", "pbs", "pfc"] as const) {
         p.delete(k);
       }
     });
   }, [replaceQuery]);
-
-  const [clearingAll, setClearingAll] = useState(false);
-  const [clearStatsConfirmOpen, setClearStatsConfirmOpen] = useState(false);
-  const [clearMessage, setClearMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   const matchupOpponents = useMemo(() => {
     if (!battingMatchupPayload?.games?.length) return [];
@@ -277,16 +326,17 @@ export function StatsPageClient({
   }, [battingMatchupPayload?.startedGameIdsByPlayer]);
 
   const filteredMatchupPas = useMemo(() => {
-    if (!battingMatchupPayload || !matchupOpponentKey) return null;
-    const gameIdSet = new Set(
-      battingMatchupPayload.games
-        .filter((g) => opponentNameKey(opponentTeamName(g)) === matchupOpponentKey)
-        .map((g) => g.id)
-    );
-    let list = battingMatchupPayload.pas.filter((pa) => gameIdSet.has(pa.game_id));
-    if (matchupPitcherId) list = list.filter((pa) => pa.pitcher_id === matchupPitcherId);
+    if (!battingMatchupPayload || !batOpponentKey) return null;
+    const gameById = new Map(battingMatchupPayload.games.map((g) => [g.id, g]));
+    let list = battingMatchupPayload.pas.filter((pa) => {
+      if (!pa.game_id) return false;
+      const game = gameById.get(pa.game_id);
+      if (!game) return false;
+      return opponentNameKey(opponentTeamName(game)) === batOpponentKey;
+    });
+    if (batPitcherId) list = list.filter((pa) => pa.pitcher_id === batPitcherId);
     return list;
-  }, [battingMatchupPayload, matchupOpponentKey, matchupPitcherId]);
+  }, [battingMatchupPayload, batOpponentKey, batPitcherId]);
 
   const filteredBattingPitchEvents = useMemo(() => {
     const raw = battingMatchupPayload?.pitchEvents ?? [];
@@ -305,21 +355,33 @@ export function StatsPageClient({
     [filteredMatchupPas, filteredBattingPitchEvents, battingMatchupPayload?.pitchEvents]
   );
 
+  const startedGamesForBattingRecompute = useMemo(() => {
+    if (!filteredMatchupPas) return startedGamesByPlayer;
+    const gameIds = new Set(filteredMatchupPas.map((p) => p.game_id).filter(Boolean) as string[]);
+    const m = new Map<string, Set<string>>();
+    for (const [pid, ids] of startedGamesByPlayer) {
+      const kept = [...ids].filter((id) => gameIds.has(id));
+      if (kept.length > 0) m.set(pid, new Set(kept));
+    }
+    return m;
+  }, [filteredMatchupPas, startedGamesByPlayer]);
+
   const displayBattingStatsWithSplits = useMemo(() => {
-    if (!filteredMatchupPas || !battingMatchupPayload) return initialBattingStatsWithSplits;
+    if (!batOpponentKey || !battingMatchupPayload) return initialBattingStatsWithSplits;
     return computeBattingStatsWithSplitsFromPas(
       batterIds,
-      filteredMatchupPas,
+      filteredMatchupPas ?? [],
       battingMatchupPayload.baserunningByPlayerId,
-      startedGamesByPlayer,
+      startedGamesForBattingRecompute,
       filteredBattingPitchEvents
     );
   }, [
+    batOpponentKey,
     filteredMatchupPas,
     filteredBattingPitchEvents,
     battingMatchupPayload,
     batterIds,
-    startedGamesByPlayer,
+    startedGamesForBattingRecompute,
     initialBattingStatsWithSplits,
   ]);
 
@@ -380,16 +442,17 @@ export function StatsPageClient({
   }, [pitchingMatchupPayload?.batterBatsById]);
 
   const filteredPitchingMatchupPas = useMemo(() => {
-    if (!pitchingMatchupPayload || !pitchMatchupOpponentKey) return null;
-    const gameIdSet = new Set(
-      pitchingMatchupPayload.games
-        .filter((g) => opponentNameKey(opponentTeamName(g)) === pitchMatchupOpponentKey)
-        .map((g) => g.id)
-    );
-    let list = pitchingMatchupPayload.pas.filter((pa) => gameIdSet.has(pa.game_id));
-    if (pitchMatchupBatterId) list = list.filter((pa) => pa.batter_id === pitchMatchupBatterId);
+    if (!pitchingMatchupPayload || !pitchOpponentKey) return null;
+    const gameById = new Map(pitchingMatchupPayload.games.map((g) => [g.id, g]));
+    let list = pitchingMatchupPayload.pas.filter((pa) => {
+      if (!pa.game_id) return false;
+      const game = gameById.get(pa.game_id);
+      if (!game) return false;
+      return opponentNameKey(opponentTeamName(game)) === pitchOpponentKey;
+    });
+    if (pitchBatterId) list = list.filter((pa) => pa.batter_id === pitchBatterId);
     return list;
-  }, [pitchingMatchupPayload, pitchMatchupOpponentKey, pitchMatchupBatterId]);
+  }, [pitchingMatchupPayload, pitchOpponentKey, pitchBatterId]);
 
   const filteredPitchingPitchEvents = useMemo(() => {
     const raw = pitchingMatchupPayload?.pitchEvents ?? [];
@@ -408,6 +471,17 @@ export function StatsPageClient({
     [filteredPitchingMatchupPas, filteredPitchingPitchEvents, pitchingMatchupPayload?.pitchEvents]
   );
 
+  const pitchStarterMapForRecompute = useMemo(() => {
+    if (!filteredPitchingMatchupPas) return pitchStarterMap;
+    const gameIds = new Set(filteredPitchingMatchupPas.map((p) => p.game_id).filter(Boolean) as string[]);
+    const m = new Map<string, Set<string>>();
+    for (const [pid, ids] of pitchStarterMap) {
+      const kept = [...ids].filter((id) => gameIds.has(id));
+      if (kept.length > 0) m.set(pid, new Set(kept));
+    }
+    return m;
+  }, [filteredPitchingMatchupPas, pitchStarterMap]);
+
   /** Games in the current pitching sample (for official W–L–SV when recomputing from filtered PAs). */
   const displayPitchingGames = useMemo(() => {
     if (!pitchingMatchupPayload?.games?.length) return undefined;
@@ -422,25 +496,46 @@ export function StatsPageClient({
   );
 
   const displayPitchingStatsWithSplits = useMemo(() => {
-    if (!filteredPitchingMatchupPas || !pitchingMatchupPayload) return initialPitchingStatsWithSplits;
+    if (!pitchOpponentKey || !pitchingMatchupPayload) return initialPitchingStatsWithSplits;
     return computePitchingStatsWithSplitsForRoster(
       pitcherIds,
-      filteredPitchingMatchupPas,
-      pitchStarterMap,
+      filteredPitchingMatchupPas ?? [],
+      pitchStarterMapForRecompute,
       pitchBatterBatsMap,
       filteredPitchingPitchEvents,
       displayPitchingGames
     );
   }, [
+    pitchOpponentKey,
     filteredPitchingMatchupPas,
     filteredPitchingPitchEvents,
     pitchingMatchupPayload,
     pitcherIds,
-    pitchStarterMap,
+    pitchStarterMapForRecompute,
     pitchBatterBatsMap,
     initialPitchingStatsWithSplits,
     displayPitchingGames,
   ]);
+
+  const battingSampleSubheading = useMemo(() => {
+    if (!batOpponentKey) return undefined;
+    const oppLabel = matchupOpponents.find((o) => o.key === batOpponentKey)?.label ?? batOpponentKey;
+    if (batPitcherId) {
+      const pitcherName = playerIdToName[batPitcherId]?.trim() || "selected pitcher";
+      return `Showing stats vs ${oppLabel} (pitcher: ${pitcherName}) — not full season`;
+    }
+    return `Showing stats vs ${oppLabel} — not full season`;
+  }, [batOpponentKey, batPitcherId, matchupOpponents, playerIdToName]);
+
+  const pitchingSampleSubheading = useMemo(() => {
+    if (!pitchOpponentKey) return undefined;
+    const oppLabel = pitchMatchupOpponents.find((o) => o.key === pitchOpponentKey)?.label ?? pitchOpponentKey;
+    if (pitchBatterId) {
+      const batterName = playerIdToName[pitchBatterId]?.trim() || "selected batter";
+      return `Showing stats vs ${oppLabel} (batter: ${batterName}) — not full season`;
+    }
+    return `Showing stats vs ${oppLabel} — not full season`;
+  }, [pitchOpponentKey, pitchBatterId, pitchMatchupOpponents, playerIdToName]);
 
   const hasResettableFilters = useMemo(
     () =>
@@ -448,19 +543,19 @@ export function StatsPageClient({
       pitchingRunners !== "all" ||
       battingFinalCount != null ||
       pitchingFinalCount != null ||
-      !!matchupOpponentKey ||
-      !!matchupPitcherId ||
-      !!pitchMatchupOpponentKey ||
-      !!pitchMatchupBatterId,
+      !!batOpponentKey ||
+      !!batPitcherId ||
+      !!pitchOpponentKey ||
+      !!pitchBatterId,
     [
       battingRunners,
       pitchingRunners,
       battingFinalCount,
       pitchingFinalCount,
-      matchupOpponentKey,
-      matchupPitcherId,
-      pitchMatchupOpponentKey,
-      pitchMatchupBatterId,
+      batOpponentKey,
+      batPitcherId,
+      pitchOpponentKey,
+      pitchBatterId,
     ]
   );
 
@@ -552,7 +647,8 @@ export function StatsPageClient({
             battingStatsWithSplits={displayBattingStatsWithSplits}
             pas={displayBattingPas}
             pitchEvents={displayBattingPitchEvents}
-            splitDisabled={!!matchupPitcherId}
+            subheading={battingSampleSubheading}
+            splitDisabled={!!batPitcherId}
             finalCountBucket={battingFinalCount}
             onFinalCountBucketChange={setBattingFinalCount}
             runnersFilter={battingRunners}
@@ -564,8 +660,8 @@ export function StatsPageClient({
                 ? {
                     opponents: matchupOpponents,
                     pitchersByOpponent: matchupPitchersByOpponent,
-                    opponentKey: matchupOpponentKey,
-                    pitcherId: matchupPitcherId,
+                    opponentKey: batOpponentKey,
+                    pitcherId: batPitcherId,
                     onOpponentChange: setMatchupOpponentKey,
                     onPitcherChange: setMatchupPitcherId,
                   }
@@ -581,8 +677,9 @@ export function StatsPageClient({
             pitchingStatsWithSplits={displayPitchingStatsWithSplits}
             pas={displayPitchingPas}
             pitchEvents={displayPitchingPitchEvents}
+            subheading={pitchingSampleSubheading}
             batterBatsById={pitchBatterBatsByIdObj}
-            splitDisabled={!!pitchMatchupBatterId}
+            splitDisabled={!!pitchBatterId}
             finalCountBucket={pitchingFinalCount}
             onFinalCountBucketChange={setPitchingFinalCount}
             runnersFilter={pitchingRunners}
@@ -594,8 +691,8 @@ export function StatsPageClient({
                 ? {
                     opponents: pitchMatchupOpponents,
                     battersByOpponent: pitchMatchupBattersByOpponent,
-                    opponentKey: pitchMatchupOpponentKey,
-                    batterId: pitchMatchupBatterId,
+                    opponentKey: pitchOpponentKey,
+                    batterId: pitchBatterId,
                     onOpponentChange: setPitchMatchupOpponentKey,
                     onBatterChange: setPitchMatchupBatterId,
                   }
@@ -605,73 +702,6 @@ export function StatsPageClient({
           />
         </div>
       )}
-
-      {showDataManagement ? (
-        <>
-          <details className="group rounded-lg border border-[var(--border)]/80 bg-[var(--bg-elevated)]/20">
-            <summary className="cursor-pointer list-none px-4 py-3 font-display text-sm font-semibold text-[var(--text-muted)] marker:hidden [&::-webkit-details-marker]:hidden">
-              <span className="inline-flex items-center gap-2">
-                <span className="text-[var(--text)] group-open:rotate-90 transition-transform">▸</span>
-                Data management
-              </span>
-              <span className="mt-0.5 block text-xs font-normal font-sans text-[var(--text-muted)]">
-                Destructive actions — clear all plate appearances and baserunning from the database.
-              </span>
-            </summary>
-            <div className="border-t border-[var(--border)]/50 px-4 pb-4 pt-3" style={{ borderColor: "var(--danger)" }}>
-              <h3 className="font-display text-sm font-semibold uppercase tracking-wider" style={{ color: "var(--danger)" }}>
-                Clear all stats
-              </h3>
-              <p className="mt-1 text-sm text-[var(--text-muted)]">
-                Permanently delete every plate appearance and baserunning event in the database. Batting stats and trends
-                will reset.
-              </p>
-              <button
-                type="button"
-                disabled={clearingAll}
-                onClick={() => setClearStatsConfirmOpen(true)}
-                className="mt-3 rounded-lg border px-3 py-2 text-sm font-medium transition disabled:opacity-50"
-                style={{ borderColor: "var(--danger)", color: "var(--danger)" }}
-              >
-                {clearingAll ? "Clearing…" : "Clear all stats"}
-              </button>
-              {clearMessage && (
-                <p
-                  className={`mt-3 text-sm ${clearMessage.type === "ok" ? "text-[var(--success)]" : "text-[var(--danger)]"}`}
-                >
-                  {clearMessage.text}
-                </p>
-              )}
-            </div>
-          </details>
-
-          <ConfirmDeleteDialog
-            open={clearStatsConfirmOpen}
-            onClose={() => !clearingAll && setClearStatsConfirmOpen(false)}
-            title="Clear all stats?"
-            description="This permanently deletes every plate appearance and baserunning event in the database for all games. Batting and pitching stats will reset. This cannot be undone."
-            confirmLabel="Clear all stats"
-            pendingLabel="Clearing…"
-            pending={clearingAll}
-            onConfirm={async () => {
-              setClearingAll(true);
-              setClearMessage(null);
-              const result = await clearAllStatsAction();
-              setClearingAll(false);
-              setClearStatsConfirmOpen(false);
-              if (result.ok) {
-                setClearMessage({
-                  type: "ok",
-                  text: result.count > 0 ? `Cleared ${result.count} plate appearance(s).` : "No PAs to clear.",
-                });
-                router.refresh();
-              } else {
-                setClearMessage({ type: "err", text: result.error ?? "Failed to clear stats." });
-              }
-            }}
-          />
-        </>
-      ) : null}
     </div>
   );
 }

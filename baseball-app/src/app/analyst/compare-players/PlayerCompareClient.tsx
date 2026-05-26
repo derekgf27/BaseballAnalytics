@@ -40,6 +40,7 @@ import {
   pitchingCompareStatBorderLeft,
   pitchingSheetCompareHighlight,
 } from "@/components/analyst/pitchingStatsSheetModel";
+import { ComparePitchTypeBaaPanel } from "@/components/analyst/ComparePitchTypeBaaPanel";
 
 export interface PlayerCompareClientProps {
   roster: Player[];
@@ -900,13 +901,23 @@ export function PlayerCompareClient({
                 compareScope={compareScope}
               />
             ) : (
-              <ComparePitchingPanel
-                playerA={playerA}
-                playerB={playerB}
-                pitchingA={pitchingA}
-                pitchingB={pitchingB}
-                compareScope={compareScope}
-              />
+              <>
+                <ComparePitchingPanel
+                  playerA={playerA}
+                  playerB={playerB}
+                  pitchingA={pitchingA}
+                  pitchingB={pitchingB}
+                  compareScope={compareScope}
+                />
+                <ComparePitchTypeBaaPanel
+                  playerA={playerA}
+                  playerB={playerB}
+                  pitchingA={pitchingA}
+                  pitchingB={pitchingB}
+                  compareScope={compareScope}
+                  scopeLabel={comparePitchingScopeLabel(compareScope)}
+                />
+              </>
             )}
           </div>
 
