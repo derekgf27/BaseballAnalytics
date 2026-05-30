@@ -1,6 +1,7 @@
-import { jsPDF } from "jspdf";
+import type { jsPDF } from "jspdf";
 import { fmtDecimalNoLeadingZero, formatDateMMDDYYYY } from "@/lib/format";
 import { ourVenueLabel } from "@/lib/opponentUtils";
+import { deliverJsPdf } from "@/lib/reports/pdfDelivery";
 import type { CoachPacketModel } from "./coachPacketTypes";
 
 function coachPacketFilenameBase(m: CoachPacketModel): string {
@@ -51,9 +52,10 @@ function drawLineupColumn(
   }
 }
 
-export function downloadCoachPacketPdf(m: CoachPacketModel): void {
+export async function downloadCoachPacketPdf(m: CoachPacketModel): Promise<void> {
+  const { jsPDF: JsPDF } = await import("jspdf");
   const filenameBase = coachPacketFilenameBase(m);
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
+  const doc = new JsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
   const margin = 12;
 
   const title = `${m.our_team_name} vs ${m.opponent_team_name}`;
@@ -90,5 +92,5 @@ export function downloadCoachPacketPdf(m: CoachPacketModel): void {
   drawLineupColumn(doc, m.our_lineup, leftX, yTop + 11, colW);
   drawLineupColumn(doc, m.opponent_lineup, rightX, yTop + 11, colW);
 
-  doc.save(`${filenameBase}.pdf`);
+  deliverJsPdf(doc, `${filenameBase}.pdf`);
 }

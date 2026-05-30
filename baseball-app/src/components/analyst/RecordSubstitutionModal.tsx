@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import {
   DndContext,
   DragOverlay,
@@ -15,8 +16,10 @@ import {
   isPitcherPlayer,
   playersForGameSideWhenNoLineup,
 } from "@/lib/opponentUtils";
+import type { UnavailableBySide } from "@/lib/record/recordUnavailablePlayers";
 import type { Game, LineupSide, Player } from "@/lib/types";
 import { comparePlayersByLastNameThenFull } from "@/lib/playerSort";
+import { getPlayerPrimaryPosition } from "@/lib/playerRoster";
 
 /** Field positions only — pitchers are set on the game, not in this modal. */
 const LINEUP_POSITIONS = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"] as const;
@@ -109,6 +112,15 @@ function DraggablePlayer({ player }: { player: Player }) {
   );
 }
 
+function UnavailablePlayerRow({ player }: { player: Player }) {
+  return (
+    <div className="flex items-center gap-2 rounded border border-[var(--border)]/60 bg-[var(--bg-base)] px-2 py-2 opacity-75">
+      <span className="truncate text-sm text-[var(--text-muted)]">{player.name}</span>
+      {player.jersey && <span className="shrink-0 text-xs text-[var(--text-faint)]">#{player.jersey}</span>}
+    </div>
+  );
+}
+
 function LineupRow({
   slotIndex,
   player,
@@ -167,6 +179,36 @@ function LineupRow({
   );
 }
 
+function TeamSideToggle({
+  game,
+  side,
+  activeSide,
+  onSelect,
+}: {
+  game: Pick<Game, "home_team" | "away_team">;
+  side: LineupSide;
+  activeSide: LineupSide;
+  onSelect: (side: LineupSide) => void;
+}) {
+  const label = side === "away" ? game.away_team : game.home_team;
+  const active = side === activeSide;
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={() => onSelect(side)}
+      className={`rounded-md border px-3 py-1.5 text-xs font-semibold transition ${
+        active
+          ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-base)]"
+          : "border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:border-[var(--accent)]/50"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
 function PlayerPoolDroppable({ children }: { children: React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id: "record-sub-pool" });
   return (
@@ -194,11 +236,24 @@ export interface RecordSubstitutionModalProps {
     side: LineupSide,
     slots: { player_id: string; position?: string | null }[]
   ) => Promise<{ ok: boolean; error?: string }>;
+  unavailableBySide: UnavailableBySide;
   onApplied: (
     side: LineupSide,
     order: string[],
-    positionByPlayerId: Record<string, string>
+    positionByPlayerId: Record<string, string>,
+    unavailableForSide: string[]
   ) => void;
+}
+
+function emptyUnavailableBySide(): { away: Set<string>; home: Set<string> } {
+  return { away: new Set(), home: new Set() };
+}
+
+function setsFromUnavailableBySide(data: UnavailableBySide): { away: Set<string>; home: Set<string> } {
+  return {
+    away: new Set(data.away),
+    home: new Set(data.home),
+  };
 }
 
 export function RecordSubstitutionModal({
@@ -211,6 +266,7 @@ export function RecordSubstitutionModal({
   homeLineup,
   players,
   onSave,
+  unavailableBySide,
   onApplied,
 }: RecordSubstitutionModalProps) {
   const playerMap = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
@@ -221,11 +277,33 @@ export function RecordSubstitutionModal({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [positionError, setPositionError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [sessionUnavailableBySide, setSessionUnavailableBySide] = useState(emptyUnavailableBySide);
 
   useEffect(() => {
     if (!open) return;
     setSide(defaultSide);
-  }, [open, defaultSide]);
+    setSessionUnavailableBySide(setsFromUnavailableBySide(unavailableBySide));
+  }, [open, defaultSide, unavailableBySide]);
+
+  const sessionUnavailable = sessionUnavailableBySide[side];
+
+  function addUnavailableForSide(lineupSide: LineupSide, ...playerIds: string[]) {
+    if (playerIds.length === 0) return;
+    setSessionUnavailableBySide((prev) => {
+      const nextSet = new Set(prev[lineupSide]);
+      for (const id of playerIds) nextSet.add(id);
+      return { ...prev, [lineupSide]: nextSet };
+    });
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -243,7 +321,10 @@ export function RecordSubstitutionModal({
   );
 
   const inLineupIds = new Set(lineup.filter((s) => s.player != null).map((s) => s.player!.id));
-  const availablePlayers = [...pool.filter((p) => !inLineupIds.has(p.id))].sort(
+  const availablePlayers = [...pool.filter((p) => !inLineupIds.has(p.id) && !sessionUnavailable.has(p.id))].sort(
+    comparePlayersByLastNameThenFull
+  );
+  const unavailablePlayers = [...pool.filter((p) => sessionUnavailable.has(p.id))].sort(
     comparePlayersByLastNameThenFull
   );
 
@@ -264,10 +345,12 @@ export function RecordSubstitutionModal({
     const playerId = String(active.id);
     const player = pool.find((p) => p.id === playerId) ?? playerMap.get(playerId);
     if (!player) return;
+    if (sessionUnavailable.has(playerId)) return;
 
     if (overId === "record-sub-pool") {
       const currentSlot = lineup.findIndex((s) => s.player?.id === playerId);
       if (currentSlot < 0) return;
+      addUnavailableForSide(side, playerId);
       setLineup((prev) => {
         const next = prev.map((s) => ({ ...s }));
         next[currentSlot] = { player: null, position: LINEUP_POSITIONS[0] };
@@ -285,10 +368,13 @@ export function RecordSubstitutionModal({
 
     const currentSlot = lineup.findIndex((s) => s.player?.id === playerId);
     const displacedSlot = lineup[slotIndex];
+    if (currentSlot < 0 && displacedSlot.player) {
+      addUnavailableForSide(side, displacedSlot.player.id);
+    }
 
     setLineup((prev) => {
       const next = prev.map((s) => ({ ...s }));
-      const primaryPosition = player.positions?.[0];
+      const primaryPosition = getPlayerPrimaryPosition(player);
       const preferred =
         primaryPosition && LINEUP_POSITIONS.includes(primaryPosition as (typeof LINEUP_POSITIONS)[number])
           ? primaryPosition
@@ -396,11 +482,12 @@ export function RecordSubstitutionModal({
     for (const s of slots) {
       if (s.position) positionByPlayerId[s.player_id] = s.position;
     }
-    onApplied(side, order, positionByPlayerId);
+    onApplied(side, order, positionByPlayerId, Array.from(sessionUnavailableBySide[side]));
     onClose();
   }
 
   const activePlayer = activeId ? playerMap.get(activeId) ?? null : null;
+  const dialogRef = useFocusTrap(open);
 
   if (!open) return null;
 
@@ -415,46 +502,22 @@ export function RecordSubstitutionModal({
       aria-labelledby="record-sub-title"
     >
       <div
+        ref={dialogRef}
         className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-card)] shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-          <div>
-            <h2
-              id="record-sub-title"
-              className="font-display text-sm font-semibold uppercase tracking-wider text-white"
-            >
-              Substitution
-            </h2>
-            <p className="mt-1 text-xs text-[var(--text-muted)]">
-              Drag between slots or from the bench. Change Pos for defensive switches. Pitchers are excluded — set
-              them on the game. Saves replace this game’s lineup for the selected team.
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {(["away", "home"] as const).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setSide(s)}
-                  className={`rounded-md border px-3 py-1 text-xs font-semibold transition ${
-                    side === s
-                      ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-base)]"
-                      : "border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:border-[var(--accent)]/50"
-                  }`}
-                >
-                  {s === "away" ? game.away_team : game.home_team}
-                </button>
-              ))}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]"
-            aria-label="Close"
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
+          <h2
+            id="record-sub-title"
+            className="font-display text-sm font-semibold uppercase tracking-wider text-white"
           >
-            ✕
-          </button>
+            Substitution
+          </h2>
+          <div className="flex flex-wrap gap-2" role="tablist" aria-label="Team lineup">
+            {(["away", "home"] as const).map((s) => (
+              <TeamSideToggle key={s} game={game} side={s} activeSide={side} onSelect={setSide} />
+            ))}
+          </div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -480,26 +543,41 @@ export function RecordSubstitutionModal({
               onDragEnd={handleDragEnd}
             >
               <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-                <PlayerPoolDroppable>
-                  <div className="card-tech flex min-h-[16rem] flex-col rounded-lg border border-[var(--border)] p-3">
+                <div className="flex min-h-[16rem] flex-col gap-3">
+                  <PlayerPoolDroppable>
+                    <div className="card-tech flex flex-1 flex-col rounded-lg border border-[var(--border)] p-3">
+                      <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                        Bench / available ({availablePlayers.length})
+                      </h3>
+                      <div className="mt-2 max-h-[min(28vh,14rem)] space-y-2 overflow-y-auto pr-1">
+                        {availablePlayers.length === 0 ? (
+                          <p className="text-xs text-[var(--text-faint)]">No bench players available.</p>
+                        ) : (
+                          availablePlayers.map((p) => (
+                            <div
+                              key={p.id}
+                              className="flex items-center gap-2 rounded border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-2"
+                            >
+                              <DraggablePlayer player={p} />
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </PlayerPoolDroppable>
+                  <div className="card-tech flex flex-col rounded-lg border border-[var(--border)] p-3">
                     <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                      Bench / available ({availablePlayers.length})
+                      Unavailable ({unavailablePlayers.length})
                     </h3>
-                    <p className="mt-0.5 text-[11px] text-[var(--text-faint)]">
-                      Drag to a lineup row. Drag from a row back here to pull someone from the game.
-                    </p>
-                    <div className="mt-2 max-h-[min(50vh,22rem)] space-y-2 overflow-y-auto pr-1">
-                      {availablePlayers.map((p) => (
-                        <div
-                          key={p.id}
-                          className="flex items-center gap-2 rounded border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-2"
-                        >
-                          <DraggablePlayer player={p} />
-                        </div>
-                      ))}
+                    <div className="mt-2 max-h-[min(22vh,12rem)] space-y-2 overflow-y-auto pr-1">
+                      {unavailablePlayers.length === 0 ? (
+                        <p className="text-xs text-[var(--text-faint)]">No players subbed out yet.</p>
+                      ) : (
+                        unavailablePlayers.map((p) => <UnavailablePlayerRow key={p.id} player={p} />)
+                      )}
                     </div>
                   </div>
-                </PlayerPoolDroppable>
+                </div>
 
                 <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
                   <table className="w-full border-collapse text-left text-sm">

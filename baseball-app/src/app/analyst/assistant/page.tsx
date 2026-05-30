@@ -1,6 +1,6 @@
 import { hasSupabase } from "@/lib/db/client";
 import { fetchTeamTrendsPayload } from "@/app/reports/actions";
-import { AssistantPageClient } from "./AssistantPageClient";
+import { AssistantPageClientGate } from "./AssistantPageClientGate";
 
 export default async function AnalystAssistantPage() {
   const canEdit = hasSupabase();
@@ -8,6 +8,6 @@ export default async function AnalystAssistantPage() {
   const teamTrends = "error" in trendsRes ? { insights: ["Could not load team trends."] } : trendsRes;
 
   return (
-    <AssistantPageClient teamTrendInsights={teamTrends.insights} canEdit={canEdit} />
+    <AssistantPageClientGate teamTrendInsights={teamTrends.insights} canEdit={canEdit} />
   );
 }

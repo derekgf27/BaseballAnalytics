@@ -1,7 +1,7 @@
-import { getPlayers } from "@/lib/db/queries";
+import { getCachedPlayers } from "@/lib/db/cachedQueries";
 import { hasSupabase } from "@/lib/db/client";
 import { isClubRosterPlayer, opponentNameKey } from "@/lib/opponentUtils";
-import { RosterPageClient } from "./RosterPageClient";
+import { RosterPageClientGate } from "./RosterPageClientGate";
 
 export default async function RosterListPage({
   searchParams,
@@ -20,7 +20,7 @@ export default async function RosterListPage({
     }
   }
 
-  const allPlayers = await getPlayers();
+  const allPlayers = await getCachedPlayers();
   const key = defaultOpponentTeam?.trim() ? opponentNameKey(defaultOpponentTeam.trim()) : null;
   /** Opponent roster: only players tagged for that team. Default: club roster only (no opponent/scout tags). */
   const players =
@@ -31,7 +31,7 @@ export default async function RosterListPage({
       : allPlayers.filter(isClubRosterPlayer);
   const canEdit = hasSupabase();
   return (
-    <RosterPageClient
+    <RosterPageClientGate
       initialPlayers={players}
       canEdit={canEdit}
       defaultOpponentTeam={defaultOpponentTeam}

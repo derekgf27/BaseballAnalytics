@@ -11,6 +11,7 @@ export const SPRAY_CHART_HIT_RESULTS = new Set([
 /** Results treated as outs for spray charts (balls in play with direction recorded). */
 export const SPRAY_CHART_OUT_RESULTS = new Set([
   "out",
+  "foul_out",
   "so",
   "so_looking",
   "gidp",

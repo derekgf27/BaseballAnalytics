@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { isDemoId } from "@/lib/db/mockData";
 import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
+import { FlashMessage } from "@/components/shared/FlashMessage";
+import { useFlashMessage } from "@/hooks/useFlashMessage";
 import {
   deletePlayerAction,
   getPlayerDeletionPreviewAction,
@@ -16,16 +18,56 @@ import { heightInToFeetInches, feetInchesToHeightIn } from "@/lib/height";
 import { StyledDatePicker } from "@/components/shared/StyledDatePicker";
 import { isClubRosterPlayer, opponentNameKey } from "@/lib/opponentUtils";
 import { analystPlayerProfileHref } from "@/lib/analystRoutes";
-import { comparePlayersByLastNameThenFull } from "@/lib/playerSort";
-import type { Player } from "@/lib/types";
+import {
+  compareRosterPlayers,
+  type RosterSortDir,
+  type RosterSortKey,
+} from "@/lib/playerSort";
+import {
+  RosterPositionSelector,
+  ROSTER_POSITION_CODES,
+} from "@/components/analyst/RosterPositionSelector";
+import {
+  formatPositionsDisplay,
+  getPlayerPrimaryPosition,
+  PLAYER_ROSTER_STATUSES,
+  PLAYER_ROSTER_STATUS_LABELS,
+  preparePlayerRosterPayload,
+  resolveRosterStatus,
+  rosterStatusBadgeClass,
+} from "@/lib/playerRoster";
+import type { Player, PlayerRosterStatus } from "@/lib/types";
 
-const POSITION_OPTIONS = ["P", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"] as const;
+const POSITION_OPTIONS = ROSTER_POSITION_CODES;
 
 function rosterBatsThrowsSummary(p: Pick<Player, "bats" | "throws">): string | null {
   const parts: string[] = [];
   if (p.bats) parts.push(`Bats ${p.bats}`);
   if (p.throws) parts.push(`Throws ${p.throws}`);
   return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+function playerMatchesRosterSearch(player: Player, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const status =
+    resolveRosterStatus(player) !== "active"
+      ? PLAYER_ROSTER_STATUS_LABELS[resolveRosterStatus(player)]
+      : "";
+  const haystack = [
+    player.name,
+    player.jersey ?? "",
+    player.primary_position ?? "",
+    ...(player.positions ?? []),
+    formatPositionsDisplay(player),
+    player.bats ?? "",
+    player.throws ?? "",
+    player.hometown ?? "",
+    status,
+  ]
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(q);
 }
 
 interface RosterPageClientProps {
@@ -46,11 +88,14 @@ export function RosterPageClient({
   const [players, setPlayers] = useState(initialPlayers);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [message, setMessage] = useState<{ type: "ok" | "err" | "delete"; text: string } | null>(null);
+  const { message, dismissing: messageDismissing, show: showFlash } = useFlashMessage();
   const [supabaseStatus, setSupabaseStatus] = useState<SupabaseStatus>("loading");
   const [deleteTarget, setDeleteTarget] = useState<Player | null>(null);
   const [deletePreview, setDeletePreview] = useState<PlayerDeletionPreview | null>(null);
   const [deletePending, setDeletePending] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortKey, setSortKey] = useState<RosterSortKey>("name");
+  const [sortDir, setSortDir] = useState<RosterSortDir>("asc");
 
   const checkSupabaseStatus = () => {
     setSupabaseStatus("loading");
@@ -74,6 +119,22 @@ export function RosterPageClient({
   useEffect(() => {
     setPlayers(initialPlayers);
   }, [initialPlayers]);
+
+  const playerFormOpen = showAddForm || editingPlayer != null;
+
+  const closePlayerForm = () => {
+    setShowAddForm(false);
+    setEditingPlayer(null);
+  };
+
+  useEffect(() => {
+    if (!playerFormOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closePlayerForm();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [playerFormOpen]);
 
   useEffect(() => {
     if (!deleteTarget?.id) {
@@ -101,10 +162,20 @@ export function RosterPageClient({
     return players.filter(isClubRosterPlayer);
   }, [players, opponentFilterKey]);
 
-  const playersSortedByLastName = useMemo(
-    () => [...playersToShow].sort(comparePlayersByLastNameThenFull),
-    [playersToShow]
-  );
+  const playersSorted = useMemo(() => {
+    const list = [...playersToShow];
+    list.sort((a, b) => {
+      const c = compareRosterPlayers(a, b, sortKey);
+      return sortDir === "asc" ? c : -c;
+    });
+    return list;
+  }, [playersToShow, sortKey, sortDir]);
+
+  const playersFiltered = useMemo(() => {
+    const q = searchQuery.trim();
+    if (!q) return playersSorted;
+    return playersSorted.filter((p) => playerMatchesRosterSearch(p, q));
+  }, [playersSorted, searchQuery]);
 
   const refresh = () => router.refresh();
 
@@ -131,7 +202,7 @@ export function RosterPageClient({
 
   const handleSavePlayer = async (player: Omit<Player, "id" | "created_at">) => {
     if (!canEdit) {
-      setMessage({ type: "err", text: "Connect Supabase to add or edit players." });
+      showFlash({ type: "err", text: "Connect Supabase to add or edit players." });
       return;
     }
     try {
@@ -141,10 +212,10 @@ export function RosterPageClient({
           setPlayers((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
           setEditingPlayer(null);
           setShowAddForm(false);
-          setMessage({ type: "ok", text: "Player updated." });
+          showFlash({ type: "ok", text: "Player updated." });
           refresh();
         } else {
-          setMessage({ type: "err", text: "Could not update player." });
+          showFlash({ type: "err", text: "Could not update player." });
         }
       } else {
         const created = await insertPlayerAction(player);
@@ -160,10 +231,10 @@ export function RosterPageClient({
           });
           setEditingPlayer(null);
           setShowAddForm(false);
-          setMessage({ type: "ok", text: "Player added." });
+          showFlash({ type: "ok", text: "Player added." });
           refresh();
         } else {
-          setMessage({ type: "err", text: "Could not add player. Is Supabase connected?" });
+          showFlash({ type: "err", text: "Could not add player. Is Supabase connected?" });
         }
       }
     } catch (err) {
@@ -172,7 +243,7 @@ export function RosterPageClient({
         raw.toLowerCase().includes("fetch") || raw.toLowerCase().includes("network")
           ? "Can’t reach Supabase. Check your connection and, if you’re on the free tier, that the project isn’t paused (Supabase Dashboard → Project Settings → Restore project)."
           : raw;
-      setMessage({ type: "err", text });
+      showFlash({ type: "err", text });
     }
   };
 
@@ -241,31 +312,89 @@ export function RosterPageClient({
         </div>
       )}
 
-      {message && (
+      <FlashMessage message={message} dismissing={messageDismissing} />
+
+      {canEdit && playerFormOpen && (
         <div
-          className={`rounded-lg border border-[var(--border)] p-4 ${
-            message.type === "ok" ? "text-[var(--success)]" : "text-[var(--danger)]"
-          }`}
-          style={{
-            background:
-              message.type === "ok" ? "var(--success-dim)" : "var(--danger-dim)",
-          }}
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px] sm:p-6"
+          onClick={closePlayerForm}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={editingPlayer ? "roster-edit-player-title" : "roster-add-player-title"}
         >
-          {message.text}
+          <div
+            className="w-[min(100%,72rem)] max-w-6xl rounded-xl shadow-2xl ring-1 ring-[var(--border)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <PlayerForm
+              key={editingPlayer?.id ?? `add-${defaultOpponentTeam ?? ""}`}
+              player={editingPlayer}
+              lockedOpponentTeam={defaultOpponentTeam?.trim() || null}
+              onSave={handleSavePlayer}
+              onCancel={closePlayerForm}
+              onAddNew={() => {
+                setEditingPlayer(null);
+                setShowAddForm(true);
+              }}
+              canEdit={canEdit}
+              titleId={editingPlayer ? "roster-edit-player-title" : "roster-add-player-title"}
+            />
+          </div>
         </div>
       )}
 
-      {canEdit && (showAddForm || editingPlayer) && (
-        <PlayerForm
-          key={editingPlayer?.id ?? `add-${defaultOpponentTeam ?? ""}`}
-          player={editingPlayer}
-          lockedOpponentTeam={defaultOpponentTeam?.trim() || null}
-          onSave={handleSavePlayer}
-          onCancel={() => { setShowAddForm(false); setEditingPlayer(null); }}
-          onAddNew={() => setEditingPlayer(null)}
-          canEdit={canEdit}
-        />
-      )}
+      {playersToShow.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="min-w-0 flex-1 sm:max-w-md">
+            <span className="sr-only">Search roster</span>
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by name, jersey, position…"
+              className="input-tech block w-full px-3 py-2.5 text-sm"
+              autoComplete="off"
+            />
+          </label>
+          {searchQuery.trim() ? (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="shrink-0 rounded-lg border border-[var(--border)] px-3 py-2.5 text-sm text-[var(--text-muted)] transition hover:border-[var(--border-focus)] hover:text-[var(--text)]"
+            >
+              Clear
+            </button>
+          ) : null}
+          <label className="flex shrink-0 items-center gap-2 text-sm text-[var(--text-muted)]">
+            <span className="whitespace-nowrap">Sort by</span>
+            <select
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as RosterSortKey)}
+              className="input-tech rounded-lg px-2.5 py-2.5 text-sm"
+              aria-label="Sort roster by"
+            >
+              <option value="name">Name</option>
+              <option value="jersey">Jersey #</option>
+              <option value="position">Position</option>
+              <option value="status">Status</option>
+              <option value="bats">Bats</option>
+              <option value="throws">Throws</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+            className="shrink-0 rounded-lg border border-[var(--border)] px-3 py-2.5 text-sm font-medium text-[var(--text)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            aria-label={sortDir === "asc" ? "Sort ascending; click for descending" : "Sort descending; click for ascending"}
+            title={sortDir === "asc" ? "Ascending" : "Descending"}
+          >
+            {sortDir === "asc" ? "↑" : "↓"}
+          </button>
+          <span className="w-full text-xs text-[var(--text-faint)] sm:w-auto sm:ml-auto">
+            {playersFiltered.length} of {playersToShow.length} players
+          </span>
+        </div>
+      ) : null}
 
       {playersToShow.length === 0 ? (
         <div className="card-tech rounded-lg border-dashed p-8 text-center">
@@ -283,9 +412,23 @@ export function RosterPageClient({
                 : "Connect Supabase to add players."}
           </p>
         </div>
+      ) : playersFiltered.length === 0 ? (
+        <div className="card-tech rounded-lg border-dashed p-8 text-center">
+          <h2 className="font-semibold text-white">No matches</h2>
+          <p className="mt-2 text-sm text-[var(--text-muted)]">
+            No players match &ldquo;{searchQuery.trim()}&rdquo;.
+          </p>
+          <button
+            type="button"
+            onClick={() => setSearchQuery("")}
+            className="mt-4 text-sm font-medium text-[var(--accent)] hover:underline"
+          >
+            Clear search
+          </button>
+        </div>
       ) : (
         <ul className="space-y-2">
-          {playersSortedByLastName.map((p) => {
+          {playersFiltered.map((p) => {
             const handsLine = rosterBatsThrowsSummary(p);
             return (
             <li
@@ -297,16 +440,16 @@ export function RosterPageClient({
                   {p.name} {p.jersey ? `#${p.jersey}` : ""}
                 </span>
                 {p.positions?.length > 0 && (
-                  <span className="text-sm text-[var(--text-muted)]">
-                    {p.positions.join(", ")}
-                  </span>
+                  <span className="text-sm text-[var(--text-muted)]">{formatPositionsDisplay(p)}</span>
                 )}
                 {handsLine ? (
                   <span className="text-sm text-[var(--text-muted)]">{handsLine}</span>
                 ) : null}
-                {p.is_active === false && (
-                  <span className="rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-200">
-                    Injured
+                {resolveRosterStatus(p) !== "active" && (
+                  <span
+                    className={`rounded-full border px-2 py-0.5 text-xs ${rosterStatusBadgeClass(resolveRosterStatus(p))}`}
+                  >
+                    {PLAYER_ROSTER_STATUS_LABELS[resolveRosterStatus(p)]}
                   </span>
                 )}
                 {isDemoId(p.id) && (
@@ -367,7 +510,7 @@ export function RosterPageClient({
           if (result.ok) {
             setDeleteTarget(null);
             setPlayers((prev) => prev.filter((x) => x.id !== deleteTarget.id));
-            setMessage({
+            showFlash({
               type: "delete",
               text:
                 deletePreview.batterPlateAppearances > 0
@@ -376,7 +519,7 @@ export function RosterPageClient({
             });
             refresh();
           } else {
-            setMessage({ type: "err", text: result.error });
+            showFlash({ type: "err", text: result.error });
             setDeleteTarget(null);
           }
         }}
@@ -392,6 +535,7 @@ function PlayerForm({
   onCancel,
   onAddNew,
   canEdit,
+  titleId = "roster-player-form-title",
 }: {
   player: Player | null;
   /** When set (opponent roster page), team is implied; form omits opponent + bio fields for scouts. */
@@ -400,6 +544,8 @@ function PlayerForm({
   onCancel: () => void;
   onAddNew: () => void;
   canEdit: boolean;
+  /** Modal dialog title id (`aria-labelledby`). */
+  titleId?: string;
 }) {
   const lockedTeam = lockedOpponentTeam?.trim() ?? "";
   const opponentPage = lockedTeam.length > 0;
@@ -416,26 +562,45 @@ function PlayerForm({
   const [weight_lb, setWeightLb] = useState<string>(player?.weight_lb != null ? String(player.weight_lb) : "");
   const [hometown, setHometown] = useState<string>(player?.hometown ?? "");
   const [birth_date, setBirthDate] = useState<string>(player?.birth_date ?? "");
-  const [opponent_team, setOpponentTeam] = useState<string>(player?.opponent_team ?? (opponentPage ? lockedTeam : ""));
-  const [isActive, setIsActive] = useState<boolean>(player?.is_active !== false);
+  const [primaryPosition, setPrimaryPosition] = useState<string | null>(
+    () => player?.primary_position ?? getPlayerPrimaryPosition(player ?? { positions: [] }) ?? null
+  );
+  const [rosterStatus, setRosterStatus] = useState<PlayerRosterStatus>(() =>
+    resolveRosterStatus(player ?? undefined)
+  );
   const [saving, setSaving] = useState(false);
 
   const isEditing = !!player;
 
   const togglePosition = (pos: string) => {
-    setPositions((prev) =>
-      prev.includes(pos) ? prev.filter((p) => p !== pos) : [...prev, pos]
-    );
+    setPositions((prev) => {
+      if (prev.includes(pos)) {
+        const next = prev.filter((p) => p !== pos);
+        setPrimaryPosition((current) =>
+          current === pos ? (next[0] ?? null) : current && next.includes(current) ? current : next[0] ?? null
+        );
+        return next;
+      }
+      const next = [...prev, pos];
+      setPrimaryPosition((current) => current ?? pos);
+      return next;
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    const resolvedOpponent = opponentPage ? lockedTeam : opponent_team.trim() || null;
+    /** Opponent tag is set from page context (`?opponentTeam=`), not a form field. Club roster → no tag. */
+    const resolvedOpponent = opponentPage ? lockedTeam : null;
+    const rosterFields = preparePlayerRosterPayload({
+      positions,
+      primary_position: primaryPosition,
+      roster_status: isEditing ? rosterStatus : "active",
+    });
     await onSave({
       name: name.trim() || "Unnamed player",
       jersey: jersey.trim() || null,
-      positions,
+      ...rosterFields,
       bats: bats === "" ? null : bats,
       throws: throws === "" ? null : throws,
       height_in: opponentPage
@@ -452,19 +617,22 @@ function PlayerForm({
       hometown: opponentPage ? player?.hometown ?? null : hometown.trim() || null,
       birth_date: opponentPage ? player?.birth_date ?? null : birth_date.trim() || null,
       opponent_team: resolvedOpponent || null,
-      is_active: isActive,
     });
     setSaving(false);
   };
 
   if (!canEdit) return null;
 
-  const fieldLabel = "mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]";
-  const sectionShell = "rounded-lg border border-[var(--border)]/70 bg-[var(--bg-elevated)]/20 p-3";
-  const sectionKicker = "mb-2 text-[9px] font-bold uppercase tracking-[0.18em] text-[var(--accent)]";
-  const inputPad = "input-tech block w-full px-2.5 py-2 text-sm";
+  const fieldLabel =
+    "mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]";
+  const sectionShell = "rounded-lg border border-[var(--border)]/70 bg-[var(--bg-elevated)]/20 p-4 sm:p-5";
+  const sectionKicker =
+    "mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--accent)]";
+  const inputPad = "input-tech block w-full px-3 py-2.5 text-base";
   const handChipBase =
-    "min-h-9 shrink-0 rounded-md border px-2.5 py-2 text-xs font-semibold transition sm:min-h-10 sm:px-3 sm:text-sm";
+    "shrink-0 min-h-10 rounded-lg border px-3.5 py-2 text-sm font-semibold transition";
+  const fieldGap = "gap-4";
+  const handChipGap = "gap-2";
   const handChipOn =
     "border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent)]/25";
   const handChipOff =
@@ -472,59 +640,43 @@ function PlayerForm({
 
   return (
     <form onSubmit={handleSubmit} className="card-tech overflow-hidden p-0">
-      <header className="border-b border-[var(--border)]/80 bg-[var(--bg-elevated)]/15 px-4 py-2.5 sm:px-4">
-        <h3 className="font-orbitron text-sm font-semibold uppercase tracking-wide text-white sm:text-base">
+      <header className="border-b border-[var(--border)]/80 bg-[var(--bg-elevated)]/15 px-6 py-4 sm:px-8">
+        <h3
+          id={titleId}
+          className="font-orbitron text-lg font-semibold uppercase tracking-wide text-white sm:text-xl"
+        >
           {isEditing ? "Edit player" : "Add player"}
         </h3>
-        {opponentPage ? (
-          <p className="mt-1 max-w-xl text-[11px] leading-snug text-[var(--text-muted)]">
-            Opponent roster — Tab through fields and positions, then activate. Team comes from this page.
-          </p>
-        ) : (
-          <p className="mt-1 max-w-xl text-[11px] leading-snug text-[var(--text-muted)]">
-            Club roster — Tab through fields; use Space or click on position chips to toggle.
-          </p>
-        )}
       </header>
 
       {/*
         Tab order: identity → vitals → background (club) → position chips (P…DH) → active checkbox → submit.
       */}
-      <div className="space-y-4 px-4 py-3 sm:py-4">
+      <div className="grid gap-6 px-6 py-5 sm:gap-8 sm:px-8 sm:py-6 lg:grid-cols-2 lg:gap-x-10">
+        <div className="space-y-6 sm:space-y-7">
         {/* Identity */}
-        <section aria-labelledby="player-form-identity">
+        <section className={sectionShell} aria-labelledby="player-form-identity">
           <h4 id="player-form-identity" className={sectionKicker}>
             Identity
           </h4>
-          <div className={`grid gap-2.5 ${opponentPage ? "" : "sm:grid-cols-2"}`}>
-            <label className="min-w-0">
-              <span className={fieldLabel}>Name</span>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className={inputPad}
-                placeholder="Full name"
-                autoComplete="name"
-                autoFocus={!isEditing}
-              />
-            </label>
-            {!opponentPage ? (
-              <label className="min-w-0">
-                <span className={fieldLabel}>Opponent team</span>
-                <input
-                  type="text"
-                  value={opponent_team}
-                  onChange={(e) => setOpponentTeam(e.target.value)}
-                  className={inputPad}
-                  placeholder="Leave empty for club roster only"
-                />
-                <span className="mt-1 block text-[10px] leading-snug text-[var(--text-faint)]">
-                  Optional — opposing / scouting player tag.
-                </span>
-              </label>
+          <label className="min-w-0">
+            <span className={fieldLabel}>Name</span>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className={inputPad}
+              placeholder="Full name"
+              autoComplete="name"
+              autoFocus={!isEditing}
+            />
+            {opponentPage ? (
+              <span className="mt-1.5 block text-[10px] leading-snug text-[var(--text-faint)]">
+                Tagged for <strong className="font-medium text-[var(--text-muted)]">{lockedTeam}</strong> (this
+                opponent roster).
+              </span>
             ) : null}
-          </div>
+          </label>
         </section>
 
         {/* Vitals */}
@@ -532,117 +684,166 @@ function PlayerForm({
           <h4 id="player-form-vitals" className={sectionKicker}>
             Uniform &amp; hands
           </h4>
-          <div
-            className={
-              opponentPage
-                ? "grid grid-cols-1 gap-2.5 sm:grid-cols-3"
-                : "grid grid-cols-2 gap-2.5 lg:grid-cols-3 xl:grid-cols-6"
-            }
-          >
-            <label className="min-w-0">
-              <span className={fieldLabel}>Jersey</span>
-              <input
-                type="text"
-                value={jersey}
-                onChange={(e) => setJersey(e.target.value)}
-                className={`${inputPad} tabular-nums sm:max-w-[5.5rem]`}
-                placeholder="7"
-                maxLength={4}
-              />
-            </label>
-            {!opponentPage ? (
-              <label className="min-w-0 sm:col-span-2 xl:col-span-2">
-                <span className={fieldLabel}>Height</span>
-                <div className="flex flex-wrap items-center gap-1.5">
+          {!opponentPage ? (
+            <div className="space-y-5">
+              <div className={`grid grid-cols-1 ${fieldGap} sm:grid-cols-3`}>
+                <label className="min-w-0">
+                  <span className={fieldLabel}>Jersey</span>
+                  <input
+                    type="text"
+                    value={jersey}
+                    onChange={(e) => setJersey(e.target.value)}
+                    className={`${inputPad} max-w-[6rem] tabular-nums`}
+                    placeholder="7"
+                    maxLength={4}
+                  />
+                </label>
+                <label className="min-w-0">
+                  <span className={fieldLabel}>Height</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="number"
+                      min={4}
+                      max={8}
+                      value={height_ft}
+                      onChange={(e) => setHeightFt(e.target.value)}
+                      className="input-tech w-14 px-2 py-2.5 text-center text-base tabular-nums"
+                      placeholder="5"
+                    />
+                    <span className="text-xs text-[var(--text-muted)]">ft</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={11}
+                      value={height_in_part}
+                      onChange={(e) => setHeightInPart(e.target.value)}
+                      className="input-tech w-14 px-2 py-2.5 text-center text-base tabular-nums"
+                      placeholder="10"
+                    />
+                    <span className="text-xs text-[var(--text-muted)]">in</span>
+                  </div>
+                </label>
+                <label className="min-w-0">
+                  <span className={fieldLabel}>Weight (lb)</span>
                   <input
                     type="number"
-                    min={4}
-                    max={8}
-                    value={height_ft}
-                    onChange={(e) => setHeightFt(e.target.value)}
-                    className="input-tech w-[3.25rem] px-2 py-2 text-center text-sm tabular-nums"
-                    placeholder="5"
+                    min={80}
+                    max={350}
+                    value={weight_lb}
+                    onChange={(e) => setWeightLb(e.target.value)}
+                    className={`${inputPad} max-w-[7rem] tabular-nums`}
+                    placeholder="185"
                   />
-                  <span className="text-[10px] text-[var(--text-muted)]">ft</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={11}
-                    value={height_in_part}
-                    onChange={(e) => setHeightInPart(e.target.value)}
-                    className="input-tech w-[3.25rem] px-2 py-2 text-center text-sm tabular-nums"
-                    placeholder="10"
-                  />
-                  <span className="text-[10px] text-[var(--text-muted)]">in</span>
+                </label>
+              </div>
+              <div className={`grid grid-cols-1 ${fieldGap} sm:grid-cols-2`}>
+                <div className="min-w-0">
+                  <span className={fieldLabel}>Bats</span>
+                  <div className={`mt-2 flex flex-wrap ${handChipGap}`} role="group" aria-label="Bats handedness">
+                    {(
+                      [
+                        { v: "L" as const, label: "Left" },
+                        { v: "R" as const, label: "Right" },
+                        { v: "S" as const, label: "Switch" },
+                      ] as const
+                    ).map(({ v, label }) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setBats(bats === v ? "" : v)}
+                        className={`${handChipBase} ${bats === v ? handChipOn : handChipOff}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </label>
-            ) : null}
-            <div className="min-w-0">
-              <span className={fieldLabel}>Bats</span>
-              <div className="mt-1 flex flex-wrap gap-1" role="group" aria-label="Bats handedness">
-                {(
-                  [
-                    { v: "" as const, label: "Unknown" },
-                    { v: "L" as const, label: "Left" },
-                    { v: "R" as const, label: "Right" },
-                    { v: "S" as const, label: "Switch" },
-                  ] as const
-                ).map(({ v, label }) => (
-                  <button
-                    key={v || "none"}
-                    type="button"
-                    onClick={() => setBats(v)}
-                    className={`${handChipBase} ${bats === v ? handChipOn : handChipOff}`}
-                  >
-                    {label}
-                  </button>
-                ))}
+                <div className="min-w-0">
+                  <span className={fieldLabel}>Throws</span>
+                  <div className={`mt-2 flex flex-wrap ${handChipGap}`} role="group" aria-label="Throws handedness">
+                    {(
+                      [
+                        { v: "L" as const, label: "Left" },
+                        { v: "R" as const, label: "Right" },
+                      ] as const
+                    ).map(({ v, label }) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setThrows(throws === v ? "" : v)}
+                        className={`${handChipBase} ${throws === v ? handChipOn : handChipOff}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="min-w-0">
-              <span className={fieldLabel}>Throws</span>
-              <div className="mt-1 flex flex-wrap gap-1" role="group" aria-label="Throws handedness">
-                {(
-                  [
-                    { v: "" as const, label: "Unknown" },
-                    { v: "L" as const, label: "Left" },
-                    { v: "R" as const, label: "Right" },
-                  ] as const
-                ).map(({ v, label }) => (
-                  <button
-                    key={v || "none"}
-                    type="button"
-                    onClick={() => setThrows(v)}
-                    className={`${handChipBase} ${throws === v ? handChipOn : handChipOff}`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {!opponentPage ? (
+          ) : (
+            <div className={`grid grid-cols-1 ${fieldGap} sm:grid-cols-3`}>
               <label className="min-w-0">
-                <span className={fieldLabel}>Weight (lb)</span>
+                <span className={fieldLabel}>Jersey</span>
                 <input
-                  type="number"
-                  min={80}
-                  max={350}
-                  value={weight_lb}
-                  onChange={(e) => setWeightLb(e.target.value)}
-                  className={`${inputPad} tabular-nums sm:max-w-[6.5rem]`}
-                  placeholder="185"
+                  type="text"
+                  value={jersey}
+                  onChange={(e) => setJersey(e.target.value)}
+                  className={`${inputPad} max-w-[6rem] tabular-nums`}
+                  placeholder="7"
+                  maxLength={4}
                 />
               </label>
-            ) : null}
-          </div>
+              <div className="min-w-0">
+                <span className={fieldLabel}>Bats</span>
+                <div className={`mt-2 flex flex-wrap ${handChipGap}`} role="group" aria-label="Bats handedness">
+                  {(
+                    [
+                      { v: "L" as const, label: "Left" },
+                      { v: "R" as const, label: "Right" },
+                      { v: "S" as const, label: "Switch" },
+                    ] as const
+                  ).map(({ v, label }) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setBats(bats === v ? "" : v)}
+                      className={`${handChipBase} ${bats === v ? handChipOn : handChipOff}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="min-w-0">
+                <span className={fieldLabel}>Throws</span>
+                <div className={`mt-2 flex flex-wrap ${handChipGap}`} role="group" aria-label="Throws handedness">
+                  {(
+                    [
+                      { v: "L" as const, label: "Left" },
+                      { v: "R" as const, label: "Right" },
+                    ] as const
+                  ).map(({ v, label }) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setThrows(throws === v ? "" : v)}
+                      className={`${handChipBase} ${throws === v ? handChipOn : handChipOff}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </section>
 
         {!opponentPage ? (
-          <section aria-labelledby="player-form-bio">
+          <section className={sectionShell} aria-labelledby="player-form-bio">
             <h4 id="player-form-bio" className={sectionKicker}>
               Background
             </h4>
-            <div className="grid gap-2.5 sm:grid-cols-2">
+            <div className={`grid ${fieldGap} sm:grid-cols-2`}>
               <label className="min-w-0">
                 <span className={fieldLabel}>Hometown</span>
                 <input
@@ -665,83 +866,70 @@ function PlayerForm({
             </div>
           </section>
         ) : null}
+        </div>
 
-        {/* Positions — tab stops in DOM order (P…DH); Space/Enter toggles like a button */}
-        <section className={sectionShell} aria-labelledby="player-form-positions">
-          <h4 id="player-form-positions" className={sectionKicker}>
-            Positions
-          </h4>
-          <p className="mb-2 text-[10px] text-[var(--text-faint)]">Tab through chips; Space or click toggles each position.</p>
-          <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-10">
-            {POSITION_OPTIONS.map((pos) => {
-              const on = positions.includes(pos);
-              return (
-                <button
-                  key={pos}
-                  type="button"
-                  aria-pressed={on}
-                  aria-label={`Position ${pos}`}
-                  onClick={() => togglePosition(pos)}
-                  className={`min-h-9 rounded-md border px-0.5 text-[11px] font-semibold transition sm:min-h-10 sm:text-xs ${
-                    on
-                      ? "border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent)]/25"
-                      : "border-[var(--border)] bg-[var(--bg-input)] text-[var(--text-muted)] hover:border-[var(--border-focus)] hover:text-[var(--text)]"
-                  }`}
-                >
-                  {pos}
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* Roster status — below positions; Tab still reaches checkbox then submit */}
-        <section className={sectionShell} aria-labelledby="player-form-status">
-          <h4 id="player-form-status" className="sr-only">
-            Roster status
-          </h4>
-          <label className="flex cursor-pointer items-start gap-2.5 sm:items-center">
-            <input
-              type="checkbox"
-              checked={isActive}
-              onChange={(e) => setIsActive(e.target.checked)}
-              className="mt-0.5 h-4 w-4 shrink-0 rounded border-[var(--border)] accent-[var(--accent)] sm:mt-0"
+        <div className="space-y-6 sm:space-y-7">
+          <section className={sectionShell} aria-labelledby="player-form-positions">
+            <h4 id="player-form-positions" className={sectionKicker}>
+              Positions
+            </h4>
+            <RosterPositionSelector
+              selected={positions}
+              onToggle={togglePosition}
+              primaryPosition={primaryPosition}
+              onSetPrimary={setPrimaryPosition}
+              size="large"
             />
-            <span className="min-w-0">
-              <span className="block text-xs font-semibold text-white">Active roster player</span>
-              <span className="mt-0.5 block text-[10px] leading-snug text-[var(--text-muted)]">
-                Off for injured/inactive — hidden from lineup &amp; coach bench.
-              </span>
-            </span>
-          </label>
-        </section>
+          </section>
+          {isEditing ? (
+            <section className={sectionShell} aria-labelledby="player-form-status">
+              <h4 id="player-form-status" className={sectionKicker}>
+                Roster status
+              </h4>
+              <div className={`flex flex-wrap ${handChipGap}`} role="group" aria-label="Roster status">
+                {PLAYER_ROSTER_STATUSES.map((status) => (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => setRosterStatus(status)}
+                    className={`${handChipBase} ${rosterStatus === status ? handChipOn : handChipOff}`}
+                  >
+                    {PLAYER_ROSTER_STATUS_LABELS[status]}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-3 text-xs leading-relaxed text-[var(--text-muted)]">
+                Only <strong className="font-medium text-[var(--text)]">Active</strong> players appear in lineup and
+                coach bench lists.
+              </p>
+            </section>
+          ) : null}
+        </div>
       </div>
 
-      <footer className="flex flex-wrap items-center gap-2 border-t border-[var(--border)]/80 bg-[var(--bg-elevated)]/10 px-4 py-2.5">
+      <footer className="flex flex-wrap items-center justify-end gap-3 border-t border-[var(--border)]/80 bg-[var(--bg-elevated)]/10 px-6 py-4 sm:px-8 sm:py-5">
         <button
           type="submit"
           disabled={saving}
-          className="font-orbitron rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold tracking-wide text-[var(--bg-base)] shadow-[0_0_16px_rgba(214,186,72,0.12)] transition hover:opacity-95 disabled:opacity-50"
+          className="font-orbitron rounded-lg bg-[var(--accent)] px-6 py-2.5 text-base font-semibold tracking-wide text-[var(--bg-base)] shadow-[0_0_16px_rgba(214,186,72,0.12)] transition hover:opacity-95 disabled:opacity-50"
         >
           {saving ? "Saving…" : isEditing ? "Update player" : "Add player"}
         </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-4 py-2.5 text-sm font-medium text-[var(--text-muted)] transition hover:border-[var(--border-focus)] hover:text-[var(--text)]"
+        >
+          Cancel
+        </button>
         {isEditing ? (
-          <>
-            <button
-              type="button"
-              onClick={onCancel}
-              className="rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-xs font-medium text-[var(--text-muted)] transition hover:border-[var(--border-focus)] hover:text-[var(--text)] sm:text-sm"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={onAddNew}
-              className="text-xs text-[var(--accent)]/90 underline-offset-2 hover:underline sm:text-sm"
-            >
-              Add new instead
-            </button>
-          </>
+          <button
+            type="button"
+            onClick={onAddNew}
+            className="text-sm text-[var(--accent)]/90 underline-offset-2 hover:underline"
+          >
+            Add new instead
+          </button>
         ) : null}
       </footer>
     </form>

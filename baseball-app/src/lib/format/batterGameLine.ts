@@ -41,6 +41,8 @@ function abbrevForResultCore(r: PAResult): string | null {
       return "GIDP";
     case "out":
       return "OUT";
+    case "foul_out":
+      return "FO";
     case "reached_on_error":
       return "E";
     case "other":

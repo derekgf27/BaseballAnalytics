@@ -11,6 +11,7 @@ const RESULT_OPTIONS: { value: PAResult; label: string }[] = [
   { value: "triple", label: "3B" },
   { value: "hr", label: "HR" },
   { value: "out", label: "Out" },
+  { value: "foul_out", label: "FO" },
   { value: "so", label: "SO" },
   { value: "gidp", label: "GIDP" },
   { value: "so_looking", label: "ꓘ" },

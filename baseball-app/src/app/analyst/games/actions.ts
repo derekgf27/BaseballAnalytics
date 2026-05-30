@@ -17,6 +17,8 @@ import {
 } from "@/lib/db/queries";
 import { normBaseState } from "@/lib/compute/battingStats";
 import { isDemoId } from "@/lib/db/mockData";
+import { getCachedPlayers } from "@/lib/db/cachedQueries";
+import { revalidateGamesListCache } from "@/lib/db/revalidateLists";
 import { RESULT_ALLOWS_HIT_DIRECTION } from "@/lib/paResultSets";
 import type {
   BaseState,
@@ -47,7 +49,9 @@ export async function createGameWithLineupAction(
   opponentSlots?: { player_id: string; position?: string | null }[] | null,
   ourSlotsOverride?: { player_id: string; position?: string | null }[] | null
 ): Promise<Game> {
-  return createGameWithLineup(game, savedLineupId, opponentSlots, ourSlotsOverride);
+  const created = await createGameWithLineup(game, savedLineupId, opponentSlots, ourSlotsOverride);
+  revalidateGamesListCache();
+  return created;
 }
 
 /** Replace our club’s lineup for an existing game (e.g. after editing in the lineup modal). Empty slots clear that side. */
@@ -90,7 +94,9 @@ export async function updateGameOnlyAction(
   id: string,
   updates: Partial<Omit<Game, "id" | "created_at">>
 ): Promise<Game | null> {
-  return updateGame(id, updates);
+  const updated = await updateGame(id, updates);
+  if (updated) revalidateGamesListCache();
+  return updated;
 }
 
 /** Update game and optionally replace its lineup. lineupId: "__keep__" = no change, "__default__" = first 9, or saved template id. */
@@ -104,7 +110,7 @@ export async function updateGameWithLineupAction(
   if (lineupId === "__keep__" || lineupId === "" || lineupId == null) return updated;
   let slots: { player_id: string; position?: string | null }[] = [];
   if (lineupId === "__default__") {
-    const players = await getPlayers();
+    const players = await getCachedPlayers();
     slots = players
       .slice(0, 9)
       .filter((p) => !isDemoId(p.id))
@@ -119,11 +125,14 @@ export async function updateGameWithLineupAction(
     }
   }
   if (slots.length > 0) await replaceGameLineup(gameId, game.our_side as "home" | "away", slots);
+  revalidateGamesListCache();
   return updated;
 }
 
 export async function deleteGameAction(gameId: string): Promise<boolean> {
-  return deleteGameQuery(gameId);
+  const ok = await deleteGameQuery(gameId);
+  if (ok) revalidateGamesListCache();
+  return ok;
 }
 
 /** Resolve the game's current lineup to a display name (matched saved template name or "Current lineup"). */
@@ -193,7 +202,7 @@ export async function clearAllStatsAction(): Promise<{ ok: boolean; count: numbe
   }
 }
 
-/** Correct result / batted-ball / bases / spray direction from Game log without opening Record. */
+/** Correct result / batted-ball / bases / spray / earned vs unearned runs from Game log without opening Record. */
 export async function updateGameLogPlateAppearanceAction(
   gameId: string,
   paId: string,
@@ -202,6 +211,7 @@ export async function updateGameLogPlateAppearanceAction(
     batted_ball_type?: BattedBallType | null;
     base_state?: BaseState;
     hit_direction?: HitDirection | null;
+    unearned_runs_scored_player_ids?: string[];
   }
 ): Promise<{ ok: boolean; error?: string; pa?: PlateAppearance }> {
   if (isDemoId(gameId) || isDemoId(paId)) {
@@ -211,7 +221,8 @@ export async function updateGameLogPlateAppearanceAction(
     patch.result === undefined &&
     patch.batted_ball_type === undefined &&
     patch.base_state === undefined &&
-    patch.hit_direction === undefined
+    patch.hit_direction === undefined &&
+    patch.unearned_runs_scored_player_ids === undefined
   ) {
     return { ok: true };
   }
@@ -225,7 +236,12 @@ export async function updateGameLogPlateAppearanceAction(
     const updates: Partial<
       Pick<
         PlateAppearance,
-        "result" | "batted_ball_type" | "hit_direction" | "error_fielder_id" | "base_state"
+        | "result"
+        | "batted_ball_type"
+        | "hit_direction"
+        | "error_fielder_id"
+        | "base_state"
+        | "unearned_runs_scored_player_ids"
       >
     > = {};
 
@@ -273,6 +289,22 @@ export async function updateGameLogPlateAppearanceAction(
         return { ok: false, error: "Invalid hit direction." };
       }
       updates.hit_direction = patch.hit_direction;
+    }
+
+    if (patch.unearned_runs_scored_player_ids !== undefined) {
+      const scorers = row.runs_scored_player_ids ?? [];
+      if (scorers.length === 0) {
+        return { ok: false, error: "This plate appearance has no runs scored to classify." };
+      }
+      const scorerSet = new Set(scorers);
+      const unearned = patch.unearned_runs_scored_player_ids.filter((id) => scorerSet.has(id));
+      if (unearned.length !== patch.unearned_runs_scored_player_ids.length) {
+        return {
+          ok: false,
+          error: "Unearned flags must only include players who scored on this play.",
+        };
+      }
+      updates.unearned_runs_scored_player_ids = unearned;
     }
 
     if (Object.keys(updates).length === 0) return { ok: true };

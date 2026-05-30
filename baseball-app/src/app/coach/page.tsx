@@ -1,7 +1,7 @@
+import { getCachedPlayers } from "@/lib/db/cachedQueries";
 import {
   getGamesForCoachDashboard,
   getGameLineup,
-  getPlayers,
   getPlayersByIds,
   getBattingStatsWithSplitsForPlayers,
   getPlateAppearancesByBatters,
@@ -15,7 +15,9 @@ import { battingStatsFromPAs } from "@/lib/compute/battingStats";
 import { trendFromRecentPAs, TREND_RECENT_PA_COUNT } from "@/lib/compute/trends";
 import { platoonFromSplits } from "@/lib/compute/platoon";
 import { isActiveRosterPlayer } from "@/lib/opponentUtils";
-import { CoachTodayClient } from "./CoachTodayClient";
+import { getPlayerPrimaryPosition } from "@/lib/playerRoster";
+import type { CoachTodayClient, TodayLineupSlot } from "./CoachTodayClient";
+import { CoachTodayClientGate } from "./CoachTodayClientGate";
 
 /**
  * Coach Today: real game + lineup from DB, with trend (hot/cold) and platoon (vs LHP/RHP).
@@ -158,7 +160,7 @@ export default async function CoachPage() {
           const platoon = playerSplits
             ? platoonFromSplits(playerSplits.vsL, playerSplits.vsR)
             : null;
-          let recentStats: Parameters<typeof CoachTodayClient>[0]["recommendedLineup"][0]["recentStats"] = undefined;
+          let recentStats: TodayLineupSlot["recentStats"] = undefined;
           if ((trend === "hot" || trend === "cold") && recentPAs.length > 0) {
             const lastWindow = recentPAs.slice(0, TREND_RECENT_PA_COUNT);
             const stats = battingStatsFromPAs(lastWindow);
@@ -182,7 +184,7 @@ export default async function CoachPage() {
             order: s.slot,
             playerId: s.player_id,
             playerName: p?.name ?? "—",
-            position: s.position ?? p?.positions?.[0] ?? "—",
+            position: s.position ?? getPlayerPrimaryPosition(p) ?? "—",
             bats: p?.bats ?? null,
             confidence: "medium" as const,
             tags: [] as ("POWER" | "CONTACT" | "SPEED" | "EYE" | "CLUTCH")[],
@@ -192,7 +194,7 @@ export default async function CoachPage() {
           };
         });
 
-      const clubRoster = (await getPlayers()).filter((p) => !p.opponent_team && isActiveRosterPlayer(p));
+      const clubRoster = (await getCachedPlayers()).filter((p) => !p.opponent_team && isActiveRosterPlayer(p));
       const lineupIds = new Set(recommendedLineup.map((slot) => slot.playerId));
       benchPlayers = clubRoster
         .filter((p) => {
@@ -206,7 +208,7 @@ export default async function CoachPage() {
           id: p.id,
           name: p.name,
           jersey: p.jersey ?? null,
-          position: p.positions?.[0] ?? null,
+          position: getPlayerPrimaryPosition(p) ?? null,
           bats: p.bats ?? null,
         }));
 
@@ -258,7 +260,7 @@ export default async function CoachPage() {
   }
 
   return (
-    <CoachTodayClient
+    <CoachTodayClientGate
       game={gameInfo}
       recommendedLineup={recommendedLineup}
       benchPlayers={benchPlayers}

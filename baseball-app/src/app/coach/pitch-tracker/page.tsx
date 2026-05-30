@@ -1,4 +1,4 @@
-import CoachPitchTrackerClient from "./CoachPitchTrackerClient";
+import { CoachPitchTrackerClientGate } from "./CoachPitchTrackerClientGate";
 
 export default async function CoachPitchTrackerPage({
   searchParams,
@@ -12,7 +12,7 @@ export default async function CoachPitchTrackerPage({
   const pitcherId = typeof p.pitcherId === "string" ? p.pitcherId : null;
 
   return (
-    <CoachPitchTrackerClient
+    <CoachPitchTrackerClientGate
       gameId={gameId}
       groupId={groupId}
       batterId={batterId}

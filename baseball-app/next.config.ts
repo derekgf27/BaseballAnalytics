@@ -6,6 +6,21 @@ const nextConfig: NextConfig = {
   devIndicators: {
     position: "bottom-right",
   },
+  experimental: {
+    optimizePackageImports: [
+      "recharts",
+      "framer-motion",
+      "date-fns",
+      "@dnd-kit/core",
+      "@dnd-kit/sortable",
+      "@dnd-kit/utilities",
+      "react-day-picker",
+      "jspdf",
+      "jspdf-autotable",
+      "react-to-print",
+      "@supabase/supabase-js",
+    ],
+  },
   async redirects() {
     return SHORTLINK_REDIRECTS;
   },

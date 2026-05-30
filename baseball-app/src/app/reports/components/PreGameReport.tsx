@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import { useMemo, type ReactNode, type RefObject } from "react";
 import type { PreGameOverviewPayload } from "@/app/reports/actions";
 import { FINAL_COUNT_PAIRS, finalCountBucketKey } from "@/lib/compute/battingStatsWithSplitsFromPas";
 import type {
@@ -325,6 +325,7 @@ function ContactMixStrip({
   return (
     <div
       className={`mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 ${forPrint ? "print:mt-4 print:gap-3" : ""}`}
+      {...(forPrint ? { "data-pdf-avoid-break": true } : {})}
       style={forPrint ? { breakInside: "avoid" as const } : undefined}
     >
       {tiles.map((t) => (
@@ -419,16 +420,16 @@ function SituationalHittersTable({
 }
 
 function CoachHittingNotesSection({ notes, forPrint = false }: { notes: PreGameCoachHittingNotes; forPrint?: boolean }) {
-  return (
-    <section
-      className={`scroll-mt-6 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6 ${forPrint ? "print:rounded-lg print:border-2 print:p-8 print:shadow-none" : ""}`}
-    >
+  const sectionClass = `scroll-mt-6 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6 ${forPrint ? "pregame-pdf-section-break print:rounded-lg print:border-2 print:p-6 print:shadow-none" : ""}`;
+
+  const twoStrikeBody = (
+    <>
       <h3
-        className={`font-display font-semibold text-[var(--text)] ${forPrint ? "text-base print:text-2xl print:tracking-tight" : "text-base"}`}
+        className={`font-display font-semibold text-[var(--text)] ${forPrint ? "text-base print:text-xl print:tracking-tight" : "text-base"}`}
       >
         Two-strike approach & contact
       </h3>
-      <p className={`mt-1 text-[var(--text-faint)] ${forPrint ? "text-sm print:text-base print:text-[var(--text-muted)]" : "text-xs"}`}>
+      <p className={`mt-1 text-[var(--text-faint)] ${forPrint ? "text-sm print:text-sm print:text-[var(--text-muted)]" : "text-xs"}`}>
         {notes.windowLabel}
       </p>
 
@@ -445,45 +446,74 @@ function CoachHittingNotesSection({ notes, forPrint = false }: { notes: PreGameC
         )}
       </div>
       <p
-        className={`mt-3 leading-snug text-[var(--text-muted)] ${forPrint ? "text-sm print:text-base print:max-w-3xl print:leading-relaxed" : "text-[10px]"}`}
+        className={`mt-3 leading-snug text-[var(--text-muted)] ${forPrint ? "text-sm print:text-sm print:max-w-3xl print:leading-snug" : "text-[10px]"}`}
       >
         Two-strike uses the PA&apos;s final ball–strike count (includes 3-2 strikeouts and two-strike balls in play).
       </p>
 
-      <div className={`mt-5 ${forPrint ? "" : "max-w-xl"}`}>
+      <div className={`mt-4 ${forPrint ? "" : "max-w-xl"}`}>
         <SituationalHittersTable
           title="Hitters · most two-strike PAs (sample)"
           rows={notes.twoStrikeHitters}
           forPrint={forPrint}
         />
       </div>
+    </>
+  );
 
-      {notes.contact ? (
-        <div
-          className={`mt-5 border-t border-[var(--border)] pt-5 ${forPrint ? "print:mt-8 print:pt-8 print:border-t-2" : ""}`}
-          style={forPrint ? { breakInside: "avoid" as const } : undefined}
+  const contactBody =
+    notes.contact != null ? (
+      <div
+        data-pdf-avoid-break
+        className={`border-t border-[var(--border)] pt-4 ${forPrint ? "print:pt-4 print:border-t-2" : "mt-5 pt-5"}`}
+        style={forPrint ? { breakInside: "avoid" as const } : undefined}
+      >
+        <h4
+          className={`font-display font-semibold text-[var(--text)] ${forPrint ? "text-sm print:text-lg" : "text-sm"}`}
         >
-          <h4
-            className={`font-display font-semibold text-[var(--text)] ${forPrint ? "text-sm print:text-xl" : "text-sm"}`}
-          >
-            Contact
-          </h4>
-          <p
-            className={`mt-2 text-[var(--text-muted)] ${forPrint ? "text-sm print:text-base print:leading-relaxed" : "mt-1 text-[11px]"}`}
-          >
-            {notes.contact.teamPa} team PA in window
-            {notes.contact.gidp > 0 ? ` · ${notes.contact.gidp} GIDP` : ""}
-            {notes.contact.bipWithType > 0 ? ` · ${notes.contact.bipWithType} BIP with type` : ""}
-            .
-          </p>
-          <ContactMixStrip contact={notes.contact} forPrint={forPrint} />
-        </div>
-      ) : null}
+          Contact
+        </h4>
+        <p
+          className={`mt-1 text-[var(--text-muted)] ${forPrint ? "text-sm print:text-sm print:leading-snug" : "mt-1 text-[11px]"}`}
+        >
+          {notes.contact.teamPa} team PA in window
+          {notes.contact.gidp > 0 ? ` · ${notes.contact.gidp} GIDP` : ""}
+          {notes.contact.bipWithType > 0 ? ` · ${notes.contact.bipWithType} BIP with type` : ""}
+          .
+        </p>
+        <ContactMixStrip contact={notes.contact} forPrint={forPrint} />
+      </div>
+    ) : null;
+
+  if (forPrint) {
+    return (
+      <section className={sectionClass}>
+        <div data-pdf-subsection="hitting-two-strike">{twoStrikeBody}</div>
+        {contactBody ? <div data-pdf-subsection="hitting-contact">{contactBody}</div> : null}
+      </section>
+    );
+  }
+
+  return (
+    <section className={sectionClass}>
+      {twoStrikeBody}
+      {contactBody}
     </section>
   );
 }
 
 const MIN_PITCH_FINAL_COUNT_PRINT = 3;
+
+const PREGAME_PDF_SUBHEADER_CLASS = "pregame-pdf-subheader";
+
+const PITCHING_EXT_TABLE_CLASS = "pregame-pitching-ext-table w-full border-collapse text-[12px]";
+const PITCHING_EXT_LABEL_TH =
+  "min-w-[6.5rem] w-[7rem] max-w-[8.5rem] px-2 py-1.5 text-left text-[10px] font-semibold uppercase leading-tight tracking-normal text-[var(--text-muted)] whitespace-nowrap";
+const PITCHING_EXT_STAT_TH =
+  "whitespace-nowrap px-1.5 py-1.5 text-right font-display text-[10px] font-semibold uppercase leading-tight tracking-normal tabular-nums text-[var(--text-muted)]";
+const PITCHING_EXT_LABEL_TD =
+  "min-w-[6.5rem] w-[7rem] max-w-[8.5rem] px-2 py-1.5 text-left text-[11px] font-semibold leading-snug text-[var(--text)] whitespace-nowrap";
+const PITCHING_EXT_BLOCK_CLASS = "pregame-pitching-ext-block";
 
 function PitchMixPrintSection({
   rows,
@@ -777,7 +807,9 @@ function PitchingLineSampleTable({
     <div>
       <h3 className="font-display text-sm font-semibold text-[var(--text)]">{title}</h3>
       {description ? (
-        <p className="mt-1 text-[10px] text-[var(--text-muted)] print:text-xs">{description}</p>
+        <p className={`mt-1 text-[10px] text-[var(--text-muted)] print:text-xs ${PREGAME_PDF_SUBHEADER_CLASS}`}>
+          {description}
+        </p>
       ) : null}
       <div className="mt-2 overflow-x-auto rounded-lg border border-[var(--border)]">
         <table className="w-full border-collapse text-xs">
@@ -861,7 +893,7 @@ function PitchingLineSampleTable({
 
 /** Shared columns for platoon splits + runner-situation pitching rows (PA through pitch-log rates). */
 const PITCHING_EXT_SPLIT_NUM_TD =
-  "whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]";
+  "whitespace-nowrap px-1.5 py-1.5 text-right font-display text-[12px] font-semibold tabular-nums text-[var(--text)]";
 
 function pitchingExtendedSplitStatCells(line: PitchingStats | null | undefined): ReactNode {
   if (!line || (line.rates?.pa ?? 0) < 1) {
@@ -902,7 +934,7 @@ function pitchingExtendedSplitStatCells(line: PitchingStats | null | undefined):
 function pitchingPlatoonRow(label: string, line: PitchingStats | null | undefined) {
   return (
     <tr key={label} className="border-b border-[var(--border)]">
-      <td className="px-2 py-1.5 text-left font-medium text-[var(--text)]">{label}</td>
+      <td className={PITCHING_EXT_LABEL_TD}>{label}</td>
       {pitchingExtendedSplitStatCells(line)}
     </tr>
   );
@@ -918,72 +950,36 @@ function PitchingPlatoonSplitsTable({
   rows: { label: string; line: PitchingStats | null | undefined }[];
 }) {
   return (
-    <div>
+    <div className={PITCHING_EXT_BLOCK_CLASS} data-pdf-avoid-break>
       <h3 className="font-display text-sm font-semibold text-[var(--text)]">{title}</h3>
       {description ? (
-        <p className="mt-1 text-[10px] text-[var(--text-muted)] print:text-xs">{description}</p>
+        <p className={`mt-1 text-[10px] text-[var(--text-muted)] print:text-xs ${PREGAME_PDF_SUBHEADER_CLASS}`}>
+          {description}
+        </p>
       ) : null}
       <div className="mt-2 overflow-x-auto rounded-lg border border-[var(--border)]">
-        <table className="w-full border-collapse text-xs">
+        <table className={PITCHING_EXT_TABLE_CLASS}>
           <thead>
             <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
-              <th className="px-2 py-1.5 text-left font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                Split
-              </th>
-              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                PA
-              </th>
-              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                H
-              </th>
-              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                BAA
-              </th>
-              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                R
-              </th>
-              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                ER
-              </th>
-              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                BB
-              </th>
-              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                SO
-              </th>
-              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                SV
-              </th>
-              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                WHIP
-              </th>
-              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                ERA
-              </th>
-              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                K%
-              </th>
-              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                BB%
-              </th>
-              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                P/PA
-              </th>
-              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                Strike%
-              </th>
-              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                FPS%
-              </th>
-              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                Swing%
-              </th>
-              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                Whiff%
-              </th>
-              <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                Foul%
-              </th>
+              <th className={PITCHING_EXT_LABEL_TH}>Split</th>
+              <th className={PITCHING_EXT_STAT_TH}>PA</th>
+              <th className={PITCHING_EXT_STAT_TH}>H</th>
+              <th className={PITCHING_EXT_STAT_TH}>BAA</th>
+              <th className={PITCHING_EXT_STAT_TH}>R</th>
+              <th className={PITCHING_EXT_STAT_TH}>ER</th>
+              <th className={PITCHING_EXT_STAT_TH}>BB</th>
+              <th className={PITCHING_EXT_STAT_TH}>SO</th>
+              <th className={PITCHING_EXT_STAT_TH}>SV</th>
+              <th className={PITCHING_EXT_STAT_TH}>WHIP</th>
+              <th className={PITCHING_EXT_STAT_TH}>ERA</th>
+              <th className={PITCHING_EXT_STAT_TH}>K%</th>
+              <th className={PITCHING_EXT_STAT_TH}>BB%</th>
+              <th className={PITCHING_EXT_STAT_TH}>P/PA</th>
+              <th className={PITCHING_EXT_STAT_TH}>Strike%</th>
+              <th className={PITCHING_EXT_STAT_TH}>FPS%</th>
+              <th className={PITCHING_EXT_STAT_TH}>Swing%</th>
+              <th className={PITCHING_EXT_STAT_TH}>Whiff%</th>
+              <th className={PITCHING_EXT_STAT_TH}>Foul%</th>
             </tr>
           </thead>
           <tbody>{rows.map(({ label, line }) => pitchingPlatoonRow(label, line))}</tbody>
@@ -995,8 +991,10 @@ function PitchingPlatoonSplitsTable({
 
 function PreGamePitchingPlanPrintSection({
   pitchingPlan,
+  pdfCapture = false,
 }: {
   pitchingPlan: NonNullable<PreGameReportSections["pitchingPlan"]>;
+  pdfCapture?: boolean;
 }) {
   const st = pitchingPlan.starterWindowPitching;
   const o = st?.overall;
@@ -1006,38 +1004,44 @@ function PreGamePitchingPlanPrintSection({
     (pitchingPlan.seasonStarterVsRHB?.rates?.pa ?? 0) >= 1;
 
   return (
-    <section className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6 print:break-before-page">
-      <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--text)] print:text-xl">
-        {pitchingPlan.starterName ?? "—"}
-      </h2>
-      {pitchingPlan.lastStartVersus || pitchingPlan.lastStartStatLine ? (
-        <div className="mt-4 space-y-2">
-          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent)] print:text-xs">
-            Last start — most recent game pitched
-          </p>
-          {pitchingPlan.lastStartVersus ? (
-            <p className="text-base font-semibold leading-snug text-[var(--text)] sm:text-lg print:text-lg print:leading-snug">
-              {pitchingPlan.lastStartVersus}
+    <section className="pregame-pdf-section-break rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6 print:break-before-page">
+      <div data-pdf-subsection="pitcher-intro">
+        <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--text)] print:text-xl">
+          {pitchingPlan.starterName ?? "—"}
+        </h2>
+        {pitchingPlan.lastStartVersus || pitchingPlan.lastStartStatLine ? (
+          <div className="mt-4 space-y-2">
+            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent)] print:text-xs">
+              Last start — most recent game pitched
             </p>
-          ) : null}
-          {pitchingPlan.lastStartStatLine ? (
-            <p className="font-display text-lg font-bold tabular-nums leading-snug text-[var(--text)] sm:text-xl print:text-2xl print:leading-relaxed">
-              {pitchingPlan.lastStartStatLine}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
+            {pitchingPlan.lastStartVersus ? (
+              <p className="text-base font-semibold leading-snug text-[var(--text)] sm:text-lg print:text-lg print:leading-snug">
+                {pitchingPlan.lastStartVersus}
+              </p>
+            ) : null}
+            {pitchingPlan.lastStartStatLine ? (
+              <p className="font-display text-lg font-bold tabular-nums leading-snug text-[var(--text)] sm:text-xl print:text-2xl print:leading-relaxed">
+                {pitchingPlan.lastStartStatLine}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
-      {pitchingPlan.planNotes ? (
-        <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)]/40 px-3 py-2.5 print:border-2">
-          <p className="text-sm leading-relaxed text-[var(--text)]">{pitchingPlan.planNotes}</p>
-        </div>
-      ) : null}
+        {o && (o.rates?.pa ?? 0) >= 1 ? (
+          <div className="mt-5">
+            <PitchingRatesProcessBlock rates={o.rates} />
+          </div>
+        ) : null}
+
+        {pitchingPlan.planNotes ? (
+          <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)]/40 px-3 py-2.5 print:border-2">
+            <p className="text-sm leading-relaxed text-[var(--text)]">{pitchingPlan.planNotes}</p>
+          </div>
+        ) : null}
+      </div>
 
       {o && (o.rates?.pa ?? 0) >= 1 ? (
-        <div className="mt-5 space-y-4">
-          <PitchingRatesProcessBlock rates={o.rates} />
-
+        <div data-pdf-subsection="pitcher-season-stats" className="mt-4 space-y-3">
           {pitchingPlan.seasonStarterLine ? (
             <PitchingLineSampleTable
               title="Season"
@@ -1047,163 +1051,119 @@ function PreGamePitchingPlanPrintSection({
           ) : null}
 
           {showSeasonHandedness ? (
-            <PitchingPlatoonSplitsTable
-              title="Season vs LHB / RHB"
-              description="Full season; L/R batters only (switch hitters excluded from platoon buckets)."
-              rows={[
-                { label: "vs LHB", line: pitchingPlan.seasonStarterVsLHB },
-                { label: "vs RHB", line: pitchingPlan.seasonStarterVsRHB },
-              ]}
-            />
-          ) : null}
+              <PitchingPlatoonSplitsTable
+                title="Season vs LHB / RHB"
+                description="Full season; L/R batters only (switch hitters excluded from platoon buckets)."
+                rows={[
+                  { label: "vs LHB", line: pitchingPlan.seasonStarterVsLHB },
+                  { label: "vs RHB", line: pitchingPlan.seasonStarterVsRHB },
+                ]}
+              />
+            ) : null}
 
-          {st?.runnerSituations ? (
-            <div>
-              <h3 className="font-display text-sm font-semibold text-[var(--text)]">Runner situation</h3>
-              <div className="mt-2 overflow-x-auto rounded-lg border border-[var(--border)]">
-                <table className="w-full border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
-                      <th className="px-2 py-1.5 text-left font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                        Situation
-                      </th>
-                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                        PA
-                      </th>
-                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                        H
-                      </th>
-                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                        BAA
-                      </th>
-                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                        R
-                      </th>
-                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                        ER
-                      </th>
-                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                        BB
-                      </th>
-                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                        SO
-                      </th>
-                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                        SV
-                      </th>
-                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                        WHIP
-                      </th>
-                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                        ERA
-                      </th>
-                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                        K%
-                      </th>
-                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                        BB%
-                      </th>
-                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                        P/PA
-                      </th>
-                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                        Strike%
-                      </th>
-                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                        FPS%
-                      </th>
-                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                        Swing%
-                      </th>
-                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                        Whiff%
-                      </th>
-                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                        Foul%
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(
-                      [
-                        ["Bases empty", st.runnerSituations.basesEmpty.combined],
-                        ["Runners on", st.runnerSituations.runnersOn.combined],
-                        ["RISP", st.runnerSituations.risp.combined],
-                        ["Bases loaded", st.runnerSituations.basesLoaded.combined],
-                      ] as const
-                    ).map(([label, line]) => (
-                      <tr key={label} className="border-b border-[var(--border)]">
-                        <td className="px-2 py-1.5 text-left font-medium text-[var(--text)]">{label}</td>
-                        {pitchingExtendedSplitStatCells(line)}
+            {st?.runnerSituations ? (
+              <div className={PITCHING_EXT_BLOCK_CLASS} data-pdf-avoid-break>
+                <h3 className="font-display text-sm font-semibold text-[var(--text)]">Runner situation</h3>
+                <div className="mt-2 overflow-x-auto rounded-lg border border-[var(--border)]">
+                  <table className={PITCHING_EXT_TABLE_CLASS}>
+                    <thead>
+                      <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
+                        <th className={PITCHING_EXT_LABEL_TH}>Situation</th>
+                        <th className={PITCHING_EXT_STAT_TH}>PA</th>
+                        <th className={PITCHING_EXT_STAT_TH}>H</th>
+                        <th className={PITCHING_EXT_STAT_TH}>BAA</th>
+                        <th className={PITCHING_EXT_STAT_TH}>R</th>
+                        <th className={PITCHING_EXT_STAT_TH}>ER</th>
+                        <th className={PITCHING_EXT_STAT_TH}>BB</th>
+                        <th className={PITCHING_EXT_STAT_TH}>SO</th>
+                        <th className={PITCHING_EXT_STAT_TH}>SV</th>
+                        <th className={PITCHING_EXT_STAT_TH}>WHIP</th>
+                        <th className={PITCHING_EXT_STAT_TH}>ERA</th>
+                        <th className={PITCHING_EXT_STAT_TH}>K%</th>
+                        <th className={PITCHING_EXT_STAT_TH}>BB%</th>
+                        <th className={PITCHING_EXT_STAT_TH}>P/PA</th>
+                        <th className={PITCHING_EXT_STAT_TH}>Strike%</th>
+                        <th className={PITCHING_EXT_STAT_TH}>FPS%</th>
+                        <th className={PITCHING_EXT_STAT_TH}>Swing%</th>
+                        <th className={PITCHING_EXT_STAT_TH}>Whiff%</th>
+                        <th className={PITCHING_EXT_STAT_TH}>Foul%</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : null}
-
-          {st?.statsByFinalCount?.overall ? (
-            <div>
-              <h3 className="font-display text-sm font-semibold text-[var(--text)]">By final count</h3>
-              <p className="mt-1 text-[10px] text-[var(--text-muted)]">Rows with at least {MIN_PITCH_FINAL_COUNT_PRINT} PA only.</p>
-              <div className="mt-2 overflow-x-auto rounded-lg border border-[var(--border)]">
-                <table className="w-full border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
-                      <th className="px-2 py-1.5 text-left font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                        Count
-                      </th>
-                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                        PA
-                      </th>
-                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                        ERA
-                      </th>
-                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                        K%
-                      </th>
-                      <th className="whitespace-nowrap px-2 py-1.5 text-right font-display text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[var(--text-muted)] print:text-xs">
-                        BB%
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {FINAL_COUNT_PAIRS.map(([b, s]) => {
-                      const key = finalCountBucketKey(b, s);
-                      const row = st.statsByFinalCount!.overall[key];
-                      const pa = row?.rates?.pa ?? 0;
-                      if (!row || pa < MIN_PITCH_FINAL_COUNT_PRINT) return null;
-                      return (
-                        <tr key={key} className="border-b border-[var(--border)]">
-                          <td className="px-2 py-1.5 text-left font-medium text-[var(--text)]">{key}</td>
-                          <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">
-                            {pa}
-                          </td>
-                          <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">
-                            {fmtPitchDec(row.era, 2)}
-                          </td>
-                          <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">
-                            {pct1(row.rates.kPct)}
-                          </td>
-                          <td className="whitespace-nowrap px-2 py-1.5 text-right font-display tabular-nums text-[var(--text)]">
-                            {pct1(row.rates.bbPct)}
-                          </td>
+                    </thead>
+                    <tbody>
+                      {(
+                        [
+                          ["No runners on base", st.runnerSituations.basesEmpty.combined],
+                          ["Any runner on base", st.runnerSituations.runnersOn.combined],
+                          ["RISP", st.runnerSituations.risp.combined],
+                          ["Bases loaded", st.runnerSituations.basesLoaded.combined],
+                        ] as const
+                      ).map(([label, line]) => (
+                        <tr key={label} className="border-b border-[var(--border)]">
+                          <td className={PITCHING_EXT_LABEL_TD}>{label}</td>
+                          {pitchingExtendedSplitStatCells(line)}
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          ) : null}
+            ) : null}
+
+            {!pdfCapture && st?.statsByFinalCount?.overall ? (
+              <div>
+                <h3 className="font-display text-sm font-semibold text-[var(--text)]">By final count</h3>
+                <p className={`mt-1 text-[10px] text-[var(--text-muted)] ${PREGAME_PDF_SUBHEADER_CLASS}`}>
+                  Rows with at least {MIN_PITCH_FINAL_COUNT_PRINT} PA only.
+                </p>
+                <div className="mt-2 overflow-x-auto rounded-lg border border-[var(--border)]">
+                  <table className="w-full border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
+                        <th className={PITCHING_EXT_LABEL_TH}>Count</th>
+                        <th className={PITCHING_EXT_STAT_TH}>PA</th>
+                        <th className={PITCHING_EXT_STAT_TH}>ERA</th>
+                        <th className={PITCHING_EXT_STAT_TH}>K%</th>
+                        <th className={PITCHING_EXT_STAT_TH}>BB%</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {FINAL_COUNT_PAIRS.map(([b, s]) => {
+                        const key = finalCountBucketKey(b, s);
+                        const row = st.statsByFinalCount!.overall[key];
+                        const pa = row?.rates?.pa ?? 0;
+                        if (!row || pa < MIN_PITCH_FINAL_COUNT_PRINT) return null;
+                        return (
+                          <tr key={key} className="border-b border-[var(--border)]">
+                            <td className={PITCHING_EXT_LABEL_TD}>{key}</td>
+                            <td className="whitespace-nowrap px-1 py-1 text-right font-display tabular-nums text-[var(--text)]">
+                              {pa}
+                            </td>
+                            <td className="whitespace-nowrap px-1 py-1 text-right font-display tabular-nums text-[var(--text)]">
+                              {fmtPitchDec(row.era, 2)}
+                            </td>
+                            <td className="whitespace-nowrap px-1 py-1 text-right font-display tabular-nums text-[var(--text)]">
+                              {pct1(row.rates.kPct)}
+                            </td>
+                            <td className="whitespace-nowrap px-1 py-1 text-right font-display tabular-nums text-[var(--text)]">
+                              {pct1(row.rates.bbPct)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
 
           <PitchMixPrintSection rows={pitchingPlan.pitchMix} />
         </div>
       ) : null}
 
       {!o || (o.rates?.pa ?? 0) < 1 ? (
-        <PitchMixPrintSection rows={pitchingPlan.pitchMix} className="mt-6" />
+        <div data-pdf-subsection="pitcher-pitch-mix">
+          <PitchMixPrintSection rows={pitchingPlan.pitchMix} className="mt-6" />
+        </div>
       ) : null}
     </section>
   );
@@ -1214,11 +1174,16 @@ export function PreGameReport({
   roster,
   statsByPlayerId,
   overview,
+  captureRef,
+  pdfCapture = false,
 }: {
   game: Game;
   roster: Player[];
   statsByPlayerId: Record<string, BattingStatsWithSplits | undefined>;
   overview: PreGameOverviewPayload | null;
+  /** Root element rasterized for PDF export. */
+  captureRef?: RefObject<HTMLDivElement | null>;
+  pdfCapture?: boolean;
 }) {
   const batters = useMemo(() => roster.filter((p) => !isPitcherPlayer(p)), [roster]);
 
@@ -1280,34 +1245,48 @@ export function PreGameReport({
     });
   }, [batters, statsByPlayerId, lineupStatsMap, overview?.pregameWindowRispStatsByPlayerId]);
 
-  const seasonAvgLine = (playerId: string): { avg: string; ops: string; paNote: string } => {
+  const seasonAvgLine = (playerId: string): { avg: string; ops: string } => {
     const s = statsByPlayerId[playerId]?.overall ?? lineupStatsMap?.[playerId]?.overall;
-    const pa = s?.pa ?? 0;
     return {
       avg: fmtSeason(s?.avg),
       ops: fmtSeason(s?.ops),
-      paNote: pa >= 1 ? `${pa} PA` : "",
     };
   };
 
+  const LINEUP_NAME_CLASS =
+    "pregame-lineup-name text-lg font-bold leading-snug text-[var(--text)] sm:text-xl print:text-xl";
+  const LINEUP_META_CLASS =
+    "pregame-lineup-meta mt-0.5 text-base font-semibold leading-snug text-[var(--text-muted)] print:text-lg";
+  const LINEUP_STATS_CLASS =
+    "pregame-lineup-stats shrink-0 text-base font-bold leading-snug tabular-nums text-[var(--text)] print:text-lg";
+
   return (
-    <div className="space-y-8 print:space-y-0">
-      <p className="rounded-lg border border-dashed border-[var(--border)] bg-[var(--bg-elevated)]/35 px-4 py-3 text-sm leading-relaxed text-[var(--text-muted)] print:hidden">
-        On-screen preview of the pre-game PDF. Use your browser&apos;s Print dialog and choose &quot;Save as PDF&quot; to
-        export the same layout.
-      </p>
+    <div
+      ref={captureRef}
+      className={`pregame-report-root space-y-8 print:space-y-0${pdfCapture ? " reports-print-area reports-pdf-capture" : ""}`}
+    >
+      {!pdfCapture ? (
+        <p
+          data-pdf-exclude="true"
+          className="reports-screen-only rounded-lg border border-dashed border-[var(--border)] bg-[var(--bg-elevated)]/35 px-4 py-3 text-sm leading-relaxed text-[var(--text-muted)] print:hidden"
+        >
+          On-screen preview of the pre-game report. Use{" "}
+          <span className="font-semibold text-[var(--text)]">Export PDF</span> above to download and open the same
+          report in a new tab.
+        </p>
+      ) : null}
       <section className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6">
         <h1 className="font-display text-2xl font-bold text-[var(--text)]">{matchupLabelUsFirst(game, true)}</h1>
         <p className="mt-1 text-sm text-[var(--text-muted)]">
-          {formatDateMMDDYYYY(game.date)} · {ourVenueLabel(game)} · Logged season AVG / OPS / PA
+          {formatDateMMDDYYYY(game.date)} · {ourVenueLabel(game)} · Logged season AVG / OPS
         </p>
 
-        <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 print:grid-cols-2">
-          <div className="rounded-lg border border-[var(--border)] p-4">
-            <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-[var(--accent)]">
+        <div className="pregame-lineup-grid mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 print:grid-cols-2">
+          <div className="pregame-lineup-panel rounded-lg border border-[var(--border)] p-4 print:p-5">
+            <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-[var(--accent)] print:text-base">
               Starters
             </h2>
-            <ul className="mt-3 space-y-2.5">
+            <ul className="mt-3 space-y-3 print:space-y-3.5">
               {ourLineup.map((row) => {
                 const p = resolvePlayer(row.player_id, overview, roster);
                 const pos =
@@ -1316,76 +1295,80 @@ export function PreGameReport({
                 const bat = batsAbbr(p?.bats);
                 const st = seasonAvgLine(row.player_id);
                 return (
-                  <li key={`print-our-${row.slot}-${row.player_id}`} className="flex items-start justify-between gap-3">
+                  <li key={`print-our-${row.slot}-${row.player_id}`} className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-[var(--text)]">
+                      <p className={LINEUP_NAME_CLASS}>
                         {row.slot}. {p?.name ?? "Unknown"}
                       </p>
-                      <p className="text-[11px] text-[var(--text-muted)]">
+                      <p className={LINEUP_META_CLASS}>
                         #{jersey} · {pos}
                         {bat !== "—" ? ` · ${bat}` : ""}
                       </p>
                     </div>
-                    <p className="shrink-0 text-[11px] font-semibold tabular-nums text-[var(--text)]">
+                    <p className={LINEUP_STATS_CLASS}>
                       AVG {st.avg} · OPS {st.ops}
-                      {st.paNote ? ` · ${st.paNote}` : ""}
                     </p>
                   </li>
                 );
               })}
             </ul>
-            <div className="mt-4 border-t border-[var(--border)] pt-3 px-1 py-1">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Starting pitcher</p>
-              <div className="mt-1 flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-[var(--text)]">{ourStarterSummary?.name ?? "—"}</p>
-                  <p className="text-[11px] text-[var(--text-muted)]">
-                    #{ourSp?.jersey?.trim() || "—"} · {pitcherHandLabel(ourSp?.throws ?? null)}
-                  </p>
-                </div>
-                <p className="shrink-0 text-[11px] font-semibold tabular-nums text-[var(--text)]">
-                  ERA {ourStarterSummary?.seasonEra ?? "—"}
-                </p>
-              </div>
-            </div>
           </div>
 
-          <div className="rounded-lg border border-[var(--border)] p-4">
-            <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-[var(--accent)]">Bench</h2>
+          <div className="pregame-lineup-panel rounded-lg border border-[var(--border)] p-4 print:p-5">
+            <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-[var(--accent)] print:text-base">
+              Bench
+            </h2>
             {ourBench.length > 0 ? (
-              <ul className="mt-3 space-y-2.5">
+              <ul className="mt-3 space-y-3 print:space-y-3.5">
                 {ourBench.map((p) => {
                   const pos = p.positions?.filter((x) => x.trim().toUpperCase() !== "P")[0] || "—";
                   const jersey = p.jersey?.trim() || "—";
                   const bat = batsAbbr(p.bats);
                   const st = seasonAvgLine(p.id);
                   return (
-                    <li key={`print-bench-${p.id}`} className="flex items-start justify-between gap-3">
+                    <li key={`print-bench-${p.id}`} className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold text-[var(--text)]">{p.name}</p>
-                        <p className="text-[11px] text-[var(--text-muted)]">
+                        <p className={LINEUP_NAME_CLASS}>{p.name}</p>
+                        <p className={LINEUP_META_CLASS}>
                           #{jersey} · {pos}
                           {bat !== "—" ? ` · ${bat}` : ""}
                         </p>
                       </div>
-                      <p className="shrink-0 text-[11px] font-semibold tabular-nums text-[var(--text)]">
+                      <p className={LINEUP_STATS_CLASS}>
                         AVG {st.avg} · OPS {st.ops}
-                        {st.paNote ? ` · ${st.paNote}` : ""}
                       </p>
                     </li>
                   );
                 })}
               </ul>
             ) : (
-              <p className="mt-3 text-sm text-[var(--text-muted)]">No bench hitters outside the lineup.</p>
+              <p className="mt-3 text-sm text-[var(--text-muted)] print:text-base">
+                No bench hitters outside the lineup.
+              </p>
             )}
+            <div className="mt-4 border-t border-[var(--border)] pt-4 print:pt-4">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] print:text-xs">
+                Starting pitcher
+              </p>
+              <div className="mt-1.5 flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className={LINEUP_NAME_CLASS}>{ourStarterSummary?.name ?? "—"}</p>
+                  <p className={LINEUP_META_CLASS}>
+                    #{ourSp?.jersey?.trim() || "—"} · {pitcherHandLabel(ourSp?.throws ?? null)}
+                  </p>
+                </div>
+                <p className={LINEUP_STATS_CLASS}>ERA {ourStarterSummary?.seasonEra ?? "—"}</p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {rep?.pitchingPlan ? <PreGamePitchingPlanPrintSection pitchingPlan={rep.pitchingPlan} /> : null}
+      {rep?.pitchingPlan ? (
+        <PreGamePitchingPlanPrintSection pitchingPlan={rep.pitchingPlan} pdfCapture={pdfCapture} />
+      ) : null}
 
-      <section className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6 print:break-before-page">
+      <section className="pregame-pdf-section-break rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6 print:break-before-page">
         <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--text)]">Platoon splits</h2>
         <div className="mt-4 overflow-x-auto rounded-lg border border-[var(--border)]">
           <table className="w-full border-collapse text-xs">
@@ -1454,7 +1437,7 @@ export function PreGameReport({
         </div>
       </section>
 
-      <section className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6 print:break-before-page">
+      <section className="pregame-pdf-section-break rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6 print:break-before-page">
         <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--text)]">RISP and situational hitting</h2>
         <p className="mt-1 text-xs text-[var(--text-muted)]">
           Team row: plate appearances with runners in scoring position only (rates below use that sample).
@@ -1573,10 +1556,8 @@ export function PreGameReport({
         )}
       </section>
 
-      {rep?.coachHittingNotes ? (
-        <div className="print:break-before-page">
-          <CoachHittingNotesSection notes={rep.coachHittingNotes} forPrint />
-        </div>
+      {rep?.coachHittingNotes && !pdfCapture ? (
+        <CoachHittingNotesSection notes={rep.coachHittingNotes} forPrint />
       ) : null}
     </div>
   );

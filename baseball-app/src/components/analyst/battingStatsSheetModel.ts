@@ -46,6 +46,9 @@ export type BattingSheetSortKey =
   | "iffPct"
   | "e";
 
+/** Profile-only column keys (not used on stat sheet sort). */
+export type ProfileBattingColumnKey = BattingSheetSortKey | "countStatePitches";
+
 export type BattingSheetColumnDef = {
   key: BattingSheetSortKey;
   label: string;
@@ -182,6 +185,76 @@ export function battingSheetDataColumns(mode: BattingSheetColumnMode): BattingSh
   return battingSheetColumnsForMode(mode).slice(1);
 }
 
+/** Stats omitted from profile compact tables (not the full season line). */
+const PROFILE_COMPACT_EXCLUDED_KEYS = new Set<BattingSheetSortKey>([
+  "gp",
+  "gs",
+  "pPa",
+  "sb",
+  "cs",
+  "sbPct",
+  "e",
+]);
+
+/** @deprecated Use {@link battingSheetDataColumnsForProfileCompact}. */
+export function battingSheetDataColumnsForFinalCount(mode: BattingSheetColumnMode): BattingSheetColumnDef[] {
+  return battingSheetDataColumnsForProfileCompact(mode);
+}
+
+/** Profile split / by-final-count tables — drops G/GS, P/PA, baserunning, and E. */
+export function battingSheetDataColumnsForProfileCompact(mode: BattingSheetColumnMode): BattingSheetColumnDef[] {
+  return battingSheetDataColumns(mode).filter((c) => !PROFILE_COMPACT_EXCLUDED_KEYS.has(c.key));
+}
+
+export type ProfileBattingColumnDef =
+  | BattingSheetColumnDef
+  | {
+      key: "countStatePitches";
+      label: string;
+      align: "right";
+      format: "int";
+      tooltip: string;
+    }
+
+const PROFILE_COUNT_STATE_PITCHES_COL: ProfileBattingColumnDef = {
+  key: "countStatePitches",
+  label: "#",
+  align: "right",
+  format: "int",
+  tooltip: BATTING_STAT_HEADER_TOOLTIPS.countStatePitches,
+};
+
+/** Discipline-by-count profile table: compact contact columns + pitch count after PA. */
+export function battingSheetDataColumnsForCountStateDiscipline(): ProfileBattingColumnDef[] {
+  const compact = battingSheetDataColumnsForProfileCompact("contact");
+  const paIdx = compact.findIndex((c) => c.key === "pa");
+  if (paIdx < 0) return [...compact, PROFILE_COUNT_STATE_PITCHES_COL];
+  return [
+    ...compact.slice(0, paIdx + 1),
+    PROFILE_COUNT_STATE_PITCHES_COL,
+    ...compact.slice(paIdx + 1),
+  ];
+}
+
+export function battingSheetProfileCompactStatBorderLeft(
+  mode: BattingSheetColumnMode,
+  key: ProfileBattingColumnKey
+): boolean {
+  if (key === "countStatePitches") return true;
+  if (mode === "contact") {
+    return key === "swingPct" || key === "gbPct";
+  }
+  return key === "kPct" || key === "avg";
+}
+
+/** @deprecated Use {@link battingSheetProfileCompactStatBorderLeft}. */
+export function battingSheetFinalCountStatBorderLeft(
+  mode: BattingSheetColumnMode,
+  key: BattingSheetSortKey
+): boolean {
+  return battingSheetProfileCompactStatBorderLeft(mode, key);
+}
+
 export function battingSheetContactStatBorderLeft(key: BattingSheetSortKey): boolean {
   return key === "pPa" || key === "swingPct" || key === "gbPct" || key === "e";
 }
@@ -232,6 +305,19 @@ export function formatBattingSheetDataCell(
     return typeof v === "number" ? formatBattingSheetNumber(v, "int") : "—";
   }
   return "—";
+}
+
+/** Profile table cell (includes count-state `#` pitches column). */
+export function formatProfileBattingSheetCell(
+  col: ProfileBattingColumnDef,
+  line: BattingStats | undefined,
+  baserunningSource: BattingStats | undefined,
+  countStatePitches?: number
+): string {
+  if (col.key === "countStatePitches") {
+    return countStatePitches != null && countStatePitches > 0 ? String(countStatePitches) : "—";
+  }
+  return formatBattingSheetDataCell(col, line, baserunningSource);
 }
 
 /** Raw numeric value for a cell (same sourcing rules as {@link formatBattingSheetDataCell}). */

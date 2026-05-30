@@ -12,21 +12,21 @@ const ibmPlexSans = IBM_Plex_Sans({
 
 const ibmPlexMono = IBM_Plex_Mono({
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: ["400", "500"],
   display: "swap",
   variable: "--font-ibm-plex-mono",
 });
 
 const oswald = Oswald({
   subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  weight: ["500", "600"],
   display: "swap",
   variable: "--font-oswald",
 });
 
 const orbitron = Orbitron({
   subsets: ["latin"],
-  weight: ["500", "600", "700", "800", "900"],
+  weight: ["600", "700"],
   display: "swap",
   variable: "--font-orbitron",
 });

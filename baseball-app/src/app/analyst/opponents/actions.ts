@@ -1,24 +1,27 @@
 "use server";
 
+import { getCachedGames } from "@/lib/db/cachedQueries";
 import {
   deleteTrackedOpponent,
-  getGames,
   insertTrackedOpponent,
   updateTrackedOpponent,
 } from "@/lib/db/queries";
+import { revalidateTrackedOpponentsCache } from "@/lib/db/revalidateLists";
 import { opponentNameKey, uniqueOpponentNames } from "@/lib/opponentUtils";
 
 export async function addTrackedOpponentAction(name: string): Promise<{ ok: boolean; error?: string }> {
   const trimmed = name.trim().replace(/\s+/g, " ");
   if (!trimmed) return { ok: false, error: "Enter a team name." };
 
-  const games = await getGames();
+  const games = await getCachedGames();
   const fromGames = uniqueOpponentNames(games);
   if (fromGames.some((n) => opponentNameKey(n) === opponentNameKey(trimmed))) {
     return { ok: false, error: "That team is already listed from your games." };
   }
 
-  return insertTrackedOpponent(trimmed);
+  const result = await insertTrackedOpponent(trimmed);
+  if (result.ok) revalidateTrackedOpponentsCache();
+  return result;
 }
 
 export async function updateTrackedOpponentAction(
@@ -28,15 +31,19 @@ export async function updateTrackedOpponentAction(
   const trimmed = newName.trim().replace(/\s+/g, " ");
   if (!trimmed) return { ok: false, error: "Enter a team name." };
 
-  const games = await getGames();
+  const games = await getCachedGames();
   const fromGames = uniqueOpponentNames(games);
   if (fromGames.some((n) => opponentNameKey(n) === opponentNameKey(trimmed))) {
     return { ok: false, error: "That team is already listed from your games." };
   }
 
-  return updateTrackedOpponent(id, trimmed);
+  const result = await updateTrackedOpponent(id, trimmed);
+  if (result.ok) revalidateTrackedOpponentsCache();
+  return result;
 }
 
 export async function deleteTrackedOpponentAction(id: string): Promise<{ ok: boolean; error?: string }> {
-  return deleteTrackedOpponent(id);
+  const result = await deleteTrackedOpponent(id);
+  if (result.ok) revalidateTrackedOpponentsCache();
+  return result;
 }

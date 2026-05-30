@@ -17,10 +17,53 @@ export const ANALYST_NAV_LINKS: readonly AnalystNavLink[] = [
   { href: "/analyst/run-expectancy", label: "Run Expectancy", icon: "\u{1F9EE}" },
 ] as const;
 
+/** Opponent roster uses `/analyst/roster?opponentTeam=…` — treat as Opponents section, not club Roster. */
+export function opponentTeamFromSearchParams(
+  searchParams: Pick<URLSearchParams, "get"> | null | undefined
+): string | null {
+  const raw = searchParams?.get("opponentTeam");
+  if (!raw?.trim()) return null;
+  try {
+    return decodeURIComponent(raw.trim());
+  } catch {
+    return raw.trim();
+  }
+}
+
+export function isOpponentRosterContext(
+  pathname: string,
+  searchParams: Pick<URLSearchParams, "get"> | null | undefined
+): boolean {
+  return pathname === "/analyst/roster" && opponentTeamFromSearchParams(searchParams) != null;
+}
+
+/** Sidebar active state — mirrors breadcrumb section for opponent roster. */
+export function isAnalystNavLinkActive(
+  linkHref: string,
+  pathname: string,
+  searchParams: Pick<URLSearchParams, "get"> | null | undefined
+): boolean {
+  if (linkHref === "/analyst") return pathname === "/analyst";
+
+  if (isOpponentRosterContext(pathname, searchParams)) {
+    if (linkHref === "/analyst/roster") return false;
+    if (linkHref === "/analyst/opponents") return true;
+  }
+
+  return pathname === linkHref || pathname.startsWith(`${linkHref}/`);
+}
+
 /**
  * The sidebar section for this path: longest matching nav href (same idea as AnalystNav active state).
  */
-export function analystNavSectionForPath(pathname: string): AnalystNavLink | null {
+export function analystNavSectionForPath(
+  pathname: string,
+  searchParams?: Pick<URLSearchParams, "get"> | null
+): AnalystNavLink | null {
+  if (isOpponentRosterContext(pathname, searchParams)) {
+    return ANALYST_NAV_LINKS.find((l) => l.href === "/analyst/opponents") ?? null;
+  }
+
   const sorted = [...ANALYST_NAV_LINKS].sort((a, b) => b.href.length - a.href.length);
   for (const link of sorted) {
     if (link.href === "/analyst") {

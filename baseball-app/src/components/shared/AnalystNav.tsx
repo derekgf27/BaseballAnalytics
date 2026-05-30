@@ -2,14 +2,15 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { ANALYST_NAV_LINKS } from "@/lib/analystNavLinks";
+import { usePathname, useSearchParams } from "next/navigation";
+import { ANALYST_NAV_LINKS, isAnalystNavLinkActive } from "@/lib/analystNavLinks";
 import { guardNavUntilSidebarExpanded } from "@/lib/sidebarCollapsedNav";
 
 const STORAGE_KEY = "analyst-sidebar-collapsed";
 
 export function AnalystNav() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
@@ -66,10 +67,7 @@ export function AnalystNav() {
         className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto py-3"
       >
         {ANALYST_NAV_LINKS.map(({ href, label, icon }) => {
-          const active =
-            href === "/analyst"
-              ? pathname === "/analyst"
-              : pathname.startsWith(href);
+          const active = isAnalystNavLinkActive(href, pathname, searchParams);
           return (
             <Link
               key={href}

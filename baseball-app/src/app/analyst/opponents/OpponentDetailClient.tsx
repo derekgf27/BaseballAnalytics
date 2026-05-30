@@ -164,6 +164,19 @@ export function OpponentDetailClient({
     return raw.filter((e) => ids.has(e.pa_id));
   }, [battingMatchupPayload?.pitchEvents, filteredMatchupPas]);
 
+  const displayBattingPas = useMemo(
+    () => filteredMatchupPas ?? battingMatchupPayload?.pas ?? [],
+    [filteredMatchupPas, battingMatchupPayload?.pas]
+  );
+
+  const displayBattingPitchEvents = useMemo(
+    () =>
+      filteredMatchupPas
+        ? filteredBattingPitchEvents
+        : (battingMatchupPayload?.pitchEvents ?? []),
+    [filteredMatchupPas, filteredBattingPitchEvents, battingMatchupPayload?.pitchEvents]
+  );
+
   const displayBattingStatsWithSplits = useMemo(() => {
     if (!filteredMatchupPas || !battingMatchupPayload) return opponentBattingStatsWithSplits;
     return computeBattingStatsWithSplitsFromPas(
@@ -213,6 +226,24 @@ export function OpponentDetailClient({
     const ids = new Set(filteredPitchingMatchupPas.map((p) => p.id));
     return raw.filter((e) => ids.has(e.pa_id));
   }, [pitchingMatchupPayload?.pitchEvents, filteredPitchingMatchupPas]);
+
+  const displayPitchingPas = useMemo(
+    () => filteredPitchingMatchupPas ?? pitchingMatchupPayload?.pas ?? [],
+    [filteredPitchingMatchupPas, pitchingMatchupPayload?.pas]
+  );
+
+  const displayPitchingPitchEvents = useMemo(
+    () =>
+      filteredPitchingMatchupPas
+        ? filteredPitchingPitchEvents
+        : (pitchingMatchupPayload?.pitchEvents ?? []),
+    [filteredPitchingMatchupPas, filteredPitchingPitchEvents, pitchingMatchupPayload?.pitchEvents]
+  );
+
+  const pitchBatterBatsByIdObj = useMemo(
+    () => Object.fromEntries(pitchBatterBatsMap.entries()),
+    [pitchBatterBatsMap]
+  );
 
   const displayPitchingGames = useMemo(() => {
     if (!pitchingMatchupPayload?.games?.length) return undefined;
@@ -415,6 +446,9 @@ export function OpponentDetailClient({
           <BattingStatsSheet
             players={battingSheetPlayers}
             battingStatsWithSplits={displayBattingStatsWithSplits}
+            pas={battingMatchupPayload ? displayBattingPas : undefined}
+            pitchEvents={battingMatchupPayload ? displayBattingPitchEvents : undefined}
+            startedGameIdsByPlayer={battingMatchupPayload?.startedGameIdsByPlayer}
             heading="Batting stats"
             subheading={`${opponentName} vs ${ourTeamLabel} — tagged opponent players only; PAs when they batted against you.`}
             splitDisabled={!!matchupPitcherId}
@@ -456,6 +490,10 @@ export function OpponentDetailClient({
           <PitchingStatsSheet
             players={pitchingSheetPlayers}
             pitchingStatsWithSplits={displayPitchingStatsWithSplits}
+            pas={pitchingMatchupPayload ? displayPitchingPas : undefined}
+            pitchEvents={pitchingMatchupPayload ? displayPitchingPitchEvents : undefined}
+            starterGameIdsByPlayer={pitchingMatchupPayload?.starterGameIdsByPlayer}
+            batterBatsById={pitchBatterBatsByIdObj}
             heading="Pitching stats"
             subheading={`${opponentName} vs ${ourTeamLabel} — tagged opponent pitchers only; PAs when they pitched against you.`}
             splitDisabled={!!pitchMatchupBatterId}

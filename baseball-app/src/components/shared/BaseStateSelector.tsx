@@ -2,9 +2,9 @@
 
 /**
  * Tap bases to set runner state. base_state = "1st, 2nd, 3rd" as 3-char string "100" = first only.
- * Optional: show player names on each base and let user pick who's on base (for tracking runs/scored and stolen bases).
+ * With runner tracking: tap occupied base → tap destination to move; quick advance / clear buttons.
  */
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { BaseState } from "@/lib/types";
 
 const BASE_LABELS = ["1st", "2nd", "3rd"] as const;
@@ -33,7 +33,7 @@ interface BaseStateSelectorProps {
   runnerOptions?: RunnerOption[];
   /** Current batter ID – excluded from runner options so batter can't be on base. */
   currentBatterId?: string | null;
-  /** Log SB/CS for the runner on this base (saved immediately; does not change base state). */
+  /** Log SB/CS for the runner on this base (saved immediately; advances/removes runner on diamond). */
   onBaserunning?: (args: {
     baseIndex: 0 | 1 | 2;
     runnerId: string;
@@ -89,6 +89,9 @@ function SvgRunnerNameLabel({
   );
 }
 
+const quickBtnClass =
+  "min-h-[36px] min-w-0 flex-1 rounded-lg border px-2 py-1 text-xs font-bold tracking-wide transition touch-manipulation";
+
 export function BaseStateSelector({
   value,
   onChange,
@@ -99,18 +102,57 @@ export function BaseStateSelector({
   currentBatterId,
   onBaserunning,
 }: BaseStateSelectorProps) {
+  const [moveFromBase, setMoveFromBase] = useState<0 | 1 | 2 | null>(null);
+
   const bits = value.split("").map((c) => c === "1");
+  const runnerTracking = Boolean(onRunnerChange && runnerOptions.length > 0);
+
   const optionsExcludingBatter = useMemo(
     () =>
       currentBatterId ? runnerOptions.filter((p) => p.id !== currentBatterId) : runnerOptions,
     [runnerOptions, currentBatterId]
   );
 
+  useEffect(() => {
+    if (moveFromBase == null) return;
+    if (!bits[moveFromBase] || !runnerIds[moveFromBase]) setMoveFromBase(null);
+  }, [bits, runnerIds, moveFromBase]);
+
+  const bitsToState = (next: boolean[]): BaseState =>
+    next.map((b) => (b ? "1" : "0")).join("") as BaseState;
+
   const setBit = (index: number, on: boolean) => {
     const next = [...bits];
     next[index] = on;
-    onChange(next.map((b) => (b ? "1" : "0")).join(""));
+    onChange(bitsToState(next));
     if (!on && onRunnerChange) onRunnerChange(index as 0 | 1 | 2, null);
+  };
+
+  const clearBase = (baseIdx: 0 | 1 | 2) => {
+    setMoveFromBase(null);
+    setBit(baseIdx, false);
+  };
+
+  const moveRunnerToBase = (fromIdx: 0 | 1 | 2, toIdx: 0 | 1 | 2, playerId: string) => {
+    const next = [...bits];
+    next[fromIdx] = false;
+    next[toIdx] = true;
+    onChange(bitsToState(next));
+    onRunnerChange!(fromIdx, null);
+    onRunnerChange!(toIdx, playerId);
+  };
+
+  const advanceRunnerOneBase = (fromIdx: 0 | 1 | 2) => {
+    const playerId = runnerIds[fromIdx];
+    if (!playerId) return;
+    if (fromIdx === 2) {
+      clearBase(2);
+      return;
+    }
+    const toIdx = (fromIdx + 1) as 0 | 1 | 2;
+    if (bits[toIdx]) return;
+    moveRunnerToBase(fromIdx, toIdx, playerId);
+    setMoveFromBase(null);
   };
 
   const getRunnerName = (id: string | null) => {
@@ -126,11 +168,76 @@ export function BaseStateSelector({
     return j != null && String(j).trim() !== "" ? String(j).trim() : null;
   };
 
+  const handleBaseClick = (baseIdx: 0 | 1 | 2) => {
+    if (disabled) return;
+
+    if (!runnerTracking) {
+      setBit(baseIdx, !bits[baseIdx]);
+      return;
+    }
+
+    const hasRunner = bits[baseIdx];
+    const runnerId = runnerIds[baseIdx] ?? null;
+
+    if (moveFromBase !== null) {
+      if (moveFromBase === baseIdx) {
+        setMoveFromBase(null);
+        return;
+      }
+      const fromId = runnerIds[moveFromBase] ?? null;
+      if (!fromId) {
+        setMoveFromBase(null);
+        return;
+      }
+      if (!hasRunner) {
+        moveRunnerToBase(moveFromBase, baseIdx, fromId);
+        setMoveFromBase(null);
+        return;
+      }
+      const destId = runnerIds[baseIdx] ?? null;
+      if (destId && destId !== fromId) {
+        onRunnerChange!(moveFromBase, destId);
+        onRunnerChange!(baseIdx, fromId);
+        setMoveFromBase(null);
+      }
+      return;
+    }
+
+    if (hasRunner && runnerId) {
+      setMoveFromBase(baseIdx);
+      return;
+    }
+
+    if (!hasRunner) {
+      setBit(baseIdx, true);
+      return;
+    }
+
+    clearBase(baseIdx);
+  };
+
+  const movingRunnerLabel =
+    moveFromBase != null && runnerIds[moveFromBase]
+      ? getLastName(getRunnerName(runnerIds[moveFromBase]) || "?")
+      : null;
+
   return (
     <div
       className="relative inline-block w-full max-w-[300px]"
       aria-label="Runners on base (diamond)"
     >
+      {runnerTracking && moveFromBase != null && movingRunnerLabel ? (
+        <p className="mb-1.5 text-[10px] leading-snug text-[var(--accent)]">
+          Moving <span className="font-semibold">{movingRunnerLabel}</span> — tap another base (tap
+          same base to cancel)
+        </p>
+      ) : runnerTracking ? (
+        <p className="mb-1.5 text-[10px] leading-snug text-[var(--text-muted)]">
+          Tap diamond to move · double-tap diamond or tap name below to remove · empty base adds a
+          runner
+        </p>
+      ) : null}
+
       <svg
         viewBox={VIEW_BOX}
         className="block h-auto w-full"
@@ -141,19 +248,27 @@ export function BaseStateSelector({
           const hasRunner = bits[baseIdx];
           const half = BASE_SIZE / 2;
           const runnerId = runnerIds[baseIdx] ?? null;
+          const isMoveSource = moveFromBase === baseIdx;
+          const isMoveTarget =
+            moveFromBase != null && moveFromBase !== baseIdx && (!hasRunner || runnerId != null);
           return (
             <g
               key={BASE_LABELS[baseIdx]}
               role="button"
               tabIndex={disabled ? undefined : 0}
-              aria-label={`${BASE_LABELS[baseIdx]} base${hasRunner ? ", runner on" : ""}`}
+              aria-label={`${BASE_LABELS[baseIdx]} base${hasRunner ? ", runner on" : ""}${isMoveSource ? ", selected to move" : ""}`}
               className={disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}
-              onClick={() => !disabled && setBit(baseIdx, !bits[baseIdx])}
+              onClick={() => handleBaseClick(baseIdx as 0 | 1 | 2)}
+              onDoubleClick={(e) => {
+                e.preventDefault();
+                if (disabled || !runnerTracking || moveFromBase != null) return;
+                if (hasRunner && runnerId) clearBase(baseIdx as 0 | 1 | 2);
+              }}
               onKeyDown={(e) => {
                 if (disabled) return;
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  setBit(baseIdx, !bits[baseIdx]);
+                  handleBaseClick(baseIdx as 0 | 1 | 2);
                 }
               }}
             >
@@ -162,9 +277,18 @@ export function BaseStateSelector({
                 y={y - half}
                 width={BASE_SIZE}
                 height={BASE_SIZE}
-                fill={hasRunner ? "#000000" : "#fafafa"}
-                stroke={hasRunner ? "var(--accent)" : "#e8e0d0"}
-                strokeWidth={2}
+                fill={hasRunner ? "#000000" : isMoveTarget ? "var(--accent-dim)" : "#fafafa"}
+                stroke={
+                  isMoveSource
+                    ? "var(--accent)"
+                    : isMoveTarget
+                      ? "var(--accent)"
+                      : hasRunner
+                        ? "var(--accent)"
+                        : "#e8e0d0"
+                }
+                strokeWidth={isMoveSource ? 4 : isMoveTarget ? 3 : 2}
+                strokeDasharray={isMoveTarget && !hasRunner ? "6 4" : undefined}
                 transform={`rotate(45 ${x} ${y})`}
               />
               {hasRunner && runnerId ? (
@@ -179,55 +303,124 @@ export function BaseStateSelector({
           );
         })}
       </svg>
-      {onRunnerChange && runnerOptions.length > 0 && (
+      {runnerTracking && (
         <div className="mt-1 flex w-full flex-col gap-2 text-xs">
           {BASE_POSITIONS.map((_, baseIdx) => {
             const hasRunner = bits[baseIdx];
             const runnerId = runnerIds[baseIdx] ?? null;
             if (!hasRunner) return null;
+
+            if (!runnerId) {
+              return (
+                <div key={baseIdx} className="flex min-w-0 w-full flex-col items-stretch gap-1">
+                  <span className="text-[11px] font-medium uppercase tracking-wider text-white">
+                    {BASE_LABELS[baseIdx]}
+                  </span>
+                  <select
+                    value=""
+                    onChange={(e) =>
+                      onRunnerChange!(baseIdx as 0 | 1 | 2, e.target.value || null)
+                    }
+                    onClick={(e) => e.stopPropagation()}
+                    className="input-tech min-h-[40px] w-full rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-2.5 py-1.5 text-sm font-semibold text-[var(--text)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
+                    aria-label={`Runner on ${BASE_LABELS[baseIdx]}`}
+                  >
+                    <option value="">Select runner…</option>
+                    {optionsExcludingBatter.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            }
+
+            const nextBaseIdx = baseIdx < 2 ? ((baseIdx + 1) as 0 | 1 | 2) : null;
+            const canAdvance = nextBaseIdx != null && !bits[nextBaseIdx];
+            const runnerLastName = getLastName(getRunnerName(runnerId));
             return (
-              <div key={baseIdx} className="flex min-w-0 w-full flex-col items-stretch gap-1">
-                <span className="text-[11px] font-medium uppercase tracking-wider text-white">
-                  {BASE_LABELS[baseIdx]}
-                </span>
-                <select
-                  value={runnerId ?? ""}
-                  onChange={(e) => onRunnerChange(baseIdx as 0 | 1 | 2, e.target.value || null)}
-                  onClick={(e) => e.stopPropagation()}
-                  className="input-tech min-h-[40px] w-full rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-2.5 py-1.5 text-sm font-semibold text-[var(--text)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
-                  aria-label={`Runner on ${BASE_LABELS[baseIdx]}`}
-                >
-                  <option value="">Select…</option>
-                  {optionsExcludingBatter.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-                {onBaserunning && runnerId ? (
-                  <div className="grid w-full grid-cols-2 gap-2">
+              <div key={baseIdx} className="flex min-w-0 w-full flex-col items-stretch gap-1.5">
+                <div className="min-w-0">
+                  <span className="text-[10px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
+                    {BASE_LABELS[baseIdx]}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => clearBase(baseIdx as 0 | 1 | 2)}
+                    className="mt-0.5 block max-w-full truncate text-left font-display text-xl font-bold leading-tight text-[var(--accent)] transition hover:text-[var(--accent)]/80 hover:underline touch-manipulation sm:text-2xl"
+                    title={`Remove ${runnerLastName} from ${BASE_LABELS[baseIdx]}`}
+                    aria-label={`Remove ${runnerLastName} from ${BASE_LABELS[baseIdx]}`}
+                  >
+                    {runnerLastName}
+                  </button>
+                </div>
+                <div className="grid w-full grid-cols-3 gap-1.5">
+                  {canAdvance ? (
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onBaserunning({ baseIndex: baseIdx as 0 | 1 | 2, runnerId, type: "sb" });
+                        advanceRunnerOneBase(baseIdx as 0 | 1 | 2);
                       }}
-                      className="min-h-[40px] w-full min-w-0 rounded-lg border-2 border-[var(--accent)]/50 bg-[var(--accent-dim)] px-2 py-1.5 text-sm font-bold tracking-wide text-[var(--accent)] transition hover:bg-[var(--accent)]/20 touch-manipulation"
+                      className={`${quickBtnClass} border-[var(--accent)]/55 bg-[var(--accent-dim)] text-[var(--accent)] hover:bg-[var(--accent)]/20`}
+                      title={`Move to ${BASE_LABELS[nextBaseIdx!]}`}
                     >
-                      SB
+                      → {BASE_LABELS[nextBaseIdx!]}
                     </button>
+                  ) : baseIdx === 2 && runnerId ? (
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onBaserunning({ baseIndex: baseIdx as 0 | 1 | 2, runnerId, type: "cs" });
+                        clearBase(2);
                       }}
-                      className="min-h-[40px] w-full min-w-0 rounded-lg border-2 border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1.5 text-sm font-bold tracking-wide text-[var(--text-muted)] transition hover:border-[var(--danger)]/50 hover:text-[var(--danger)] touch-manipulation"
+                      className={`${quickBtnClass} border-[var(--accent)]/55 bg-[var(--accent-dim)] text-[var(--accent)] hover:bg-[var(--accent)]/20`}
+                      title="Runner left base (mark scored in Who scored)"
                     >
-                      CS
+                      Off 3rd
                     </button>
-                  </div>
-                ) : null}
+                  ) : (
+                    <span className="min-h-[36px]" aria-hidden />
+                  )}
+                  {onBaserunning && runnerId ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onBaserunning({
+                            baseIndex: baseIdx as 0 | 1 | 2,
+                            runnerId,
+                            type: "sb",
+                          });
+                        }}
+                        className={`${quickBtnClass} border-[var(--accent)]/50 bg-[var(--accent-dim)] text-[var(--accent)] hover:bg-[var(--accent)]/20`}
+                      >
+                        SB
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onBaserunning({
+                            baseIndex: baseIdx as 0 | 1 | 2,
+                            runnerId,
+                            type: "cs",
+                          });
+                        }}
+                        className={`${quickBtnClass} border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:border-[var(--danger)]/50 hover:text-[var(--danger)]`}
+                      >
+                        CS
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="min-h-[36px]" aria-hidden />
+                      <span className="min-h-[36px]" aria-hidden />
+                    </>
+                  )}
+                </div>
               </div>
             );
           })}

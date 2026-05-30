@@ -1,0 +1,486 @@
+/**
+ * Pre-game PDF capture: mirror @media print layout while exporting via html2canvas
+ * (screen capture does not apply print media queries).
+ */
+
+.pregame-report-root.reports-pdf-capture,
+.reports-print-area.reports-pdf-capture {
+  --bg-base: #ffffff;
+  --bg-card: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-input: #ffffff;
+  --border: #cbd5e1;
+  --text: #000000;
+  --neo-text-muted: #000000;
+  --neo-text-faint: #000000;
+  --text-muted: #000000;
+  --text-faint: #000000;
+  --accent: #a16207;
+  --accent-dim: #ffffff;
+  --danger: #e11d48;
+  --danger-dim: rgba(225, 29, 72, 0.12);
+  --success: #16a34a;
+  --success-dim: rgba(22, 163, 74, 0.14);
+  background: #ffffff !important;
+  color: var(--text) !important;
+  border-color: #cbd5e1 !important;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.reports-pdf-capture [class*="text-white"] {
+  color: #000000 !important;
+}
+
+.reports-pdf-capture .reports-screen-only {
+  display: none !important;
+}
+
+.reports-pdf-capture .print\:hidden {
+  display: none !important;
+}
+
+.reports-pdf-capture .print\:break-before-page {
+  break-before: page;
+  page-break-before: always;
+  padding-top: 0.35rem;
+}
+
+.reports-pdf-capture .pregame-pdf-section-break {
+  margin-top: 0.75rem !important;
+  padding-top: 0 !important;
+}
+
+/* Tighter vertical rhythm — no phantom page gaps from print break padding */
+.reports-pdf-capture.pregame-report-root.space-y-8 > * + *,
+.reports-pdf-capture .pregame-report-root.space-y-8 > * + * {
+  margin-top: 0.75rem !important;
+}
+
+.reports-pdf-capture .print\:break-before-page,
+.reports-pdf-capture .pregame-pdf-section-break {
+  break-before: auto !important;
+  page-break-before: auto !important;
+  padding-top: 0 !important;
+}
+
+.reports-pdf-capture .print\:overflow-visible {
+  overflow: visible !important;
+}
+
+.reports-pdf-capture .print\:text-xs {
+  font-size: 0.75rem !important;
+  line-height: 1rem !important;
+}
+
+.reports-pdf-capture .print\:text-sm {
+  font-size: 0.875rem !important;
+  line-height: 1.25rem !important;
+}
+
+.reports-pdf-capture .print\:text-base {
+  font-size: 1rem !important;
+  line-height: 1.5rem !important;
+}
+
+.reports-pdf-capture .print\:text-lg {
+  font-size: 1.125rem !important;
+  line-height: 1.75rem !important;
+}
+
+.reports-pdf-capture .print\:text-xl {
+  font-size: 1.25rem !important;
+  line-height: 1.75rem !important;
+}
+
+.reports-pdf-capture .print\:text-2xl {
+  font-size: 1.5rem !important;
+  line-height: 2rem !important;
+}
+
+.reports-pdf-capture .print\:text-3xl {
+  font-size: 1.875rem !important;
+  line-height: 2.25rem !important;
+}
+
+.reports-pdf-capture .print\:text-\[15px\] {
+  font-size: 15px !important;
+}
+
+.reports-pdf-capture .print\:grid-cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.reports-pdf-capture .print\:gap-3 {
+  gap: 0.75rem !important;
+}
+
+.reports-pdf-capture .print\:gap-4 {
+  gap: 1rem !important;
+}
+
+.reports-pdf-capture .print\:gap-5 {
+  gap: 1.25rem !important;
+}
+
+.reports-pdf-capture .print\:p-4 {
+  padding: 1rem !important;
+}
+
+.reports-pdf-capture .print\:p-5 {
+  padding: 1.25rem !important;
+}
+
+.reports-pdf-capture .print\:p-6 {
+  padding: 1.5rem !important;
+}
+
+.reports-pdf-capture .print\:p-8 {
+  padding: 2rem !important;
+}
+
+.reports-pdf-capture .print\:px-4 {
+  padding-left: 1rem !important;
+  padding-right: 1rem !important;
+}
+
+.reports-pdf-capture .print\:py-2\.5 {
+  padding-top: 0.625rem !important;
+  padding-bottom: 0.625rem !important;
+}
+
+.reports-pdf-capture .print\:py-3 {
+  padding-top: 0.75rem !important;
+  padding-bottom: 0.75rem !important;
+}
+
+.reports-pdf-capture .print\:py-4 {
+  padding-top: 1rem !important;
+  padding-bottom: 1rem !important;
+}
+
+.reports-pdf-capture .print\:mt-2 {
+  margin-top: 0.5rem !important;
+}
+
+.reports-pdf-capture .print\:mt-4 {
+  margin-top: 1rem !important;
+}
+
+.reports-pdf-capture .print\:mt-8 {
+  margin-top: 2rem !important;
+}
+
+.reports-pdf-capture .print\:mb-2 {
+  margin-bottom: 0.5rem !important;
+}
+
+.reports-pdf-capture .print\:mb-3 {
+  margin-bottom: 0.75rem !important;
+}
+
+.reports-pdf-capture .print\:pt-8 {
+  padding-top: 2rem !important;
+}
+
+.reports-pdf-capture .print\:border-2 {
+  border-width: 2px !important;
+}
+
+.reports-pdf-capture .print\:border-t-2 {
+  border-top-width: 2px !important;
+}
+
+.reports-pdf-capture .print\:border-slate-300 {
+  border-color: #cbd5e1 !important;
+}
+
+.reports-pdf-capture .print\:bg-white {
+  background-color: #ffffff !important;
+}
+
+.reports-pdf-capture .print\:bg-gradient-to-b {
+  background-image: none !important;
+  background-color: #ffffff !important;
+}
+
+/* Card / panel fills → white (screen + print utility classes) */
+.reports-pdf-capture .pregame-report-root [class*="bg-[var(--bg-elevated)]"],
+.reports-pdf-capture .pregame-report-root [class*="bg-[var(--bg-card)]"],
+.reports-pdf-capture .pregame-report-root [class*="bg-[var(--accent-dim)]"],
+.reports-pdf-capture .pregame-report-root [class*="dark:bg-"] {
+  background-color: #ffffff !important;
+  background-image: none !important;
+}
+
+.reports-pdf-capture .print\:from-amber-50\/80 {
+  --tw-gradient-from: rgb(255 251 235 / 0.8) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+
+.reports-pdf-capture .print\:to-white {
+  --tw-gradient-to: #ffffff !important;
+}
+
+.reports-pdf-capture .print\:font-bold {
+  font-weight: 700 !important;
+}
+
+.reports-pdf-capture .print\:shadow-none {
+  box-shadow: none !important;
+}
+
+.reports-pdf-capture .print\:leading-snug {
+  line-height: 1.375 !important;
+}
+
+.reports-pdf-capture .print\:leading-relaxed {
+  line-height: 1.625 !important;
+}
+
+.reports-pdf-capture .print\:max-w-3xl {
+  max-width: 48rem !important;
+}
+
+.reports-pdf-capture .print\:max-w-4xl {
+  max-width: 56rem !important;
+}
+
+.reports-pdf-capture .print\:rounded-lg {
+  border-radius: 0.5rem !important;
+}
+
+.reports-pdf-capture .print\:tracking-tight {
+  letter-spacing: -0.025em !important;
+}
+
+.reports-pdf-capture .print\:text-slate-900 {
+  color: #0f172a !important;
+}
+
+.reports-pdf-capture .print\:border-l-emerald-700 {
+  border-left-color: #047857 !important;
+}
+
+.reports-pdf-capture .print\:bg-emerald-50 {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+.reports-pdf-capture .print\:border-l-amber-700 {
+  border-left-color: #b45309 !important;
+}
+
+.reports-pdf-capture .print\:bg-amber-50 {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+.reports-pdf-capture .print\:border-l-sky-700 {
+  border-left-color: #0369a1 !important;
+}
+
+.reports-pdf-capture .print\:bg-sky-50 {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+.reports-pdf-capture .print\:border-l-violet-700 {
+  border-left-color: #6d28d9 !important;
+}
+
+.reports-pdf-capture .print\:bg-violet-50 {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+.reports-pdf-capture .print\:border-\[var\(--accent\)\] {
+  border-color: var(--accent) !important;
+}
+
+.reports-pdf-capture .print\:text-\[var\(--text-muted\)\] {
+  color: var(--text-muted) !important;
+}
+
+.pregame-report-root.reports-pdf-capture.reports-pdf-capture-landscape,
+.reports-pdf-capture .pregame-report-root.reports-pdf-capture-landscape {
+  width: 1056px;
+  max-width: 1056px;
+  overflow: visible !important;
+}
+
+.pregame-report-root.reports-pdf-capture.reports-pdf-capture-portrait,
+.reports-pdf-capture .pregame-report-root.reports-pdf-capture-portrait {
+  width: 816px;
+  max-width: 816px;
+  overflow: visible !important;
+}
+
+.reports-pdf-capture .pregame-report-root .overflow-x-auto,
+.reports-pdf-capture .pregame-report-root .overflow-auto {
+  overflow: hidden !important;
+  overflow-x: hidden !important;
+  max-width: 100% !important;
+  width: 100% !important;
+}
+
+/* Fit wide stat tables to landscape page — no horizontal scrollbars */
+.reports-pdf-capture .pregame-report-root table {
+  width: 100% !important;
+  max-width: 100% !important;
+  table-layout: fixed !important;
+  border-collapse: collapse !important;
+  font-size: 7px !important;
+  line-height: 1.2 !important;
+}
+
+.reports-pdf-capture .pregame-report-root th,
+.reports-pdf-capture .pregame-report-root td {
+  white-space: normal !important;
+  word-break: break-word !important;
+  overflow: visible !important;
+  padding: 2px 3px !important;
+  font-size: 7px !important;
+  line-height: 1.2 !important;
+  vertical-align: top !important;
+}
+
+.reports-pdf-capture .pregame-report-root .whitespace-nowrap {
+  white-space: normal !important;
+}
+
+/* Lineup cards — larger type for readability (AVG / OPS only, no PA) */
+.reports-pdf-capture .pregame-lineup-name {
+  font-size: 1.35rem !important;
+  line-height: 1.3 !important;
+  font-weight: 700 !important;
+}
+
+.reports-pdf-capture .pregame-lineup-meta {
+  font-size: 1.125rem !important;
+  line-height: 1.35 !important;
+  font-weight: 600 !important;
+  color: #000000 !important;
+  margin-top: 0.25rem !important;
+}
+
+.reports-pdf-capture .pregame-lineup-stats {
+  font-size: 1.125rem !important;
+  line-height: 1.35 !important;
+  font-weight: 700 !important;
+}
+
+.reports-pdf-capture .pregame-lineup-panel {
+  padding: 1rem !important;
+}
+
+.reports-pdf-capture .pregame-lineup-grid {
+  gap: 1rem !important;
+}
+
+.reports-pdf-capture .pregame-pdf-subheader {
+  display: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+}
+
+/* Wide pitching split tables: large data cells, compact headers */
+.reports-pdf-capture .pregame-report-root .pregame-pitching-ext-table {
+  table-layout: auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.reports-pdf-capture .pregame-report-root .pregame-pitching-ext-table th {
+  white-space: nowrap !important;
+  word-break: normal !important;
+  overflow: visible !important;
+  padding: 2px 4px !important;
+  font-size: 10px !important;
+  line-height: 1.2 !important;
+  vertical-align: middle !important;
+}
+
+.reports-pdf-capture .pregame-report-root .pregame-pitching-ext-table td {
+  white-space: nowrap !important;
+  word-break: normal !important;
+  overflow: visible !important;
+  padding: 3px 4px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  line-height: 1.2 !important;
+  vertical-align: middle !important;
+}
+
+.reports-pdf-capture .pregame-report-root .pregame-pitching-ext-table th:first-child,
+.reports-pdf-capture .pregame-report-root .pregame-pitching-ext-table td:first-child {
+  min-width: 6.75rem !important;
+  width: 7rem !important;
+  max-width: 8.5rem !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
+.reports-pdf-capture .pregame-report-root .pregame-pitching-ext-table .whitespace-nowrap {
+  white-space: nowrap !important;
+}
+
+/* Keep all season pitching blocks on one PDF slice when possible */
+.reports-pdf-capture [data-pdf-subsection="pitcher-season-stats"].space-y-3 > * + *,
+.reports-pdf-capture [data-pdf-subsection="pitcher-season-stats"].space-y-4 > * + * {
+  margin-top: 0.4rem !important;
+}
+
+.reports-pdf-capture [data-pdf-subsection="pitcher-season-stats"] h3 {
+  margin-bottom: 0.1rem !important;
+  font-size: 0.95rem !important;
+  line-height: 1.2 !important;
+}
+
+.reports-pdf-capture [data-pdf-subsection="pitcher-season-stats"] .mt-2 {
+  margin-top: 0.2rem !important;
+}
+
+.reports-pdf-capture [data-pdf-subsection="pitcher-season-stats"] .pregame-pitching-ext-block {
+  break-inside: avoid !important;
+  page-break-inside: avoid !important;
+}
+
+/* Coach hitting: keep contact tiles intact; tighter print sizing */
+.reports-pdf-capture [data-pdf-subsection="hitting-two-strike"] .print\:text-3xl {
+  font-size: 1.35rem !important;
+  line-height: 1.35rem !important;
+}
+
+.reports-pdf-capture [data-pdf-subsection="hitting-two-strike"] .print\:text-2xl {
+  font-size: 1.15rem !important;
+  line-height: 1.25rem !important;
+}
+
+.reports-pdf-capture [data-pdf-subsection="hitting-contact"] .print\:text-2xl {
+  font-size: 1.25rem !important;
+  line-height: 1.3rem !important;
+}
+
+.reports-pdf-capture [data-pdf-avoid-break] {
+  break-inside: avoid !important;
+  page-break-inside: avoid !important;
+}
+
+.reports-pdf-capture .pregame-report-root section {
+  padding: 0.75rem !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.reports-pdf-capture .pregame-report-root .min-w-0 {
+  min-width: 0 !important;
+}
+
+.reports-pdf-capture .pregame-report-root .grid {
+  max-width: 100% !important;
+}

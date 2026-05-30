@@ -1,5 +1,6 @@
 "use client";
 
+import type { RefObject } from "react";
 import type { PostGameSnapshot } from "@/lib/reports/postGameSnapshot";
 import {
   countHitsBottom,
@@ -12,6 +13,7 @@ import {
   totalRunsTop,
 } from "@/lib/compute/boxScore";
 import { fmtDecimalNoLeadingZero, formatDateMMDDYYYY } from "@/lib/format";
+import { isGameFinalized } from "@/lib/gameRecord";
 import { matchupLabelUsFirst, ourTeamName } from "@/lib/opponentUtils";
 import type { Game, PlateAppearance } from "@/lib/types";
 
@@ -24,9 +26,11 @@ function StatRow({
   tone?: "good" | "bad" | "neutral";
 }) {
   return (
-    <div className="flex items-baseline justify-between gap-6 border-b border-[var(--border)]/50 py-3 last:border-b-0">
+    <div className="postgame-stat-row flex items-baseline justify-between gap-4 border-b border-[var(--border)]/50 py-2 last:border-b-0 sm:py-2.5">
       <span className="min-w-0 text-sm leading-snug text-[var(--text-muted)]">{label}</span>
-      <span className="shrink-0 font-display text-lg font-bold tabular-nums text-[var(--text)] sm:text-xl">{value}</span>
+      <span className="postgame-stat-value shrink-0 font-display text-lg font-bold tabular-nums text-[var(--text)] sm:text-xl">
+        {value}
+      </span>
     </div>
   );
 }
@@ -35,13 +39,19 @@ function Panel({
   title,
   kicker,
   children,
+  compact = false,
 }: {
   title?: string;
   kicker?: string;
   children: React.ReactNode;
+  compact?: boolean;
 }) {
   return (
-    <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)]/25 p-5 sm:p-6">
+    <div
+      className={`postgame-panel box-border overflow-visible rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)]/25 ${
+        compact ? "p-3 sm:p-4" : "p-5 sm:p-6"
+      }`}
+    >
       {kicker ? (
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--accent)]">{kicker}</p>
       ) : null}
@@ -75,68 +85,75 @@ function PostGameLinescoreTable({
   const eAway = totalErrorsChargedToAway(pas);
   const eHome = totalErrorsChargedToHome(pas);
 
+  const cellBorder = "border border-[var(--border)]";
+  const headCell =
+    "px-3 py-2.5 text-center text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] bg-[var(--bg-elevated)]";
+  const bodyCell = "px-3 py-2.5 text-center text-base tabular-nums text-[var(--text)]";
+  const teamCell =
+    "px-3 py-2.5 text-left text-base font-medium leading-snug text-[var(--text)] bg-[var(--bg-card)]";
+
   return (
-    <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--bg-base)]/40">
-      <table className="w-full min-w-[260px] border-collapse text-sm">
+    <div className="postgame-linescore-wrap min-w-0 max-w-full overflow-x-auto">
+      <table className="postgame-linescore-table w-full min-w-[320px] border-collapse text-base">
         <thead>
-          <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]/80">
-            <th className="sticky left-0 z-[1] border-r border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+          <tr className="bg-[var(--bg-elevated)]/80">
+            <th
+              className={`${cellBorder} ${teamCell} text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]`}
+            >
               Team
             </th>
             {innings.map((inn) => (
-              <th
-                key={inn}
-                className="w-9 min-w-[2rem] px-0.5 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]"
-              >
+              <th key={inn} className={`${cellBorder} ${headCell} w-10 min-w-[2.5rem]`}>
                 {inn}
               </th>
             ))}
-            <th className="w-10 min-w-[2.25rem] border-l border-[var(--border)] px-0.5 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text)]">
-              R
-            </th>
-            <th className="w-10 min-w-[2.25rem] px-0.5 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text)]">
-              H
-            </th>
-            <th className="w-10 min-w-[2.25rem] px-0.5 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text)]">
-              E
-            </th>
+            <th className={`${cellBorder} ${headCell} w-11 min-w-[2.75rem] text-[var(--text)]`}>R</th>
+            <th className={`${cellBorder} ${headCell} w-11 min-w-[2.75rem] text-[var(--text)]`}>H</th>
+            <th className={`${cellBorder} ${headCell} w-11 min-w-[2.75rem] text-[var(--text)]`}>E</th>
           </tr>
         </thead>
         <tbody>
-          <tr className="border-b border-[var(--border)]/70">
-            <td className="sticky left-0 z-[1] border-r border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 font-medium leading-tight text-[var(--text)]">
+          <tr>
+            <td className={`${cellBorder} ${teamCell}`}>
               <span className="line-clamp-2">{game.away_team}</span>
             </td>
             {innings.map((inn) => (
-              <td key={`a-${inn}`} className="px-0.5 py-2.5 text-center tabular-nums text-[var(--text)]">
+              <td key={`a-${inn}`} className={`${cellBorder} ${bodyCell}`}>
                 {sumRunsTopInning(pas, inn)}
               </td>
             ))}
-            <td className="border-l border-[var(--border)] px-0.5 py-2.5 text-center font-display text-base font-bold tabular-nums text-[var(--text)]">
+            <td className={`postgame-linescore-r ${cellBorder} ${bodyCell} font-display text-lg font-bold`}>
               {rAway}
             </td>
-            <td className="px-0.5 py-2.5 text-center tabular-nums text-[var(--text)]">{hAway}</td>
-            <td className="px-0.5 py-2.5 text-center tabular-nums text-[var(--text)]">{eAway}</td>
+            <td className={`${cellBorder} ${bodyCell}`}>{hAway}</td>
+            <td className={`${cellBorder} ${bodyCell}`}>{eAway}</td>
           </tr>
           <tr>
-            <td className="sticky left-0 z-[1] border-r border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 font-medium leading-tight text-[var(--text)]">
+            <td className={`${cellBorder} ${teamCell}`}>
               <span className="line-clamp-2">{game.home_team}</span>
             </td>
             {innings.map((inn) => (
-              <td key={`h-${inn}`} className="px-0.5 py-2.5 text-center tabular-nums text-[var(--text)]">
+              <td key={`h-${inn}`} className={`${cellBorder} ${bodyCell}`}>
                 {sumRunsBottomInning(pas, inn)}
               </td>
             ))}
-            <td className="border-l border-[var(--border)] px-0.5 py-2.5 text-center font-display text-base font-bold tabular-nums text-[var(--text)]">
+            <td className={`postgame-linescore-r ${cellBorder} ${bodyCell} font-display text-lg font-bold`}>
               {rHome}
             </td>
-            <td className="px-0.5 py-2.5 text-center tabular-nums text-[var(--text)]">{hHome}</td>
-            <td className="px-0.5 py-2.5 text-center tabular-nums text-[var(--text)]">{eHome}</td>
+            <td className={`${cellBorder} ${bodyCell}`}>{hHome}</td>
+            <td className={`${cellBorder} ${bodyCell}`}>{eHome}</td>
           </tr>
         </tbody>
       </table>
     </div>
   );
+}
+
+function addendumBullets(text: string): string[] {
+  return text
+    .split(/\n+/)
+    .map((line) => line.replace(/^[\s•\-*]+/, "").trim())
+    .filter(Boolean);
 }
 
 export function PostGameReport({
@@ -145,12 +162,17 @@ export function PostGameReport({
   pas,
   analystAddendum,
   onAnalystAddendumChange,
+  captureRef,
+  pdfCapture = false,
 }: {
   game: Game;
   data: PostGameSnapshot;
   pas: PlateAppearance[];
   analystAddendum: string;
   onAnalystAddendumChange: (v: string) => void;
+  /** Root element rasterized for PDF export. */
+  captureRef?: RefObject<HTMLDivElement | null>;
+  pdfCapture?: boolean;
 }) {
   const off = data.teamOffense;
   const fmtPct = (x: number) => `${Math.round(x * 100)}%`;
@@ -159,36 +181,48 @@ export function PostGameReport({
   const decisions = data.pitchDecisionsDisplay ?? { winName: null, lossName: null, saveName: null };
   const teamPitchSeen = data.teamPitchSeen ?? null;
 
+  const coachAddendum = addendumBullets(analystAddendum);
+
   return (
-    <div className="space-y-10 print:space-y-6">
-      <section className="scroll-mt-6 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] shadow-sm print:overflow-visible print:rounded-none print:border-0 print:bg-transparent print:shadow-none">
-        {/* Title band */}
+    <div
+      ref={captureRef}
+      className={`postgame-report-root${pdfCapture ? " space-y-0 reports-print-area reports-pdf-capture" : " space-y-6"}`}
+    >
+      {!pdfCapture ? (
+        <p
+          data-pdf-exclude="true"
+          className="reports-screen-only rounded-lg border border-dashed border-[var(--border)] bg-[var(--bg-elevated)]/35 px-4 py-3 text-sm leading-relaxed text-[var(--text-muted)]"
+        >
+          On-screen preview of the post-game report. Use{" "}
+          <span className="font-semibold text-[var(--text)]">Export PDF</span> above to download and open the same
+          report in a new tab.
+        </p>
+      ) : null}
+      <section className="postgame-pdf-card scroll-mt-6 flex flex-col gap-0 overflow-visible print:shadow-none">
+        <div data-pdf-subsection="postgame-main" className="postgame-main overflow-visible">
         <div
           id="post-header"
-          className="scroll-mt-6 border-b border-[var(--border)] bg-gradient-to-r from-[var(--accent-dim)]/25 via-transparent to-transparent px-5 py-6 sm:px-8 sm:py-7"
+          className="postgame-pdf-header border-b border-[var(--border)] bg-gradient-to-r from-[var(--accent-dim)]/25 via-transparent to-transparent px-5 py-5 sm:px-6 sm:py-5 print:bg-white"
         >
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0">
               <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--accent)]">Post-game report</p>
-              <h1 className="mt-2 font-display text-2xl font-bold leading-tight text-[var(--text)] sm:text-3xl">
+              <h1 className="postgame-title mt-1 font-display text-2xl font-bold leading-tight text-[var(--text)] sm:text-3xl">
                 {matchupLabelUsFirst(game, true)}
               </h1>
             </div>
             {dateLine ? (
-              <p className="shrink-0 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)]/50 px-3 py-2 text-sm tabular-nums text-[var(--text-muted)]">
+              <p className="shrink-0 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)]/50 px-3 py-1.5 text-sm tabular-nums text-[var(--text-muted)]">
                 {dateLine}
               </p>
             ) : null}
           </div>
         </div>
 
-        <div className="p-5 sm:p-8">
-          {/* Linescore + team stats: side-by-side on large screens */}
-          <div className="grid gap-8 lg:grid-cols-12 lg:gap-10 lg:items-start">
-            <div className="scroll-mt-6 space-y-6 lg:col-span-7">
-              <div id="post-scoring" className="scroll-mt-6 space-y-3">
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--text-muted)]">Linescore</p>
-                <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:gap-8">
+        <div className="postgame-pdf-body px-5 py-4 sm:px-6 sm:py-4">
+          <div id="post-scoring" className="space-y-2">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--text-muted)]">Linescore</p>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:gap-5">
                   <div className="min-w-0 flex-1">
                     <PostGameLinescoreTable game={game} pas={pas} inningCount={data.maxInning} />
                   </div>
@@ -215,13 +249,26 @@ export function PostGameReport({
                           <span className="font-medium">{decisions.saveName ?? "—"}</span>
                         </p>
                       ) : null}
+                      {!pdfCapture &&
+                      !isGameFinalized(game) &&
+                      !decisions.winName &&
+                      !decisions.lossName ? (
+                        <p
+                          data-pdf-exclude="true"
+                          className="reports-screen-only pt-1 text-xs leading-relaxed text-[var(--text-muted)]"
+                        >
+                          Finalize this game on the game review page to assign win, loss, and save.
+                        </p>
+                      ) : null}
                     </div>
                   </aside>
                 </div>
               </div>
 
-              <div id="post-pitching" className="scroll-mt-6 space-y-4">
-                <Panel title="Team pitch profile" kicker={`${us} · this game`}>
+          <div className="postgame-stats-grid mt-4 grid gap-5 lg:grid-cols-12 lg:gap-6 lg:items-start">
+            <div className="postgame-stats-main space-y-4 lg:col-span-7">
+              <div id="post-pitching" className="space-y-2">
+                <Panel title="Team pitch profile" compact={pdfCapture}>
                   {!off ? (
                     <p className="text-sm leading-relaxed text-[var(--text-muted)]">
                       No plate appearances for {us} — lines below fill in from your club&apos;s PAs and pitch logs.
@@ -307,9 +354,9 @@ export function PostGameReport({
               </div>
             </div>
 
-            <aside className="flex flex-col gap-6 lg:col-span-5">
-              <div id="post-offense" className="scroll-mt-6">
-                <Panel title="Offense" kicker="Team · logged PAs">
+            <aside className="postgame-stats-side flex flex-col gap-4 lg:col-span-5">
+              <div id="post-offense">
+                <Panel title="Offense" compact={pdfCapture}>
                   {!off ? (
                     <p className="text-sm leading-relaxed text-[var(--text-muted)]">
                       No plate appearances for {us}. Log PAs on{" "}
@@ -332,6 +379,15 @@ export function PostGameReport({
                         tone="neutral"
                       />
                       <StatRow
+                        label="Pitches per PA"
+                        value={
+                          data.plateDiscipline.pPa != null
+                            ? fmtDecimalNoLeadingZero(data.plateDiscipline.pPa, 2)
+                            : "—"
+                        }
+                        tone="neutral"
+                      />
+                      <StatRow
                         label="RISP (hits / opportunities)"
                         value={`${data.situational.rispHits} / ${data.situational.rispPa}`}
                         tone={(() => {
@@ -347,59 +403,43 @@ export function PostGameReport({
                   )}
                 </Panel>
               </div>
-
-              <div id="post-discipline" className="scroll-mt-6">
-                <Panel title="🎯 Plate discipline" kicker="Process">
-                  <div>
-                    <StatRow
-                      label="First pitch strike %"
-                      value={data.plateDiscipline.fpsPct != null ? fmtPct(data.plateDiscipline.fpsPct) : "—"}
-                      tone={
-                        data.plateDiscipline.fpsPct != null && data.plateDiscipline.fpsPct < 0.45
-                          ? "bad"
-                          : data.plateDiscipline.fpsPct != null && data.plateDiscipline.fpsPct >= 0.55
-                            ? "good"
-                            : "neutral"
-                      }
-                    />
-                    <StatRow
-                      label="Pitches per PA"
-                      value={
-                        data.plateDiscipline.pPa != null ? fmtDecimalNoLeadingZero(data.plateDiscipline.pPa, 2) : "—"
-                      }
-                      tone="neutral"
-                    />
-                  </div>
-                </Panel>
-              </div>
             </aside>
           </div>
+        </div>
+        </div>
 
-          {/* Notes: full width under the grid */}
-          <div
-            id="post-notes"
-            className="scroll-mt-6 mt-10 rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)]/20 p-5 sm:mt-12 sm:p-7"
-          >
+        <div
+          data-pdf-subsection="postgame-notes"
+          className={`postgame-notes-subsection overflow-visible${pdfCapture ? "" : " mt-4"}`}
+        >
+          <div id="post-notes" className="postgame-notes-panel p-4 sm:p-5">
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--accent)]">Staff</p>
             <h2 className="mt-2 font-display text-xl font-semibold tracking-tight text-[var(--text)]">Analyst notes</h2>
-            <p className="mt-2 max-w-3xl text-sm leading-relaxed text-[var(--text-muted)]">
-              Auto-generated takeaways plus your addendum (included when printing).
-            </p>
-            <ul className="mt-6 list-inside list-disc space-y-2.5 text-base leading-relaxed text-[var(--text)]">
+            {!pdfCapture ? (
+              <p className="mt-2 max-w-3xl text-sm leading-relaxed text-[var(--text-muted)]">
+                Auto-generated takeaways plus your addendum (included in the exported PDF).
+              </p>
+            ) : null}
+            <ul className="postgame-notes-list mt-3 list-inside list-disc space-y-1.5 text-base leading-relaxed text-[var(--text)]">
               {data.analystNotes.map((n, i) => (
                 <li key={i}>{n}</li>
               ))}
+              {coachAddendum.map((line, i) => (
+                <li key={`addendum-${i}`}>{line}</li>
+              ))}
             </ul>
-            <label className="mt-8 block">
-              <span className="text-sm font-semibold text-[var(--text)]">Add bullets for coaches</span>
-              <textarea
-                value={analystAddendum}
-                onChange={(e) => onAnalystAddendumChange(e.target.value)}
-                rows={5}
-                placeholder={"e.g.\n• Expanded at high heat with two strikes\n• Ran the bases aggressively on contact"}
-                className="mt-2 w-full rounded-xl border-2 border-[var(--border)] bg-[var(--bg-input)] px-3 py-3 text-base text-[var(--text)] placeholder:text-[var(--text-faint)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
-              />
-            </label>
+            {!pdfCapture ? (
+              <label className="mt-8 block">
+                <span className="text-sm font-semibold text-[var(--text)]">Add bullets for coaches</span>
+                <textarea
+                  value={analystAddendum}
+                  onChange={(e) => onAnalystAddendumChange(e.target.value)}
+                  rows={5}
+                  placeholder={"e.g.\n• Expanded at high heat with two strikes\n• Ran the bases aggressively on contact"}
+                  className="mt-2 w-full rounded-xl border-2 border-[var(--border)] bg-[var(--bg-input)] px-3 py-3 text-base text-[var(--text)] placeholder:text-[var(--text-faint)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
+                />
+              </label>
+            ) : null}
           </div>
         </div>
       </section>

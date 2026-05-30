@@ -5,11 +5,11 @@ import { buildPostGameSnapshot, pasOurTeamBatting } from "@/lib/reports/postGame
 import { buildTeamTrendSeries } from "@/lib/reports/teamTrendsSnapshot";
 import { isGameFinalized, ourTeamOutcomeFromFinalScore } from "@/lib/gameRecord";
 import { isDemoId } from "@/lib/db/mockData";
+import { getCachedGames } from "@/lib/db/cachedQueries";
 import {
   getBattingStatsWithSplitsForPlayers,
   getGame,
   getGameLineup,
-  getGames,
   getPitcherLastOutingBefore,
   getPitchEventsForPaIds,
   getPitchingStatsForPitcherVsOurClub,
@@ -156,7 +156,7 @@ export async function fetchPreGameOverview(
   const lineupStatsByPlayerId =
     lineupStatsIds.length > 0 ? await getBattingStatsWithSplitsForPlayers(lineupStatsIds) : {};
 
-  const allGames = (await getGames()).filter((g) => !isDemoId(g.id));
+  const allGames = (await getCachedGames()).filter((g) => !isDemoId(g.id));
 
   const recentClubGames = allGames
     .filter((g) => g.id !== game.id && g.date < game.date)
@@ -374,7 +374,7 @@ export async function fetchTeamTrendsPayload(maxGames = 10): Promise<{
   points: TeamTrendPoint[];
   insights: string[];
 } | { error: string }> {
-  const games = await getGames();
+  const games = await getCachedGames();
   const clean = games.filter((g) => !isDemoId(g.id)).slice(0, maxGames);
   if (clean.length === 0) return { points: [], insights: ["Add completed games to see team trends."] };
 
@@ -399,4 +399,20 @@ export async function fetchTeamTrendsPayload(maxGames = 10): Promise<{
   if (insights.length === 0) insights.push("Trend lines below — add more games for stronger narrative cues.");
 
   return { points, insights };
+}
+
+export type ReportsBatterStatsResult =
+  | { ok: true; statsByPlayerId: Record<string, BattingStatsWithSplits | undefined> }
+  | { ok: false; error: string };
+
+/** Batter splits for Reports hub player tab (loaded on demand, not on initial page SSR). */
+export async function fetchReportsBatterStats(playerIds: string[]): Promise<ReportsBatterStatsResult> {
+  const clean = [...new Set(playerIds.map((id) => id?.trim()).filter(Boolean))];
+  if (clean.length === 0) return { ok: true, statsByPlayerId: {} };
+  try {
+    const statsByPlayerId = await getBattingStatsWithSplitsForPlayers(clean);
+    return { ok: true, statsByPlayerId };
+  } catch {
+    return { ok: false, error: "Could not load batter stats." };
+  }
 }

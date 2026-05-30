@@ -5,7 +5,7 @@ import {
   BASE_STATES,
   OUTS,
 } from "@/lib/compute/runExpectancy";
-import { RunExpectancyClient } from "./RunExpectancyClient";
+import { RunExpectancyClientGate } from "./RunExpectancyClientGate";
 import type { RETable } from "@/lib/compute/runExpectancy";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ export default async function RunExpectancyPage() {
   const reTable: RETable = buildRETable(pas);
   const counts = buildRECounts(pas);
   return (
-    <RunExpectancyClient
+    <RunExpectancyClientGate
       reTable={reTable}
       counts={counts}
       baseStates={BASE_STATES}

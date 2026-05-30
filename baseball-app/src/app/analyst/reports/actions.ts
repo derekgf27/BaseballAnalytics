@@ -1,5 +1,6 @@
 "use server";
 
+import { getCachedGames, getCachedPlayers } from "@/lib/db/cachedQueries";
 import { buildAnalystPlayerSpraySplits } from "@/lib/analystPlayerSpraySplits";
 import { buildCoachPacketModel } from "@/lib/reports/coachPacketBuild";
 import type { CoachPacketModel } from "@/lib/reports/coachPacketTypes";
@@ -11,10 +12,11 @@ import {
   getPlateAppearancesByBatter,
   getPlateAppearancesByGame,
   getPlateAppearancesByPitcher,
-  getPlayers,
   getPlayersByIds,
   getBattingStatsWithSplitsForPlayers,
+  getPitchEventsForPaIds,
 } from "@/lib/db/queries";
+import { buildHitterProfileReportPayload } from "@/lib/reports/hitterProfileReportTables";
 import type { Player } from "@/lib/types";
 
 const MAX_HITTER_REPORT_PLAYERS = 5;
@@ -57,7 +59,7 @@ export async function fetchHitterReportBundleAction(
   }
   const unique = raw;
 
-  const allPlayers = await getPlayers();
+  const allPlayers = await getCachedPlayers();
   const resolved: Player[] = [];
   for (const id of unique) {
     const p = allPlayers.find((x) => x.id === id);
@@ -68,21 +70,35 @@ export async function fetchHitterReportBundleAction(
   }
 
   const ids = resolved.map((p) => p.id);
-  const [statsMap] = await Promise.all([getBattingStatsWithSplitsForPlayers(ids)]);
+  const [statsMap, games] = await Promise.all([
+    getBattingStatsWithSplitsForPlayers(ids),
+    getCachedGames(),
+  ]);
 
-  const sprayEntries = await Promise.all(
+  const perPlayer = await Promise.all(
     resolved.map(async (pl) => {
       const [pasAb, pasAp] = await Promise.all([
         getPlateAppearancesByBatter(pl.id),
         getPlateAppearancesByPitcher(pl.id),
       ]);
+      const pitchEvents =
+        pasAb.length > 0 ? await getPitchEventsForPaIds(pasAb.map((pa) => pa.id)) : [];
       const spray = buildAnalystPlayerSpraySplits(pl, allPlayers, pasAb, pasAp);
-      return [pl.id, spray] as const;
+      const splits = statsMap[pl.id];
+      const profile =
+        splits != null
+          ? buildHitterProfileReportPayload(pl.id, splits, pasAb, pitchEvents, games)
+          : undefined;
+      return { id: pl.id, spray, profile };
     })
   );
 
   const spray: HitterReportBundle["spray"] = {};
-  for (const [id, s] of sprayEntries) spray[id] = s;
+  const profile: NonNullable<HitterReportBundle["profile"]> = {};
+  for (const row of perPlayer) {
+    spray[row.id] = row.spray;
+    profile[row.id] = row.profile;
+  }
 
   return {
     players: resolved.map((p) => ({
@@ -93,5 +109,6 @@ export async function fetchHitterReportBundleAction(
     })),
     batting: statsMap,
     spray,
+    profile,
   };
 }

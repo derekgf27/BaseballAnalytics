@@ -21,17 +21,20 @@ import type {
 import { FINAL_COUNT_BUCKET_OPTIONS } from "@/components/analyst/battingStatsSheetModel";
 import { aggregatePitchingTeamLine } from "@/lib/compute/pitchingStats";
 import { isBasesEmpty, isBasesLoaded, isRisp, isRunnersOn } from "@/lib/compute/battingStats";
+import { pasMatchFinalCount } from "@/lib/compute/battingStatsWithSplitsFromPas";
+import {
+  applyCountStateContactToPitchingStats,
+  buildCountStateContactByPitcher,
+  countStatePaQualificationForRunnersFilter,
+} from "@/lib/compute/statsSheetCountStateContact";
 import { normalizePitchTypeBucket } from "@/lib/compute/pitchTypeProfileFromPas";
 import { pitchOutcomeIsSwing } from "@/lib/compute/pitchSequence";
 import { GroupedStatsFiltersPanel } from "@/components/analyst/GroupedStatsFiltersPanel";
 import { PITCH_TYPE_BAA_HELPER_TEXT, PITCH_TYPE_COLUMNS_MODE_LABEL, pitchTypeBaaColumnLabel } from "@/lib/pitchTypeBaaDisplay";
 
-const RUNNERS_FILTER_LABEL: Record<Exclude<StatsRunnersFilterKey, "all">, string> = {
-  basesEmpty: "Bases empty",
-  runnersOn: "Runners on",
-  risp: "RISP",
-  basesLoaded: "Bases loaded",
-};
+import { StatsRunnersFilterSelect } from "@/components/analyst/StatsRunnersFilterSelect";
+import { pitchingStatsForSheetLiveFilters } from "@/lib/compute/statsSheetLiveFilters";
+import { STATS_RUNNERS_LABEL } from "@/lib/statsRunnersFilter";
 
 const THROWS_LABEL: Record<string, string> = { L: "L", R: "R" };
 
@@ -660,6 +663,7 @@ function buildPitchTypeCountStateRatesByPitcher(
     if (runnersFilter === "runnersOn" && !isRunnersOn(pa.base_state)) continue;
     if (runnersFilter === "risp" && !isRisp(pa.base_state)) continue;
     if (runnersFilter === "basesLoaded" && !isBasesLoaded(pa.base_state)) continue;
+    if (!pasMatchFinalCount(pa, ballsNeed, strikesNeed)) continue;
     paById.set(pa.id, pa);
   }
 
@@ -1066,6 +1070,8 @@ export interface PitchingStatsSheetProps {
   pas?: PlateAppearance[];
   pitchEvents?: PitchEvent[];
   batterBatsById?: Record<string, Bats | null | undefined>;
+  /** Games where each pitcher was listed as starting pitcher (for G/GS on live-filtered samples). */
+  starterGameIdsByPlayer?: Record<string, string[]>;
 }
 
 export function PitchingStatsSheet({
@@ -1086,6 +1092,7 @@ export function PitchingStatsSheet({
   pas,
   pitchEvents,
   batterBatsById,
+  starterGameIdsByPlayer = {},
 }: PitchingStatsSheetProps) {
   const [search, setSearch] = useState("");
   const [splitView, setSplitView] = useState<PitchingSplitView>("overall");
@@ -1109,15 +1116,13 @@ export function PitchingStatsSheet({
     if (splitDisabled && splitView !== "overall") setSplitView("overall");
   }, [splitDisabled, splitView]);
 
-  useEffect(() => {
-    if (runnersFilter === "all") return;
-    if (columnMode === "pitchTypes") return;
-    if (finalCountControlled) {
-      if (finalCountBucket != null) onFinalCountBucketChange?.(null);
-    } else {
-      setFinalCountBucketInternal((prev) => (prev == null ? prev : null));
+  const batterBatsMap = useMemo(() => {
+    const m = new Map<string, Bats | null | undefined>();
+    if (batterBatsById) {
+      for (const [id, bats] of Object.entries(batterBatsById)) m.set(id, bats);
     }
-  }, [runnersFilter, finalCountControlled, finalCountBucket, onFinalCountBucketChange, columnMode]);
+    return m;
+  }, [batterBatsById]);
 
   const [sortKey, setSortKey] = useState<PitchSortKey>("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -1125,17 +1130,20 @@ export function PitchingStatsSheet({
 
   const displayColumns =
     columnMode === "contact" ? CONTACT_PITCH_COLUMNS : columnMode === "pitchTypes" ? PITCH_TYPE_PITCH_COLUMNS : COLUMNS;
-  const countStateMode = columnMode === "pitchTypes";
+  const countStateMode = columnMode === "contact" || columnMode === "pitchTypes";
   const countFilterLabel = countStateMode ? "Count state" : "Final count";
-  const countFilterAria = countStateMode
-    ? "Filter pitch-type context to pitches thrown at this ball-strike count state"
-    : "Filter stats to plate appearances ending at this ball-strike count";
+  const countFilterAria =
+    columnMode === "pitchTypes"
+      ? "Filter pitch-type context to pitches thrown at this ball-strike count state"
+      : columnMode === "contact"
+        ? "Filter discipline rates to pitches thrown at this ball-strike count state"
+        : "Filter stats to plate appearances ending at this ball-strike count";
   const countFilterTitle =
-    runnersFilter !== "all" && !countStateMode
-      ? "Clear Runners filter to use Final count in Standard/Discipline columns."
-      : countStateMode
-        ? "In Pitch-type mode, usage/swing/whiff and per-type AVG use pitches thrown at this count state."
-        : "Optional. When set, table uses only PAs whose saved final count matches.";
+    columnMode === "pitchTypes"
+      ? "In Pitch-type mode, usage/swing/whiff and per-type AVG use pitches thrown at this count state."
+      : columnMode === "contact"
+        ? "In Discipline mode, Sw% / Whiff% / Foul% / BIP% use pitches thrown at this count state."
+        : "Optional. When set, table uses only PAs whose saved final count matches (combines with Runners when both are set).";
 
   useEffect(() => {
     setSortKey("name");
@@ -1144,7 +1152,7 @@ export function PitchingStatsSheet({
 
   const groupedFiltersSummary = useMemo(() => {
     const parts: string[] = [];
-    if (runnersFilter !== "all") parts.push(RUNNERS_FILTER_LABEL[runnersFilter]);
+    if (runnersFilter !== "all") parts.push(STATS_RUNNERS_LABEL[runnersFilter]);
     if (finalCountBucket) {
       const label = FINAL_COUNT_BUCKET_OPTIONS.find((o) => o.value === finalCountBucket)?.label;
       if (label) parts.push(label);
@@ -1157,6 +1165,23 @@ export function PitchingStatsSheet({
     if (search.trim()) parts.push("Search");
     return parts.length > 0 ? parts.join(" · ") : null;
   }, [runnersFilter, finalCountBucket, matchupToolbar, search]);
+
+  const countStateContactByPitcher = useMemo(
+    () =>
+      columnMode === "contact" && finalCountBucket != null
+        ? buildCountStateContactByPitcher(
+            players,
+            pas,
+            pitchEvents,
+            splitView,
+            runnersFilter,
+            finalCountBucket,
+            batterBatsById,
+            countStatePaQualificationForRunnersFilter(runnersFilter)
+          )
+        : {},
+    [columnMode, finalCountBucket, players, pas, pitchEvents, splitView, runnersFilter, batterBatsById]
+  );
 
   const pitchTypeCountStateRatesByPitcher = useMemo(
     () =>
@@ -1176,24 +1201,43 @@ export function PitchingStatsSheet({
 
   const initialPitchingStats = useMemo(() => {
     const out: Record<string, PitchingStats> = {};
+    const canLiveFilter =
+      pas != null && pas.length > 0 && finalCountBucket != null && runnersFilter !== "all";
     for (const p of players) {
       let s: PitchingStats | undefined;
-      if (finalCountBucket != null && columnMode !== "pitchTypes") {
-        const map = getPitchingFinalCountMapForSplit(
-          pitchingStatsWithSplits,
-          p.id,
-          splitView,
-          runnersFilter
-        );
-        s = map?.[finalCountBucket] ?? undefined;
+      if (finalCountBucket != null) {
+        if (canLiveFilter) {
+          const starters = new Set(starterGameIdsByPlayer[p.id] ?? []);
+          s = pitchingStatsForSheetLiveFilters(
+            p.id,
+            pas,
+            splitView,
+            runnersFilter,
+            finalCountBucket,
+            starters,
+            batterBatsMap,
+            pitchEvents
+          );
+        } else {
+          const map = getPitchingFinalCountMapForSplit(
+            pitchingStatsWithSplits,
+            p.id,
+            splitView,
+            runnersFilter
+          );
+          s = map?.[finalCountBucket] ?? undefined;
+        }
+        if (s && columnMode === "pitchTypes") {
+          const countRates = pitchTypeCountStateRatesByPitcher[p.id];
+          if (countRates) {
+            s = { ...s, rates: { ...s.rates, ...countRates } };
+          }
+        }
+        if (s && columnMode === "contact") {
+          s = applyCountStateContactToPitchingStats(s, countStateContactByPitcher[p.id]);
+        }
       } else {
         s = getPitchingLineForSheet(pitchingStatsWithSplits, p.id, splitView, runnersFilter);
-      }
-      if (s && columnMode === "pitchTypes" && finalCountBucket != null) {
-        const countRates = pitchTypeCountStateRatesByPitcher[p.id];
-        if (countRates) {
-          s = { ...s, rates: { ...s.rates, ...countRates } };
-        }
       }
       if (s) out[p.id] = s;
     }
@@ -1206,6 +1250,11 @@ export function PitchingStatsSheet({
     runnersFilter,
     columnMode,
     pitchTypeCountStateRatesByPitcher,
+    countStateContactByPitcher,
+    pas,
+    pitchEvents,
+    batterBatsMap,
+    starterGameIdsByPlayer,
   ]);
 
   const filtered = useMemo(() => {
@@ -1342,19 +1391,11 @@ export function PitchingStatsSheet({
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
                     Runners
                   </span>
-                  <select
+                  <StatsRunnersFilterSelect
                     value={runnersFilter}
-                    onChange={(e) => setRunnersFilter(e.target.value as StatsRunnersFilterKey)}
+                    onChange={setRunnersFilter}
                     className="w-full min-w-0 rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-2 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none"
-                    aria-label="Filter by base state before the plate appearance"
-                    title="Uses offensive base state at the start of each PA."
-                  >
-                    <option value="all">All situations</option>
-                    <option value="basesEmpty">Bases empty</option>
-                    <option value="runnersOn">Runners on</option>
-                    <option value="risp">RISP</option>
-                    <option value="basesLoaded">Bases loaded</option>
-                  </select>
+                  />
                 </div>
                 <div className="flex min-w-0 flex-col gap-1.5">
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
@@ -1366,7 +1407,6 @@ export function PitchingStatsSheet({
                       const v = e.target.value;
                       setFinalCountBucket(v === "" ? null : (v as BattingFinalCountBucketKey));
                     }}
-                    disabled={runnersFilter !== "all" && columnMode !== "pitchTypes"}
                     className="w-full min-w-0 rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-2 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                     aria-label={countFilterAria}
                     title={countFilterTitle}
@@ -1511,19 +1551,11 @@ export function PitchingStatsSheet({
             </label>
             <label className="flex min-w-0 items-center gap-2 text-sm text-white">
               <span className="shrink-0">Runners</span>
-              <select
+              <StatsRunnersFilterSelect
                 value={runnersFilter}
-                onChange={(e) => setRunnersFilter(e.target.value as StatsRunnersFilterKey)}
+                onChange={setRunnersFilter}
                 className="max-w-[12rem] rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-1.5 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none"
-                aria-label="Filter by base state before the plate appearance"
-                title="Uses offensive base state at the start of each PA."
-              >
-                <option value="all">All situations</option>
-                <option value="basesEmpty">Bases empty</option>
-                <option value="runnersOn">Runners on</option>
-                <option value="risp">RISP</option>
-                <option value="basesLoaded">Bases loaded</option>
-              </select>
+              />
             </label>
             <label className="flex min-w-0 items-center gap-2 text-sm text-white">
               <span className="shrink-0">Columns</span>
@@ -1546,7 +1578,6 @@ export function PitchingStatsSheet({
                   const v = e.target.value;
                   setFinalCountBucket(v === "" ? null : (v as BattingFinalCountBucketKey));
                 }}
-                disabled={runnersFilter !== "all" && columnMode !== "pitchTypes"}
                 className="max-w-[7.5rem] rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-1.5 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                 aria-label={countFilterAria}
                 title={countFilterTitle}
@@ -1631,7 +1662,14 @@ export function PitchingStatsSheet({
       )}
       {finalCountBucket != null && (
         <p className="text-xs leading-snug text-[var(--text-muted)]">
-          {countStateMode ? (
+          {columnMode === "contact" ? (
+            <>
+              <strong className="font-medium text-[var(--text)]">PA, G, IP, and counting stats</strong> use PAs that match
+              Runners + saved final count <strong className="font-medium text-[var(--text)]">{finalCountBucket}</strong> (same as
+              Standard). Sw%, Whiff%, Foul%, GB/LD/FB/IFF%, and P/PA use{" "}
+              <strong className="font-medium text-[var(--text)]">pitches at that count state</strong> on those PAs only.
+            </>
+          ) : countStateMode ? (
             <>
               Showing pitch-type context from <strong className="font-medium text-[var(--text)]">pitches thrown at count state</strong>{" "}
               <strong className="font-medium text-[var(--text)]">{finalCountBucket}</strong> (after Split/Runners). Team row
@@ -1640,8 +1678,17 @@ export function PitchingStatsSheet({
           ) : (
             <>
               Showing stats for PAs whose <strong className="font-medium text-[var(--text)]">saved final count</strong> is{" "}
-              <strong className="font-medium text-[var(--text)]">{finalCountBucket}</strong> (after Split). Clear Final count
-              to return to all PAs.
+              <strong className="font-medium text-[var(--text)]">{finalCountBucket}</strong>
+              {runnersFilter !== "all" ? (
+                <>
+                  {" "}
+                  with <strong className="font-medium text-[var(--text)]">{STATS_RUNNERS_LABEL[runnersFilter]}</strong> (after
+                  Split).
+                </>
+              ) : (
+                <> (after Split).</>
+              )}{" "}
+              Clear Final count to return to all PAs.
             </>
           )}
         </p>

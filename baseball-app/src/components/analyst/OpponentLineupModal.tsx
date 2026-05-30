@@ -14,6 +14,7 @@ import { useTouchOptimizedDndSensors } from "@/lib/dndTouchSensors";
 import { isClubRosterPlayer, isPitcherPlayer } from "@/lib/opponentUtils";
 import type { Player } from "@/lib/types";
 import { comparePlayersByLastNameThenFull } from "@/lib/playerSort";
+import { getPlayerPrimaryPosition } from "@/lib/playerRoster";
 
 /** Field positions only — pitchers are set on the game, not in this batting-order modal. */
 const LINEUP_POSITIONS = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"] as const;
@@ -277,7 +278,7 @@ export function OpponentLineupModal({
 
     setLineup((prev) => {
       const next = prev.map((s) => ({ ...s }));
-      const primaryPosition = player.positions?.[0];
+      const primaryPosition = getPlayerPrimaryPosition(player);
       const preferred =
         primaryPosition && LINEUP_POSITIONS.includes(primaryPosition as (typeof LINEUP_POSITIONS)[number])
           ? primaryPosition

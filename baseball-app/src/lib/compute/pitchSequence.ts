@@ -7,6 +7,7 @@ const BATTED_BALL_IN_PLAY_RESULTS = new Set<PAResult>([
   "triple",
   "hr",
   "out",
+  "foul_out",
   "gidp",
   "fielders_choice",
   "sac",
@@ -35,11 +36,21 @@ export function pitchOutcomeIsSwing(outcome: PitchOutcome): boolean {
   );
 }
 
+/** Strike pad outcomes (not ball). */
+function isStrikePadOutcome(outcome: PitchOutcome): boolean {
+  return (
+    outcome === "called_strike" ||
+    outcome === "swinging_strike" ||
+    outcome === "foul"
+  );
+}
+
 /**
  * True if this pitch cannot follow the current count in the log.
  * A 4th ball (walk) must be recorded via PA result, not another ball.
  * At 2 strikes, **called** and **swinging** stay available for the putaway (third) strike; fouls stay allowed.
  * Blocks a **second** called/swinging in a row both at 2 strikes (duplicate putaway).
+ * After the putaway (replay count **3** strikes), all pitch pad buttons are disabled.
  */
 export function isPitchOutcomeBlockedByFullCount(
   balls: number,
@@ -47,7 +58,8 @@ export function isPitchOutcomeBlockedByFullCount(
   outcome: PitchOutcome,
   lastPitch: PitchSequenceEntry | null = null
 ): boolean {
-  if (outcome === "ball" && balls >= 3) return true;
+  if (outcome === "ball" && (balls >= 3 || strikes >= 3)) return true;
+  if (isStrikePadOutcome(outcome) && strikes >= 3) return true;
   if (outcome === "called_strike" || outcome === "swinging_strike") {
     if (strikes < 2) return false;
     if (

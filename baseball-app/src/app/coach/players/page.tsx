@@ -1,11 +1,11 @@
-import { getPlayers } from "@/lib/db/queries";
+import { getCachedPlayers } from "@/lib/db/cachedQueries";
 import { isClubRosterPlayer } from "@/lib/opponentUtils";
-import { CoachPlayersClient } from "./CoachPlayersClient";
+import { CoachPlayersClientGate } from "./CoachPlayersClientGate";
 
 export const dynamic = "force-dynamic";
 
 export default async function CoachPlayersPage() {
-  const allPlayers = await getPlayers();
+  const allPlayers = await getCachedPlayers();
   const players = allPlayers.filter(isClubRosterPlayer);
-  return <CoachPlayersClient players={players} />;
+  return <CoachPlayersClientGate players={players} />;
 }

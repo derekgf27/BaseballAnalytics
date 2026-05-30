@@ -17,8 +17,11 @@ import {
 } from "./actions";
 import { isGameFinalized, ourTeamOutcomeFromFinalScore } from "@/lib/gameRecord";
 import { isActiveRosterPlayer, isClubRosterPlayer, matchupLabelUsFirst, pitchersForGameTeamSide } from "@/lib/opponentUtils";
+import { getPlayerPrimaryPosition } from "@/lib/playerRoster";
 import { formatDateMMDDYYYY } from "@/lib/format";
 import { StyledDatePicker } from "@/components/shared/StyledDatePicker";
+import { FlashMessage } from "@/components/shared/FlashMessage";
+import { useFlashMessage } from "@/hooks/useFlashMessage";
 import type { Game, Player, SavedLineup } from "@/lib/types";
 import { fetchSavedLineupWithSlots } from "@/app/analyst/lineup/actions";
 import { OpponentLineupModal } from "@/components/analyst/OpponentLineupModal";
@@ -54,10 +57,14 @@ export function GamesPageClient({
   const [games, setGames] = useState(initialGames);
   const [editingGame, setEditingGame] = useState<Game | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [message, setMessage] = useState<{ type: "ok" | "err" | "deleted"; text: string } | null>(null);
-  const [messageDismissing, setMessageDismissing] = useState(false);
+  const { message, dismissing: messageDismissing, show: showFlash } = useFlashMessage();
 
   const isFormOpen = editingGame !== null || showAddForm;
+
+  const closeGameForm = () => {
+    setShowAddForm(false);
+    setEditingGame(null);
+  };
 
   const defaultClubTeamName = useMemo(() => defaultClubTeamNameFromGames(games), [games]);
 
@@ -67,24 +74,14 @@ export function GamesPageClient({
     setGames(initialGames);
   }, [initialGames]);
 
-  // Auto-dismiss message after 4s, with fade-out
   useEffect(() => {
-    if (!message) return;
-    const showMs = 4000;
-    const fadeMs = 300;
-    const t1 = setTimeout(() => setMessageDismissing(true), showMs);
-    return () => clearTimeout(t1);
-  }, [message]);
-
-  useEffect(() => {
-    if (!messageDismissing) return;
-    const fadeMs = 300;
-    const t2 = setTimeout(() => {
-      setMessage(null);
-      setMessageDismissing(false);
-    }, fadeMs);
-    return () => clearTimeout(t2);
-  }, [messageDismissing]);
+    if (!isFormOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeGameForm();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isFormOpen]);
 
   const handleSaveGame = async (
     game: Omit<Game, "id" | "created_at">,
@@ -93,7 +90,7 @@ export function GamesPageClient({
     ourSlotsOverride?: { player_id: string; position?: string | null }[] | null
   ) => {
     if (!canEdit) {
-      setMessage({ type: "err", text: "Connect Supabase to add or edit games." });
+      showFlash({ type: "err", text: "Connect Supabase to add or edit games." });
       return;
     }
     const ourCustom = ourSlotsOverride && ourSlotsOverride.length > 0 ? ourSlotsOverride : null;
@@ -115,13 +112,13 @@ export function GamesPageClient({
         setGames((prev) => prev.map((g) => (g.id === updated.id ? updated : g)));
         setEditingGame(null);
         setShowAddForm(false);
-        setMessage({
+        showFlash({
           type: "ok",
           text: "Game updated.",
         });
         refresh();
       } else {
-        setMessage({ type: "err", text: "Could not update game." });
+        showFlash({ type: "err", text: "Could not update game." });
       }
     } else {
       try {
@@ -136,7 +133,7 @@ export function GamesPageClient({
         setShowAddForm(false);
         const hasOpp = opponentSlots && opponentSlots.length > 0;
         const hasOur = !!ourCustom;
-        setMessage({
+        showFlash({
           type: "ok",
           text: hasOpp && hasOur
             ? "Game added with both lineups."
@@ -159,7 +156,7 @@ export function GamesPageClient({
           /Server Components render|digest/i.test(raw)
             ? " If you deploy without running the latest Supabase migrations, apply files under baseball-app/supabase/migrations/ (especially games columns for save / win / loss pitcher). "
             : "";
-        setMessage({
+        showFlash({
           type: "err",
           text: `Could not add game: ${raw}.${prodDigestHint}${rlsHint}`,
         });
@@ -190,52 +187,49 @@ export function GamesPageClient({
         </div>
       )}
 
-      {message && (
-        <div
-          className={`rounded-lg border p-4 transition-opacity duration-300 ${
-            message.type === "ok" || message.type === "deleted"
-              ? "text-[var(--success)]"
-              : "text-[var(--danger)]"
-          } ${messageDismissing ? "opacity-0" : "opacity-100"}`}
-          style={{
-            background:
-              message.type === "ok" || message.type === "deleted"
-                ? "var(--success-dim)"
-                : "var(--danger-dim)",
-            borderColor: "var(--border)",
-          }}
-          role="alert"
-          aria-live="polite"
-        >
-          {message.text}
-        </div>
-      )}
+      <FlashMessage message={message} dismissing={messageDismissing} />
 
-      {isFormOpen && (
-      <GameForm
-        key={editingGame?.id ?? "new-game"}
-        game={editingGame && isGameFinalized(editingGame) ? null : editingGame}
-        savedLineups={initialSavedLineups}
-        players={initialPlayers}
-        trackedOpponentNames={initialTrackedOpponentNames}
-        onSave={handleSaveGame}
-        onCancel={() => { setEditingGame(null); setShowAddForm(false); }}
-        onAddNew={() => { setEditingGame(null); setShowAddForm(true); }}
-        onDelete={async (gameId) => {
-          const ok = await deleteGameAction(gameId);
-          if (ok) {
-            setGames((prev) => prev.filter((g) => g.id !== gameId));
-            setEditingGame(null);
-            setShowAddForm(false);
-            setMessage({ type: "deleted", text: "Game deleted." });
-            refresh();
-          } else {
-            setMessage({ type: "err", text: "Could not delete game." });
-          }
-        }}
-        defaultClubTeamName={defaultClubTeamName}
-        canEdit={canEdit}
-      />
+      {canEdit && isFormOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px] sm:p-6"
+          onClick={closeGameForm}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={editingGame ? "game-edit-title" : "game-add-title"}
+        >
+          <div
+            className="flex max-h-[min(90vh,100%)] w-[min(100%,72rem)] max-w-6xl flex-col overflow-hidden rounded-xl shadow-2xl ring-1 ring-[var(--border)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <GameForm
+              key={editingGame?.id ?? "new-game"}
+              game={editingGame && isGameFinalized(editingGame) ? null : editingGame}
+              savedLineups={initialSavedLineups}
+              players={initialPlayers}
+              trackedOpponentNames={initialTrackedOpponentNames}
+              onSave={handleSaveGame}
+              onCancel={closeGameForm}
+              onAddNew={() => {
+                setEditingGame(null);
+                setShowAddForm(true);
+              }}
+              onDelete={async (gameId) => {
+                const ok = await deleteGameAction(gameId);
+                if (ok) {
+                  setGames((prev) => prev.filter((g) => g.id !== gameId));
+                  closeGameForm();
+                  showFlash({ type: "deleted", text: "Game deleted." });
+                  refresh();
+                } else {
+                  showFlash({ type: "err", text: "Could not delete game." });
+                }
+              }}
+              defaultClubTeamName={defaultClubTeamName}
+              canEdit={canEdit}
+              titleId={editingGame ? "game-edit-title" : "game-add-title"}
+            />
+          </div>
+        </div>
       )}
 
       {games.length === 0 ? (
@@ -243,7 +237,7 @@ export function GamesPageClient({
           <span className="text-4xl opacity-60">📅</span>
           <h2 className="font-display mt-4 font-semibold text-[var(--text)]">No games yet</h2>
           <p className="mt-2 text-sm text-[var(--text-muted)]">
-            {canEdit ? "Use the form above to add a game." : "Connect Supabase to add games."}
+            {canEdit ? "Use Add game to schedule your first game." : "Connect Supabase to add games."}
           </p>
         </div>
       ) : (
@@ -340,6 +334,7 @@ function GameForm({
   onDelete,
   defaultClubTeamName,
   canEdit,
+  titleId = "game-form-title",
 }: {
   game: Game | null;
   savedLineups: SavedLineup[];
@@ -357,6 +352,7 @@ function GameForm({
   /** Pre-filled club name for new games (env or latest game). */
   defaultClubTeamName: string;
   canEdit: boolean;
+  titleId?: string;
 }) {
   const isEditing = !!game;
   const [date, setDate] = useState(game?.date ?? new Date().toISOString().slice(0, 10));
@@ -398,8 +394,6 @@ function GameForm({
       ? (game.our_side === "home" ? game.starting_pitcher_away_id : game.starting_pitcher_home_id) ?? ""
       : ""
   );
-  /** Our club’s credited save (optional); stored on `games.save_pitcher_id`. */
-  const [savePitcherOur, setSavePitcherOur] = useState<string>(() => game?.save_pitcher_id ?? "");
   const [formError, setFormError] = useState<string | null>(null);
   /** When tracked opponents exist, user can still type a name not in the list. */
   const [opponentUseCustom, setOpponentUseCustom] = useState(false);
@@ -431,18 +425,15 @@ function GameForm({
       setSpOpp(
         (game.our_side === "home" ? game.starting_pitcher_away_id : game.starting_pitcher_home_id) ?? ""
       );
-      setSavePitcherOur(game.save_pitcher_id ?? "");
     } else {
       setSpOur("");
       setSpOpp("");
-      setSavePitcherOur("");
     }
   }, [
     game?.id,
     game?.our_side,
     game?.starting_pitcher_home_id,
     game?.starting_pitcher_away_id,
-    game?.save_pitcher_id,
   ]);
 
   useEffect(() => {
@@ -517,7 +508,7 @@ function GameForm({
     if (lineupId === "") {
       const club = activePlayers.filter((p) => isClubRosterPlayer(p));
       return {
-        ordered: club.slice(0, 9).map((p) => ({ player_id: p.id, position: p.positions?.[0] ?? null })),
+        ordered: club.slice(0, 9).map((p) => ({ player_id: p.id, position: getPlayerPrimaryPosition(p) ?? null })),
         title: "Club roster (first 9)",
       };
     }
@@ -584,7 +575,7 @@ function GameForm({
           our_side === "home" ? spOur || null : spOpp || null,
         starting_pitcher_away_id:
           our_side === "home" ? spOpp || null : spOur || null,
-        save_pitcher_id: savePitcherOur.trim() ? savePitcherOur : null,
+        save_pitcher_id: isEditing && game ? game.save_pitcher_id ?? null : null,
       },
       isEditing ? lineupId : (lineupId || null),
       isEditing
@@ -607,23 +598,28 @@ function GameForm({
     matchupGame.home_team.trim().length > 0 && matchupGame.away_team.trim().length > 0;
 
   return (
-    <form onSubmit={handleSubmit} className="card-tech overflow-hidden p-0">
-      <header className="border-b border-[var(--border)]/80 bg-[var(--bg-elevated)]/15 px-4 py-2.5 sm:px-4">
-        <h3 className="font-orbitron text-sm font-semibold uppercase tracking-wide text-white sm:text-base">
+    <form onSubmit={handleSubmit} className="card-tech flex min-h-0 flex-1 flex-col overflow-hidden p-0">
+      <header className="shrink-0 border-b border-[var(--border)]/80 bg-[var(--bg-elevated)]/15 px-6 py-4 sm:px-8">
+        <h3
+          id={titleId}
+          className="font-orbitron text-lg font-semibold uppercase tracking-wide text-white sm:text-xl"
+        >
           {isEditing ? "Edit game" : "Add game"}
         </h3>
       </header>
 
-      <div className="space-y-4 px-4 py-3 sm:py-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5 sm:px-8 sm:py-6">
         {formError ? (
           <p
-            className="rounded-md border border-[var(--danger)] bg-[var(--danger-dim)] px-3 py-2 text-sm text-[var(--danger)]"
+            className="mb-4 rounded-md border border-[var(--danger)] bg-[var(--danger-dim)] px-3 py-2 text-sm text-[var(--danger)]"
             role="alert"
           >
             {formError}
           </p>
         ) : null}
 
+        <div className="grid gap-6 lg:grid-cols-2 lg:gap-x-10">
+        <div className="space-y-4">
         {/* When */}
         <section aria-labelledby="game-form-when">
           <h4 id="game-form-when" className={`${sectionKicker} mb-2`}>
@@ -784,7 +780,9 @@ function GameForm({
             </div>
           </div>
         </section>
+        </div>
 
+        <div className="space-y-4">
         {/* Starting pitchers */}
         <section aria-labelledby="game-form-sp-heading">
           <h4 id="game-form-sp-heading" className={`${sectionKicker} mb-2`}>
@@ -834,25 +832,6 @@ function GameForm({
               </select>
             </label>
           </div>
-          <label className="mt-3 block min-w-0" htmlFor="game-form-save-pitcher">
-            <span className={fieldLabel}>Save pitcher (our club)</span>
-            <select
-              id="game-form-save-pitcher"
-              value={savePitcherOur}
-              onChange={(e) => setSavePitcherOur(e.target.value)}
-              className="input-tech mt-1 block w-full px-3 py-2 disabled:cursor-not-allowed disabled:opacity-45"
-              aria-label="Save pitcher, our club"
-              disabled={!bothTeamsNamed}
-            >
-              <option value="">—</option>
-              {ourPitchers.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                  {p.jersey ? ` #${p.jersey}` : ""}
-                </option>
-              ))}
-            </select>
-          </label>
         </section>
 
         {/* Lineups */}
@@ -928,46 +907,52 @@ function GameForm({
             </div>
           </div>
         </section>
+        </div>
+        </div>
       </div>
 
-      <div className="sticky bottom-0 z-10 mt-1 flex flex-col gap-3 border-t border-[var(--border)]/70 bg-[var(--bg-base)]/92 px-4 py-3 backdrop-blur-sm sm:flex-row sm:flex-wrap sm:items-center supports-[backdrop-filter]:bg-[var(--bg-base)]/80">
-        <button
-          type="submit"
-          disabled={saving}
-          className="font-orbitron order-1 w-full rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold tracking-wide text-[var(--bg-base)] shadow-[0_0_16px_rgba(214,186,72,0.12)] transition hover:opacity-95 disabled:opacity-50 sm:order-none sm:w-auto"
-        >
-          {saving ? "Saving…" : isEditing ? "Update game" : "Add game"}
-        </button>
-        {isEditing && (
-          <>
-            <button
-              type="button"
-              onClick={onCancel}
-              className="order-2 rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--text-muted)] sm:order-none"
-            >
-              Cancel
-            </button>
+      <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[var(--border)]/80 bg-[var(--bg-elevated)]/10 px-6 py-4 sm:px-8 sm:py-5">
+        {isEditing ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (!game) return;
+              setDeleteGameConfirmOpen(true);
+            }}
+            disabled={deleting}
+            className="rounded-lg border border-[var(--danger)] px-4 py-2.5 text-sm font-medium text-[var(--danger)] transition hover:bg-[var(--danger-dim)] disabled:opacity-50"
+          >
+            {deleting ? "Deleting…" : "Delete game"}
+          </button>
+        ) : (
+          <span />
+        )}
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-3">
+          <button
+            type="submit"
+            disabled={saving}
+            className="font-orbitron rounded-lg bg-[var(--accent)] px-6 py-2.5 text-base font-semibold tracking-wide text-[var(--bg-base)] shadow-[0_0_16px_rgba(214,186,72,0.12)] transition hover:opacity-95 disabled:opacity-50"
+          >
+            {saving ? "Saving…" : isEditing ? "Update game" : "Add game"}
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-4 py-2.5 text-sm font-medium text-[var(--text-muted)] transition hover:border-[var(--border-focus)] hover:text-[var(--text)]"
+          >
+            Cancel
+          </button>
+          {isEditing ? (
             <button
               type="button"
               onClick={onAddNew}
-              className="order-3 text-sm text-[var(--text-muted)] hover:text-[var(--text)] sm:order-none"
+              className="text-sm text-[var(--accent)]/90 underline-offset-2 hover:underline"
             >
               Add new instead
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (!game) return;
-                setDeleteGameConfirmOpen(true);
-              }}
-              disabled={deleting}
-              className="order-4 rounded-lg border border-[var(--danger)] px-4 py-2 text-sm font-medium text-[var(--danger)] hover:bg-[var(--danger-dim)] disabled:opacity-50 sm:order-none sm:ml-auto"
-            >
-              {deleting ? "Deleting…" : "Delete game"}
-            </button>
-          </>
-        )}
-      </div>
+          ) : null}
+        </div>
+      </footer>
 
       <OpponentLineupModal
         variant="our"

@@ -1,9 +1,8 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { PlayersToWatchCard } from "@/components/analyst/PlayersToWatchCard";
+import { getCachedGames, getCachedPlayers } from "@/lib/db/cachedQueries";
 import {
-  getGames,
-  getPlayers,
   getPlayersToWatchInput,
   getTeamBattingStats,
   getTeamBattingStatsRisp,
@@ -12,7 +11,7 @@ import {
 import { selectPlayersToWatch } from "@/lib/playersToWatch";
 import { computeTeamRecordFromGames, formatTeamRecordString } from "@/lib/gameRecord";
 import { fmtDecimalNoLeadingZero, fmtPitchDecimal, formatDateMMDDYYYY, formatGameTime, formatPPa } from "@/lib/format";
-import { ScheduleCalendar } from "./ScheduleCalendar";
+import { ScheduleCalendarGate } from "./ScheduleCalendarGate";
 import { isClubRosterPlayer, isPitcherPlayer } from "@/lib/opponentUtils";
 import type { Game } from "@/lib/types";
 import { analystGameLogHref } from "@/lib/analystRoutes";
@@ -77,7 +76,7 @@ function getNextGame(games: Game[]): Game | null {
 }
 
 export default async function AnalystDashboard() {
-  const [games, players] = await Promise.all([getGames(), getPlayers()]);
+  const [games, players] = await Promise.all([getCachedGames(), getCachedPlayers()]);
   const teamRecord = computeTeamRecordFromGames(games);
   const recordLabel = formatTeamRecordString(teamRecord);
   const decidedGames = games.filter(
@@ -325,7 +324,7 @@ export default async function AnalystDashboard() {
       <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
         <PlayersToWatchCard rows={watchRows} />
         <div className="min-w-0 w-full lg:max-w-none">
-          <ScheduleCalendar games={games} />
+          <ScheduleCalendarGate games={games} />
         </div>
       </div>
     </div>

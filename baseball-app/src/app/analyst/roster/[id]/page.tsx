@@ -1,17 +1,18 @@
 import { Suspense } from "react";
+import { getCachedGames, getCachedPlayers } from "@/lib/db/cachedQueries";
 import {
-  getPlayers,
   getPlayerRating,
   getPlateAppearancesByBatter,
   getPlateAppearancesByPitcher,
   getBattingStatsWithSplitsForPlayers,
   getPitchingStatsForPlayers,
+  getPitchEventsForPaIds,
 } from "@/lib/db/queries";
 import { hasSupabase } from "@/lib/db/client";
 import { ratingsFromEvents } from "@/lib/compute";
 import { buildAnalystPlayerSpraySplits } from "@/lib/analystPlayerSpraySplits";
 import { computeAgeYears, formatBirthDateShortUs } from "@/lib/age";
-import { PlayerProfileClient } from "./PlayerProfileClient";
+import { PlayerProfileClientGate } from "./PlayerProfileClientGate";
 import { notFound } from "next/navigation";
 
 export default async function PlayerProfilePage({
@@ -20,8 +21,9 @@ export default async function PlayerProfilePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [players, storedRating, pasAsBatter, pasAsPitcher, statsWithSplits, pitchingStats] = await Promise.all([
-    getPlayers(),
+  const [players, games, storedRating, pasAsBatter, pasAsPitcher, statsWithSplits, pitchingStats] = await Promise.all([
+    getCachedPlayers(),
+    getCachedGames(),
     getPlayerRating(id),
     getPlateAppearancesByBatter(id),
     getPlateAppearancesByPitcher(id),
@@ -48,6 +50,13 @@ export default async function PlayerProfilePage({
   const ratings = stored ?? computed;
   const battingSplits = statsWithSplits[id] ?? null;
   const pitchingSplits = pitchingStats[id] ?? null;
+  const batterPaIds = pasAsBatter.map((p) => p.id);
+  const [battingPitchEvents, pitchingPitchEvents] = await Promise.all([
+    batterPaIds.length > 0 ? getPitchEventsForPaIds(batterPaIds) : Promise.resolve([]),
+    pasAsPitcher.length > 0
+      ? getPitchEventsForPaIds(pasAsPitcher.map((p) => p.id))
+      : Promise.resolve([]),
+  ]);
   const spraySplits = buildAnalystPlayerSpraySplits(player, players, pasAsBatter, pasAsPitcher);
 
   const canEdit = hasSupabase();
@@ -57,15 +66,20 @@ export default async function PlayerProfilePage({
 
   return (
     <Suspense fallback={<div className="animate-pulse rounded-lg bg-[var(--bg-card)] p-6" />}>
-      <PlayerProfileClient
+      <PlayerProfileClientGate
         player={player}
         ratings={ratings}
         isOverridden={!!stored}
         ageYears={ageYears}
         birthdayDisplay={birthdayDisplay}
         battingSplits={battingSplits}
+        battingPas={pasAsBatter}
+        battingPitchEvents={battingPitchEvents}
         pitchingSplits={pitchingSplits}
+        pitchingPas={pasAsPitcher}
+        pitchingPitchEvents={pitchingPitchEvents}
         spraySplits={spraySplits}
+        games={games}
         canEdit={canEdit}
       />
     </Suspense>

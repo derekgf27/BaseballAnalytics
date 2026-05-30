@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { hasSupabase } from "@/lib/db/client";
 import { getGame, getPlateAppearancesByGame, getPlayersByIds } from "@/lib/db/queries";
-import { GameLogPageClient } from "./GameLogPageClient";
+import { GameLogPageClientGate } from "./GameLogPageClientGate";
 
 export default async function GameLogPage({
   params,
@@ -18,7 +18,7 @@ export default async function GameLogPage({
   ];
   const players = playerIds.length > 0 ? await getPlayersByIds(playerIds) : [];
   return (
-    <GameLogPageClient
+    <GameLogPageClientGate
       game={game}
       initialPas={pas}
       players={players}

@@ -49,6 +49,7 @@ export const BATTING_STAT_HEADER_TOOLTIPS = {
   ldPct: "Line drives divided by balls in play with batted-ball type",
   fbPct: "Fly balls divided by balls in play with batted-ball type",
   iffPct: "Infield flies divided by balls in play with batted-ball type",
+  countStatePitches: "Pitches thrown at this ball–strike count in the sample",
   plTyped: "Pitches in the log with a tagged pitch type (sample for mix / swing / whiff by type)",
   plMixFB: "Share of typed pitches classified as fastballs (incl. sinker, cutter, etc.)",
   plMixSL: "Share of typed pitches classified as sliders / sweepers",

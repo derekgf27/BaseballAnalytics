@@ -10,6 +10,7 @@ export type PAResult =
   | "triple"
   | "hr"
   | "out"
+  | "foul_out"
   | "bb"
   | "ibb"
   | "hbp"
@@ -74,11 +75,15 @@ export interface Game {
 export type Bats = "L" | "R" | "S";
 export type Throws = "L" | "R";
 
+export type PlayerRosterStatus = "active" | "injured" | "inactive" | "other";
+
 export interface Player {
   id: string;
   name: string;
   jersey: string | null;
   positions: string[];
+  /** Default field spot for lineups; first in `positions` when saved. */
+  primary_position?: string | null;
   bats?: Bats | null;
   throws?: Throws | null;
   height_in?: number | null;
@@ -87,7 +92,9 @@ export interface Player {
   birth_date?: string | null;
   /** When set, player is tracked for this opponent organization (not our club). */
   opponent_team?: string | null;
-  /** @deprecated No longer used; all players are treated as on roster. */
+  roster_status?: PlayerRosterStatus;
+  staff_notes?: string | null;
+  /** Kept in sync with `roster_status === 'active'` for legacy queries. */
   is_active?: boolean;
   created_at?: string;
 }
@@ -252,6 +259,8 @@ export interface BaserunningEvent {
   event_type: BaserunningEventType;
   /** Batter at the plate when the event occurred (optional). */
   batter_id: string | null;
+  /** Base occupied at attempt: 0=1st, 1=2nd, 2=3rd (stole 2nd / 3rd / home). */
+  from_base?: 0 | 1 | 2 | null;
   created_at?: string;
 }
 

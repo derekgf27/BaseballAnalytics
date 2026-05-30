@@ -1,20 +1,19 @@
 import { Suspense } from "react";
+import { getCachedGames, getCachedPlayers } from "@/lib/db/cachedQueries";
 import {
   getTeamPlateAppearancesForSpray,
   getTeamPlateAppearancesForPitchingSpray,
   getTeamPlateAppearancesForCharts,
-  getPlayers,
-  getGames,
 } from "@/lib/db/queries";
-import { ChartsClient } from "./ChartsClient";
+import { ChartsClientGate } from "./ChartsClientGate";
 
 export default async function ChartsPage() {
   const [sprayData, pitchingSprayData, chartPas, players, games] = await Promise.all([
     getTeamPlateAppearancesForSpray(),
     getTeamPlateAppearancesForPitchingSpray(),
     getTeamPlateAppearancesForCharts(),
-    getPlayers(),
-    getGames(),
+    getCachedPlayers(),
+    getCachedGames(),
   ]);
   return (
     <Suspense
@@ -22,7 +21,7 @@ export default async function ChartsPage() {
         <div className="animate-pulse rounded-lg bg-[var(--bg-card)] p-10" aria-label="Loading charts" />
       }
     >
-      <ChartsClient
+      <ChartsClientGate
         sprayData={sprayData}
         pitchingSprayData={pitchingSprayData}
         chartPas={chartPas}

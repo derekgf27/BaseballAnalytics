@@ -1,5 +1,8 @@
 @import "tailwindcss";
 @import "./print-game-review.css";
+@import "./pregame-pdf-export.css";
+@import "./postgame-pdf-export.css";
+@import "./team-trends-pdf-export.css";
 
 /* High-tech / tactical palette — neo colors applied app-wide */
 :root {
@@ -551,8 +554,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   .reports-print-area {
     --bg-base: #ffffff;
     --bg-card: #ffffff;
-    --bg-elevated: #f1f5f9;
-    --bg-input: #f1f5f9;
+    --bg-elevated: #ffffff;
+    --bg-input: #ffffff;
     --border: #cbd5e1;
     --text: #000000;
     --neo-text-muted: #000000;
@@ -560,7 +563,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     --text-muted: #000000;
     --text-faint: #000000;
     --accent: #a16207;
-    --accent-dim: rgba(161, 98, 7, 0.12);
+    --accent-dim: #ffffff;
     --danger: #e11d48;
     --danger-dim: rgba(225, 29, 72, 0.12);
     --success: #16a34a;
@@ -629,4 +632,34 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   .charts-print-area [class*="text-white"] {
     color: #000000 !important;
   }
+}
+
+@keyframes record-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-1.75rem) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.record-toast-enter {
+  animation: record-toast-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes reports-tab-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.35rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.reports-tab-enter {
+  animation: reports-tab-in 0.18s ease-out both;
 }

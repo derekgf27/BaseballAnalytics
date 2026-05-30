@@ -113,7 +113,7 @@ export function ReportsPageClient({
   const onGamePdf = async () => {
     const m = await loadPacket();
     if (!m) return;
-    downloadCoachPacketPdf(m);
+    await downloadCoachPacketPdf(m);
   };
 
   const playerPdfDisabled =
@@ -140,7 +140,7 @@ export function ReportsPageClient({
         setErrorPlayerPdf(res.error);
         return;
       }
-      downloadHitterReportPdf(res, { compare: compareTwo && ids.length === 2 });
+      await downloadHitterReportPdf(res, { compare: compareTwo && ids.length === 2 });
     } catch {
       setErrorPlayerPdf("Could not build PDF.");
     } finally {

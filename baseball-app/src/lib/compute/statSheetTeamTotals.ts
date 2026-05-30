@@ -44,7 +44,9 @@ const CONTACT_RATE_KEYS: (keyof BattingStats)[] = [
 export function aggregateBattingTeamLine(
   players: Player[],
   lineById: Record<string, BattingStats | undefined>,
-  splitsById: Record<string, BattingStatsWithSplits | undefined>
+  splitsById: Record<string, BattingStatsWithSplits | undefined>,
+  /** When true, CS/SB% team totals sum visible rows (match Runners / Final count filters). */
+  useFilteredSample = false
 ): BattingStats | null {
   const lines = players.map((p) => lineById[p.id]).filter((s): s is BattingStats => s != null);
   if (lines.length === 0) return null;
@@ -56,7 +58,9 @@ export function aggregateBattingTeamLine(
   const walks = sumField(lines, "bb") + sumField(lines, "ibb");
   const bbPct = pa > 0 ? walks / pa : 0;
 
-  const csTotal = players.reduce((s, p) => s + (splitsById[p.id]?.overall?.cs ?? 0), 0);
+  const csTotal = useFilteredSample
+    ? sumField(lines, "cs")
+    : players.reduce((s, p) => s + (splitsById[p.id]?.overall?.cs ?? 0), 0);
   const sbTotal = sumField(lines, "sb");
   const sbPct = sbTotal + csTotal > 0 ? sbTotal / (sbTotal + csTotal) : undefined;
 

@@ -1,17 +1,18 @@
-import { getGames, getSavedLineups, getPlayers, getTrackedOpponentNames } from "@/lib/db/queries";
+import { getCachedGames, getCachedPlayers } from "@/lib/db/cachedQueries";
+import { getSavedLineups, getTrackedOpponentNames } from "@/lib/db/queries";
 import { hasSupabase } from "@/lib/db/client";
-import { GamesPageClient } from "./GamesPageClient";
+import { GamesPageClientGate } from "./GamesPageClientGate";
 
 export default async function GamesPage() {
   const [games, savedLineups, players, trackedOpponentNames] = await Promise.all([
-    getGames(),
+    getCachedGames(),
     getSavedLineups(),
-    getPlayers(),
+    getCachedPlayers(),
     getTrackedOpponentNames(),
   ]);
   const canEdit = hasSupabase();
   return (
-    <GamesPageClient
+    <GamesPageClientGate
       initialGames={games}
       initialSavedLineups={savedLineups}
       initialPlayers={players}

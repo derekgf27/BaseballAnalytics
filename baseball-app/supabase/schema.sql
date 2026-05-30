@@ -40,6 +40,10 @@ create table if not exists public.players (
   hometown text,
   birth_date date,
   opponent_team text,
+  primary_position text,
+  roster_status text not null default 'active'
+    check (roster_status in ('active', 'injured', 'inactive', 'other')),
+  staff_notes text,
   is_active boolean default true,
   created_at timestamptz default now()
 );
@@ -56,7 +60,7 @@ create table if not exists public.plate_appearances (
   count_balls int not null check (count_balls >= 0 and count_balls <= 3),
   count_strikes int not null check (count_strikes >= 0 and count_strikes <= 2),
   result text not null check (result in (
-    'single', 'double', 'triple', 'hr', 'out', 'bb', 'ibb', 'hbp', 'so', 'so_looking', 'sac', 'sac_fly', 'sac_bunt', 'other', 'gidp', 'fielders_choice', 'reached_on_error'
+    'single', 'double', 'triple', 'hr', 'out', 'foul_out', 'bb', 'ibb', 'hbp', 'so', 'so_looking', 'sac', 'sac_fly', 'sac_bunt', 'other', 'gidp', 'fielders_choice', 'reached_on_error'
   )),
   contact_quality text check (contact_quality is null or contact_quality in ('soft', 'medium', 'hard')),
   chase boolean,
@@ -145,6 +149,7 @@ create table if not exists public.baserunning_events (
   runner_id uuid not null references public.players(id) on delete cascade,
   event_type text not null check (event_type in ('sb', 'cs')),
   batter_id uuid references public.players(id) on delete set null,
+  from_base smallint check (from_base is null or (from_base >= 0 and from_base <= 2)),
   created_at timestamptz default now()
 );
 

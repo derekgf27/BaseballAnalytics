@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getGames, getPlayers } from "@/lib/db/queries";
+import { getGame, getPlayersForGame } from "@/lib/db/queries";
 import { isGameFinalized } from "@/lib/gameRecord";
 import { analystGameReviewHref } from "@/lib/analystRoutes";
 import {
@@ -14,30 +14,29 @@ import {
   finalizeGameScoreAction,
   linkPitchTrackerGroupToPaAction,
 } from "./actions";
-import RecordPageClient from "./RecordPageClient";
+import { RecordPageClientGate } from "./RecordPageClientGate";
 
 export default async function RecordPAsPage({
   searchParams,
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  const [games, players] = await Promise.all([getGames(), getPlayers()]);
   const params = await searchParams;
   const gameIdParam = params?.gameId;
   const requestedGameId = typeof gameIdParam === "string" ? gameIdParam : undefined;
-  const initialGameId =
-    requestedGameId && games.some((g) => g.id === requestedGameId)
-      ? requestedGameId
-      : undefined;
 
-  const gameForRecord = initialGameId ? games.find((g) => g.id === initialGameId) : undefined;
-  if (gameForRecord && isGameFinalized(gameForRecord)) {
-    redirect(analystGameReviewHref(gameForRecord.id));
+  const game = requestedGameId ? await getGame(requestedGameId) : null;
+  const initialGameId = game?.id;
+
+  if (game && isGameFinalized(game)) {
+    redirect(analystGameReviewHref(game.id));
   }
 
+  const players = game ? await getPlayersForGame(game) : [];
+
   return (
-    <RecordPageClient
-      games={games}
+    <RecordPageClientGate
+      game={game}
       players={players}
       initialGameId={initialGameId}
       fetchPAsForGame={fetchPAsForGame}

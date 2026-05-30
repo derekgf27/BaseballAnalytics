@@ -3,16 +3,8 @@
  */
 
 import { opponentNameKey } from "@/lib/opponentUtils";
-import type { StatsRunnersFilterKey } from "@/lib/types";
 
-/** Display labels for Runners toolbar + active-filter summary */
-export const STATS_RUNNERS_LABEL: Record<StatsRunnersFilterKey, string> = {
-  all: "All situations",
-  basesEmpty: "Bases empty",
-  runnersOn: "Runners on",
-  risp: "RISP",
-  basesLoaded: "Bases loaded",
-};
+export { STATS_RUNNERS_FILTER_ORDER, STATS_RUNNERS_LABEL } from "@/lib/statsRunnersFilter";
 
 export type StatsPageUrlState = {
   tab: string | null;

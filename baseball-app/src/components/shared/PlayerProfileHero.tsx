@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import type { ReactNode } from "react";
+import { formatPositionsDisplay } from "@/lib/playerRoster";
 import type { Player } from "@/lib/types";
 
 function normalizeHand(hand: string | null | undefined): string | null {
@@ -15,54 +15,79 @@ function normalizeHand(hand: string | null | undefined): string | null {
 
 export type PlayerProfileHeroProps = {
   player: Player;
-  /** Shown under handedness (e.g. analyst compare link). */
-  compareHref?: string;
   /** Badge or chip beside the name (e.g. coach trend). */
   titleExtra?: ReactNode;
   /** Smaller facts below the hero line (positions, height, etc.). */
   secondaryFacts?: { label: string; value: string }[];
+  /** Inline with jersey number (e.g. export report). */
+  jerseyTrailing?: ReactNode;
   children?: ReactNode;
 };
 
 export function PlayerProfileHero({
   player,
-  compareHref,
   titleExtra,
   secondaryFacts,
+  jerseyTrailing,
   children,
 }: PlayerProfileHeroProps) {
   const jersey =
     player.jersey != null && String(player.jersey).trim() !== "" ? `#${player.jersey}` : null;
   const batsLabel = normalizeHand(player.bats);
   const throwsLabel = normalizeHand(player.throws);
-  const handParts: string[] = [];
-  if (batsLabel) handParts.push(`Bats ${batsLabel}`);
-  if (throwsLabel) handParts.push(`Throws ${throwsLabel}`);
-  const handLine = handParts.length > 0 ? handParts.join(" · ") : null;
+  const positionsLine =
+    player.positions?.length > 0 ? formatPositionsDisplay(player) : null;
+  const hasMetaAside = batsLabel != null || throwsLabel != null || positionsLine != null;
+
+  const metaKicker =
+    "text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--accent)]";
+  const metaValue = "font-display text-xl font-semibold leading-tight text-white sm:text-2xl";
 
   return (
     <header className="space-y-4">
       <div className="space-y-2">
-        {jersey ? (
-          <p className="font-display text-3xl font-semibold tabular-nums tracking-tight text-[var(--accent)] sm:text-4xl">
-            {jersey}
-          </p>
+        {jersey || jerseyTrailing ? (
+          <div className="flex w-full flex-wrap items-center gap-3 sm:gap-4">
+            {jersey ? (
+              <p className="font-orbitron text-3xl font-semibold tabular-nums tracking-tight text-[var(--accent)] sm:text-4xl">
+                {jersey}
+              </p>
+            ) : null}
+            {jerseyTrailing ? (
+              <div className="ml-auto flex shrink-0 items-center">{jerseyTrailing}</div>
+            ) : null}
+          </div>
         ) : null}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <h1 className="font-display text-4xl font-bold leading-[1.05] tracking-tight text-white sm:text-5xl md:text-6xl">
-            {player.name}
-          </h1>
-          {titleExtra}
+        <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+            <h1 className="font-orbitron text-4xl font-bold leading-[1.05] tracking-tight text-white sm:text-5xl md:text-6xl">
+              {player.name}
+            </h1>
+            {titleExtra}
+          </div>
+          {hasMetaAside ? (
+            <dl className="flex shrink-0 flex-wrap items-end justify-end gap-x-6 gap-y-2 sm:gap-x-8">
+              {batsLabel ? (
+                <div className="text-right">
+                  <dt className={metaKicker}>Bats</dt>
+                  <dd className={metaValue}>{batsLabel}</dd>
+                </div>
+              ) : null}
+              {throwsLabel ? (
+                <div className="text-right">
+                  <dt className={metaKicker}>Throws</dt>
+                  <dd className={metaValue}>{throwsLabel}</dd>
+                </div>
+              ) : null}
+              {positionsLine ? (
+                <div className="text-right">
+                  <dt className={metaKicker}>Pos</dt>
+                  <dd className={`${metaValue} text-[var(--accent)]`}>{positionsLine}</dd>
+                </div>
+              ) : null}
+            </dl>
+          ) : null}
         </div>
-        {handLine ? <p className="text-lg font-medium text-[var(--text)] sm:text-xl">{handLine}</p> : null}
-        {compareHref ? (
-          <Link
-            href={compareHref}
-            className="inline-block text-sm font-medium text-[var(--accent)] hover:underline"
-          >
-            Compare with…
-          </Link>
-        ) : null}
       </div>
 
       {secondaryFacts && secondaryFacts.length > 0 ? (

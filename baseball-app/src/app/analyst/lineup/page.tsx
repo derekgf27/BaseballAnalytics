@@ -1,9 +1,10 @@
-import { getPlayers, getBattingStatsWithSplitsForPlayers, getSavedLineups } from "@/lib/db/queries";
+import { getCachedPlayers } from "@/lib/db/cachedQueries";
+import { getBattingStatsWithSplitsForPlayers, getSavedLineups } from "@/lib/db/queries";
 import { isActiveRosterPlayer, isClubRosterPlayer, isPitcherPlayer } from "@/lib/opponentUtils";
 import { LineupConstructionClientGate } from "./LineupConstructionClientGate";
 
 export default async function LineupConstructionPage() {
-  const [allPlayers, savedLineups] = await Promise.all([getPlayers(), getSavedLineups()]);
+  const [allPlayers, savedLineups] = await Promise.all([getCachedPlayers(), getSavedLineups()]);
   const players = allPlayers.filter(
     (p) => isClubRosterPlayer(p) && isActiveRosterPlayer(p) && !isPitcherPlayer(p)
   );

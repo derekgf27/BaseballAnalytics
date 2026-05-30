@@ -1,3 +1,4 @@
+import { isActiveRosterStatus, resolveRosterStatus } from "@/lib/playerRoster";
 import type { Game, LineupSide, Player } from "@/lib/types";
 
 /**
@@ -11,9 +12,9 @@ export function isClubRosterPlayer(p: Player): boolean {
   return !p.opponent_team?.trim();
 }
 
-/** True when player is available for selection (not marked inactive/injured). */
+/** True when player is available for selection (roster status active). */
 export function isActiveRosterPlayer(p: Player): boolean {
-  return p.is_active !== false;
+  return isActiveRosterStatus(resolveRosterStatus(p));
 }
 
 /** True if `positions` includes P — excluded from batting stats views and batter selection in Record PAs. */
@@ -70,7 +71,7 @@ export function getOpponentRosterTag(
       kind: "club_only",
       shortLabel: "Roster",
       title:
-        "This player is on the main roster with no opponent tag. They appear here from game lineups or plate appearances. Edit the player to set Opponent team, or fix the lineup in the game if they were assigned by mistake.",
+        "This player is on your club roster with no opponent tag. They appear here from game lineups or plate appearances. Add them from this opponent’s View roster to tag them for scouting, or fix the lineup in the game if they were assigned by mistake.",
     };
   }
   if (opponentNameKey(o) === opponentNameKey(opponentDisplayName)) {

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, memo, useMemo, useState } from "react";
 import { analystPlayerProfileHref } from "@/lib/analystRoutes";
 import { CurrentBatterPitchDataCard } from "@/components/analyst/BattingPitchMixCard";
 import {
@@ -11,6 +11,7 @@ import {
 } from "@/lib/compute/battingStats";
 import { fmtDecimalNoLeadingZero } from "@/lib/format";
 import { isPitcherPlayer } from "@/lib/opponentUtils";
+import { getPlayerPrimaryPosition } from "@/lib/playerRoster";
 import { formatBattingTripleSlash } from "@/lib/format/battingSlash";
 import type { Game, PitchEvent, PlateAppearance, Player } from "@/lib/types";
 
@@ -105,6 +106,7 @@ export interface GameBattingRow {
 
 const RESULT_ADDS_ONE_OUT = new Set<PlateAppearance["result"]>([
   "out",
+  "foul_out",
   "so",
   "so_looking",
   "sac_fly",
@@ -250,7 +252,7 @@ function computeGameBatting(
       gamePosition != null && gamePosition !== ""
         ? gamePosition
         : !gameLineupLoaded
-          ? (player?.positions?.[0] ?? "")
+          ? (getPlayerPrimaryPosition(player) ?? "")
           : "";
     rows.push({
       playerId: batterId,
@@ -315,7 +317,7 @@ function computeGameBatting(
 
   /**
    * Replaced starters disappear from `game_lineups`, so they have no `lineupPositionByPlayerId`
-   * entry. Using roster `positions[0]` often mislabels them (e.g. LF vs DH). Copy the **current**
+   * entry. Using roster primary position often mislabels them (e.g. LF vs DH). Copy the **current**
    * slot's saved position from whoever occupies that lineup spot now (usually the PH in the same
    * role, e.g. DH).
    */
@@ -336,7 +338,7 @@ function computeGameBatting(
     if (row.position) continue;
     const p = playerMap.get(row.playerId);
     if (!gameLineupLoaded || row.isSubstitution) {
-      row.position = p?.positions?.[0] ?? "";
+      row.position = getPlayerPrimaryPosition(p) ?? "";
     }
   }
 
@@ -377,7 +379,7 @@ interface GameBattingTableProps {
   linkPlayersToProfile?: boolean;
 }
 
-export function GameBattingTable({
+export const GameBattingTable = memo(function GameBattingTable({
   game,
   pas,
   players,
@@ -750,4 +752,4 @@ export function GameBattingTable({
       ) : null}
     </section>
   );
-}
+});

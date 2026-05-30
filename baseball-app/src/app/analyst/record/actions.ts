@@ -23,6 +23,7 @@ import {
   linkPitchTrackerGroupToPlateAppearance,
 } from "@/lib/db/queries";
 import { isDemoId } from "@/lib/db/mockData";
+import { revalidateGamesListCache } from "@/lib/db/revalidateLists";
 
 export async function fetchPAsForGame(gameId: string): Promise<{
   pas: PlateAppearance[];
@@ -174,6 +175,7 @@ export async function finalizeGameScoreAction(
       save_pitcher_id: saveId,
       losing_pitcher_id: lossId,
     });
+    revalidateGamesListCache();
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to finalize game" };

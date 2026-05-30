@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState, useMemo, memo, useCallback } from "react";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { createPortal } from "react-dom";
 import type { Player } from "@/lib/types";
 
@@ -88,6 +89,7 @@ export function ReachedOnErrorFielderModal({
 }) {
   const titleId = useId();
   const descId = useId();
+  const dialogRef = useFocusTrap(true);
   const [selectedId, setSelectedId] = useState(() => initialFielderId ?? "");
 
   useEffect(() => {
@@ -166,6 +168,7 @@ export function ReachedOnErrorFielderModal({
       role="presentation"
     >
       <div
+        ref={dialogRef}
         className="flex max-h-[min(92dvh,56rem)] w-full max-w-5xl flex-col rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-6 shadow-2xl ring-1 ring-[var(--accent)]/15 sm:p-8 lg:p-10"
         onClick={(e) => e.stopPropagation()}
         role="dialog"

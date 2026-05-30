@@ -1,15 +1,14 @@
 import { Suspense } from "react";
+import { getCachedPlayers } from "@/lib/db/cachedQueries";
 import {
-  getPlayers,
   getBattingStatsWithSplitsForPlayers,
   getPitchingStatsForPlayers,
   getClubBattingMatchupPayload,
   getClubPitchingMatchupPayload,
 } from "@/lib/db/queries";
 import { isClubRosterPlayer, isPitcherPlayer } from "@/lib/opponentUtils";
-import { coachPlayerProfileHref } from "@/lib/coachRoutes";
 import { buildStatsUrlStateFromNextSearchParams } from "@/app/analyst/stats/statsUrlState";
-import { StatsPageClient } from "@/app/analyst/stats/StatsPageClient";
+import { StatsPageClientGate } from "@/app/analyst/stats/StatsPageClientGate";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -22,7 +21,7 @@ export default async function CoachStatsPage({
   const sp = await searchParams;
   const statsUrlState = buildStatsUrlStateFromNextSearchParams(sp);
 
-  const allPlayers = await getPlayers();
+  const allPlayers = await getCachedPlayers();
   const club = allPlayers.filter(isClubRosterPlayer);
   const batters = club.filter((p) => !isPitcherPlayer(p));
   const pitchers = club.filter(isPitcherPlayer);
@@ -38,7 +37,7 @@ export default async function CoachStatsPage({
 
   return (
     <Suspense fallback={<div className="p-6 text-sm text-[var(--neo-text-muted)]">Loading stats…</div>}>
-      <StatsPageClient
+      <StatsPageClientGate
         statsUrlState={statsUrlState}
         initialBatters={batters}
         initialPitchers={pitchers}
@@ -47,7 +46,6 @@ export default async function CoachStatsPage({
         battingMatchupPayload={battingMatchupPayload}
         pitchingMatchupPayload={pitchingMatchupPayload}
         playerIdToName={playerIdToName}
-        playerProfileHref={coachPlayerProfileHref}
       />
     </Suspense>
   );

@@ -8,6 +8,7 @@ import { PitchingStatsSheet } from "@/components/analyst/PitchingStatsSheet";
 import { computeBattingStatsWithSplitsFromPas } from "@/lib/compute/battingStatsWithSplitsFromPas";
 import { computePitchingStatsWithSplitsForRoster } from "@/lib/compute/pitchingStats";
 import { analystPlayerProfileHref } from "@/lib/analystRoutes";
+import { coachPlayerProfileHref } from "@/lib/coachRoutes";
 import { opponentNameKey, opponentTeamName, uniqueOpponentNames } from "@/lib/opponentUtils";
 import { buildStatsUrlState, type StatsPageUrlState } from "./statsUrlState";
 import type {
@@ -99,8 +100,6 @@ interface StatsPageClientProps {
   playerIdToName?: Record<string, string>;
   /** Parsed from the request URL on the server — keeps SSR HTML in sync with the first client render (see `useSearchParams` hydration notes). */
   statsUrlState: StatsPageUrlState;
-  /** Player name links (e.g. coach portal uses `/coach/players/...`). */
-  playerProfileHref?: (playerId: string) => string;
 }
 
 export function StatsPageClient({
@@ -113,7 +112,6 @@ export function StatsPageClient({
   pitchingMatchupPayload,
   playerIdToName = {},
   statsUrlState,
-  playerProfileHref = analystPlayerProfileHref,
 }: StatsPageClientProps) {
   const batters = initialBatters ?? initialPlayers ?? [];
   const batterIds = useMemo(() => batters.map((p) => p.id), [batters]);
@@ -123,6 +121,11 @@ export function StatsPageClient({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const url = useHydrationSafeStatsUrl(statsUrlState, searchParams);
+
+  const playerProfileHref = useMemo(
+    () => (pathname?.startsWith("/coach") ? coachPlayerProfileHref : analystPlayerProfileHref),
+    [pathname]
+  );
 
   /**
    * Optimistic overlay while `router.replace` updates search params. Without this, a URL→state
@@ -647,6 +650,7 @@ export function StatsPageClient({
             battingStatsWithSplits={displayBattingStatsWithSplits}
             pas={displayBattingPas}
             pitchEvents={displayBattingPitchEvents}
+            startedGameIdsByPlayer={battingMatchupPayload?.startedGameIdsByPlayer}
             subheading={battingSampleSubheading}
             splitDisabled={!!batPitcherId}
             finalCountBucket={battingFinalCount}
@@ -677,6 +681,7 @@ export function StatsPageClient({
             pitchingStatsWithSplits={displayPitchingStatsWithSplits}
             pas={displayPitchingPas}
             pitchEvents={displayPitchingPitchEvents}
+            starterGameIdsByPlayer={pitchingMatchupPayload?.starterGameIdsByPlayer}
             subheading={pitchingSampleSubheading}
             batterBatsById={pitchBatterBatsByIdObj}
             splitDisabled={!!pitchBatterId}

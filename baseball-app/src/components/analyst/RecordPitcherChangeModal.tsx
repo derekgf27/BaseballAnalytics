@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import {
   DndContext,
   DragOverlay,
@@ -147,6 +148,17 @@ export function RecordPitcherChangeModal({
     onApply(nextId);
   }
 
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  const dialogRef = useFocusTrap(open);
+
   if (!open) return null;
 
   const emptyRoster = pitchers.length === 0;
@@ -155,11 +167,13 @@ export function RecordPitcherChangeModal({
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 p-4"
       onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="record-pitch-change-title"
+      role="presentation"
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="record-pitch-change-title"
         className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >

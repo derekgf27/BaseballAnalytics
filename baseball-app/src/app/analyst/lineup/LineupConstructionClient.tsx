@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -17,9 +17,19 @@ import { lineupAggregateFromBattingStats } from "@/lib/compute/battingStats";
 import { fmtDecimalNoLeadingZero, formatPPa } from "@/lib/format";
 import { formatBattingTripleSlash } from "@/lib/format/battingSlash";
 import { comparePlayersByLastNameThenFull } from "@/lib/playerSort";
+import { getPlayerPrimaryPosition } from "@/lib/playerRoster";
 
 export type LineupSplitView = "overall" | "vsL" | "vsR" | "risp";
+import {
+  deleteSavedLineupForCoach,
+  fetchGameLineupForCoach,
+  fetchSavedLineupSlotsForCoach,
+  saveGameLineupForCoachAction,
+} from "@/app/coach/lineup/actions";
 import { fetchSavedLineupWithSlots, saveLineupTemplate, deleteSavedLineup } from "./actions";
+import { formatDateMMDDYYYY } from "@/lib/format";
+import { matchupLabelUsFirst } from "@/lib/opponentUtils";
+import type { Game, LineupSide } from "@/lib/types";
 
 const LINEUP_POSITIONS = [
   "P",
@@ -99,17 +109,72 @@ function suggestOrder(
   withStat.sort((a, b) => b.value - a.value);
   const top9 = withStat.slice(0, 9).map(({ player }) => player);
   return top9.map((player) => {
-    const primary = player.positions?.[0];
+    const primary = getPlayerPrimaryPosition(player);
     const position =
       primary && LINEUP_POSITIONS.includes(primary as (typeof LINEUP_POSITIONS)[number]) ? primary : "DH";
     return { player, position };
   });
 }
 
+export type InitialGameLineupSlot = {
+  order: number;
+  playerId: string;
+  playerName: string;
+  position: string;
+  bats: string | null;
+};
+
 export interface LineupConstructionClientProps {
   initialPlayers: Player[];
   initialBattingStatsWithSplits: Record<string, BattingStatsWithSplits>;
   initialSavedLineups: SavedLineup[];
+  /** Coach portal: edit lineup per game (same UI as analyst, game save instead of template-only). */
+  games?: Game[];
+  initialGameId?: string | null;
+  initialGameOurSide?: LineupSide | null;
+  initialGameLineup?: InitialGameLineupSlot[];
+}
+
+function formatGameLabel(game: Game): string {
+  const d = game.date ? formatDateMMDDYYYY(game.date) : game.date;
+  return `${d} ${matchupLabelUsFirst(game, true)}`;
+}
+
+function opponentSide(side: LineupSide): LineupSide {
+  return side === "home" ? "away" : "home";
+}
+
+function slotsToLineupState(
+  slots: { slot: number; player_id: string; position: string | null }[],
+  playerMap: Map<string, Player>
+): LineupSlotState[] {
+  const next: LineupSlotState[] = Array.from({ length: 9 }, () => ({ player: null, position: "" }));
+  for (const s of slots) {
+    if (s.slot >= 1 && s.slot <= 9) {
+      next[s.slot - 1] = {
+        player: playerMap.get(s.player_id) ?? null,
+        position: s.position ?? "",
+      };
+    }
+  }
+  return next;
+}
+
+function initialGameLineupToState(
+  initialLineup: InitialGameLineupSlot[],
+  playerMap: Map<string, Player>
+): LineupSlotState[] {
+  const next: LineupSlotState[] = Array.from({ length: 9 }, () => ({ player: null, position: "" }));
+  for (const s of initialLineup) {
+    const idx = Math.trunc(s.order) - 1;
+    if (idx >= 0 && idx < 9) {
+      next[idx] = {
+        player: playerMap.get(s.playerId) ?? null,
+        position: s.position || "",
+      };
+    }
+  }
+  return next;
 }
 
 function getStatsForLineupSplit(splits: Record<string, BattingStatsWithSplits>, playerId: string, split: LineupSplitView): BattingStats | undefined {
@@ -156,7 +221,7 @@ function PlayerCard({
   /** When sorting the pool by AVG/OPS/OBP, show that stat on the card */
   poolStatLine?: { label: string; value: string } | null;
 }) {
-  const position = player.positions?.[0] ?? "—";
+  const position = getPlayerPrimaryPosition(player) ?? "—";
   const handedness = formatHandedness(player.bats, player.throws);
   if (compact) {
     return (
@@ -392,13 +457,24 @@ export default function LineupConstructionClient({
   initialPlayers,
   initialBattingStatsWithSplits,
   initialSavedLineups = [],
+  games,
+  initialGameId = null,
+  initialGameOurSide = null,
+  initialGameLineup = [],
 }: LineupConstructionClientProps) {
   const router = useRouter();
-  /** When split UI returns, wire toggles to this instead of hardcoding `"overall"`. */
+  const gameMode = games != null && games.length > 0;
+  const playerMap = useMemo(() => new Map(initialPlayers.map((p) => [p.id, p])), [initialPlayers]);
   const lineupSplitForStats: LineupSplitView = "overall";
-  const [lineup, setLineup] = useState<LineupSlotState[]>(() =>
-    Array.from({ length: 9 }, () => ({ player: null, position: "" }))
-  );
+  const [selectedGameId, setSelectedGameId] = useState<string | null>(gameMode ? initialGameId : null);
+  const [lineupSide, setLineupSide] = useState<LineupSide>(() => initialGameOurSide ?? "home");
+  const [loadingLineup, setLoadingLineup] = useState(false);
+  const [lineup, setLineup] = useState<LineupSlotState[]>(() => {
+    if (gameMode && initialGameLineup.length > 0) {
+      return initialGameLineupToState(initialGameLineup, playerMap);
+    }
+    return Array.from({ length: 9 }, () => ({ player: null, position: "" }));
+  });
   const [activeId, setActiveId] = useState<string | null>(null);
   const [templateName, setTemplateName] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "ok" | "err">("idle");
@@ -425,7 +501,40 @@ export default function LineupConstructionClient({
     return () => clearTimeout(t);
   }, [saveStatus]);
 
+  useEffect(() => {
+    if (!gameMode || !selectedGameId) {
+      if (gameMode) {
+        setLineup(Array.from({ length: 9 }, () => ({ player: null, position: "" })));
+      }
+      return;
+    }
+    if (
+      selectedGameId === initialGameId &&
+      initialGameLineup.length > 0 &&
+      initialGameOurSide != null &&
+      lineupSide === initialGameOurSide
+    ) {
+      setLineup(initialGameLineupToState(initialGameLineup, playerMap));
+      return;
+    }
+    setLoadingLineup(true);
+    fetchGameLineupForCoach(selectedGameId, lineupSide)
+      .then((slots) => setLineup(slotsToLineupState(slots, playerMap)))
+      .finally(() => setLoadingLineup(false));
+  }, [
+    gameMode,
+    selectedGameId,
+    lineupSide,
+    initialGameId,
+    initialGameLineup,
+    initialGameOurSide,
+    playerMap,
+  ]);
+
   const sensors = useTouchOptimizedDndSensors();
+  const selectedGame = selectedGameId && games ? games.find((g) => g.id === selectedGameId) ?? null : null;
+  const ourSide = selectedGame?.our_side ?? "home";
+  const oppSide = opponentSide(ourSide);
 
   const inLineupIds = new Set(
     lineup.filter((s) => s.player != null).map((s) => s.player!.id)
@@ -492,10 +601,16 @@ export default function LineupConstructionClient({
 
   async function handleLoadTemplate(lineupId: string) {
     setLoadStatus("loading");
+    if (gameMode) {
+      const slots = await fetchSavedLineupSlotsForCoach(lineupId);
+      setLoadStatus("idle");
+      if (!slots.length) return;
+      setLineup(slotsToLineupState(slots, playerMap));
+      return;
+    }
     const saved = await fetchSavedLineupWithSlots(lineupId);
     setLoadStatus("idle");
     if (!saved?.slots?.length) return;
-    const playerMap = new Map(initialPlayers.map((p) => [p.id, p]));
     const ordered = [...saved.slots].sort((a, b) => a.slot - b.slot);
     const newLineup: LineupSlotState[] = Array.from({ length: 9 }, () => ({ player: null, position: "" }));
     for (const s of ordered) {
@@ -508,8 +623,25 @@ export default function LineupConstructionClient({
   }
 
   async function handleDeleteTemplate(id: string) {
-    await deleteSavedLineup(id);
+    if (gameMode) {
+      await deleteSavedLineupForCoach(id);
+    } else {
+      await deleteSavedLineup(id);
+    }
     router.refresh();
+  }
+
+  async function handleSaveGameLineup() {
+    if (!selectedGameId) return;
+    const ordered = lineup
+      .map((s) => (s.player ? { player_id: s.player.id, position: s.position || null } : null))
+      .filter((s): s is { player_id: string; position: string | null } => s != null);
+    setSaveStatus("saving");
+    setSaveErrorMessage(null);
+    const result = await saveGameLineupForCoachAction(selectedGameId, lineupSide, ordered);
+    setSaveStatus(result.ok ? "ok" : "err");
+    setSaveErrorMessage(result.error ?? null);
+    if (result.ok) setTimeout(() => setSaveStatus("idle"), 2500);
   }
 
   const activePlayer = activeId
@@ -550,7 +682,7 @@ export default function LineupConstructionClient({
     const currentSlot = lineup.findIndex((s) => s.player?.id === playerId);
     const displacedSlot = lineup[slotIndex];
 
-    const primaryPosition = player.positions?.[0];
+    const primaryPosition = getPlayerPrimaryPosition(player);
     const defaultPosition =
       primaryPosition && LINEUP_POSITIONS.includes(primaryPosition as (typeof LINEUP_POSITIONS)[number])
         ? primaryPosition
@@ -576,13 +708,83 @@ export default function LineupConstructionClient({
     <div className="app-shell space-y-6 pb-8">
       <header>
         <h1 className="font-display text-3xl font-semibold tracking-tight text-white">
-          Lineup construction
+          {gameMode ? "Lineup" : "Lineup construction"}
         </h1>
         <p className="mt-1 text-sm text-[var(--neo-text-muted)]">
-          Drag players from the roster into the lineup slots (1–9).
+          {gameMode
+            ? "View or edit the batting order for a game. Drag players into slots or use Suggest by OBP or AVG."
+            : "Drag players from the roster into the lineup slots (1–9)."}
         </p>
       </header>
 
+      {gameMode && games!.length === 0 ? (
+        <div className="neo-card border border-dashed border-[var(--neo-border)] p-8 text-center">
+          <p className="font-medium text-[var(--neo-text)]">No games yet</p>
+          <p className="mt-2 text-sm text-[var(--neo-text-muted)]">
+            Create a game in Analyst → Games, then you can set its lineup here.
+          </p>
+          <Link href="/analyst/games" className="mt-4 inline-block text-sm text-[var(--neo-accent)] hover:underline">
+            Go to Games →
+          </Link>
+        </div>
+      ) : null}
+
+      {gameMode && games!.length > 0 ? (
+        <section className="neo-card p-4">
+          <div className="section-label">Game</div>
+          <select
+            value={selectedGameId ?? ""}
+            onChange={(e) => {
+              const id = e.target.value || null;
+              setSelectedGameId(id);
+              if (id) {
+                const g = games!.find((x) => x.id === id);
+                if (g) setLineupSide(g.our_side);
+              }
+            }}
+            className="input-tech mt-2 w-full max-w-md rounded-lg px-3 py-1.5 text-sm text-[var(--neo-text)]"
+            aria-label="Select game"
+          >
+            <option value="">Select a game</option>
+            {games!.map((g) => (
+              <option key={g.id} value={g.id}>
+                {formatGameLabel(g)}
+              </option>
+            ))}
+          </select>
+          {selectedGame ? (
+            <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Which team lineup to edit">
+              <button
+                type="button"
+                onClick={() => setLineupSide(ourSide)}
+                className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                  lineupSide === ourSide
+                    ? "border-[var(--neo-accent)] bg-[var(--neo-accent-dim)] text-[var(--neo-accent)]"
+                    : "border-[var(--neo-border)] text-[var(--neo-text-muted)] hover:border-[var(--neo-accent)]/40"
+                }`}
+              >
+                {ourSide === "home" ? selectedGame.home_team : selectedGame.away_team}{" "}
+                <span className="text-[var(--neo-text-muted)]">({ourSide === "home" ? "Home" : "Away"})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setLineupSide(oppSide)}
+                className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                  lineupSide === oppSide
+                    ? "border-[var(--neo-accent)] bg-[var(--neo-accent-dim)] text-[var(--neo-accent)]"
+                    : "border-[var(--neo-border)] text-[var(--neo-text-muted)] hover:border-[var(--neo-accent)]/40"
+                }`}
+              >
+                {oppSide === "home" ? selectedGame.home_team : selectedGame.away_team}{" "}
+                <span className="text-[var(--neo-text-muted)]">({oppSide === "home" ? "Home" : "Away"})</span>
+              </button>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {(!gameMode || games!.length > 0) && (
+      <>
       {/* Lineup optimization + templates — single card; templates left, optimization right on large screens */}
       <section className="neo-card p-4">
         <div className="grid gap-6 lg:grid-cols-2 lg:items-start lg:gap-8">
@@ -695,6 +897,7 @@ export default function LineupConstructionClient({
         </div>
       </section>
 
+      {(!gameMode || selectedGameId) && (
       <DndContext
         sensors={sensors}
         autoScroll={false}
@@ -768,18 +971,24 @@ export default function LineupConstructionClient({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="section-label">Batting order</h2>
               <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="text"
-                  value={templateName}
-                  onChange={(e) => setTemplateName(e.target.value)}
-                  placeholder="Template name"
-                  className="input-tech w-36 px-2.5 py-1.5 text-sm"
-                  aria-label="Template name for saving lineup"
-                />
+                {!gameMode ? (
+                  <input
+                    type="text"
+                    value={templateName}
+                    onChange={(e) => setTemplateName(e.target.value)}
+                    placeholder="Template name"
+                    className="input-tech w-36 px-2.5 py-1.5 text-sm"
+                    aria-label="Template name for saving lineup"
+                  />
+                ) : null}
                 <button
                   type="button"
-                  onClick={handleSaveTemplate}
-                  disabled={saveStatus === "saving" || !templateName.trim() || !hasAnyPlayerInLineup}
+                  onClick={gameMode ? handleSaveGameLineup : handleSaveTemplate}
+                  disabled={
+                    saveStatus === "saving" ||
+                    !hasAnyPlayerInLineup ||
+                    (gameMode ? !selectedGameId : !templateName.trim())
+                  }
                   className="rounded-lg bg-[var(--neo-accent)] px-3 py-1.5 text-sm font-medium text-[var(--bg-base)] transition hover:opacity-90 disabled:opacity-50"
                 >
                   {saveStatus === "saving" ? "Saving…" : "Save lineup"}
@@ -795,13 +1004,17 @@ export default function LineupConstructionClient({
                 <button
                   type="button"
                   onClick={clearLineup}
-                  disabled={!hasAnyPlayerInLineup}
+                  disabled={!hasAnyPlayerInLineup || saveStatus === "saving"}
                   className="rounded-lg border border-[var(--neo-border)] bg-transparent px-3 py-1.5 text-sm font-medium text-[var(--neo-text-muted)] transition hover:bg-[#151b21] hover:text-[var(--neo-text)] disabled:opacity-50 disabled:pointer-events-none"
                 >
                   Clear lineup
                 </button>
               </div>
             </div>
+            {loadingLineup ? (
+              <p className="mt-3 py-6 text-center text-sm text-[var(--neo-text-muted)]">Loading lineup…</p>
+            ) : (
+            <>
             {(() => {
               const positionCounts = new Map<string, number>();
               for (const s of lineup) {
@@ -858,6 +1071,8 @@ export default function LineupConstructionClient({
                 </tbody>
               </table>
             </div>
+            </>
+            )}
           </div>
         </div>
 
@@ -898,6 +1113,15 @@ export default function LineupConstructionClient({
           ) : null}
         </DragOverlay>
       </DndContext>
+      )}
+
+      {gameMode && selectedGameId && !loadingLineup && lineup.every((s) => !s.player) && (
+        <div className="rounded-lg border border-[var(--neo-border)] bg-[var(--neo-bg-card)] p-4 text-sm text-[var(--neo-text-muted)]">
+          No players in this lineup yet. Drag players from the pool or use Suggest by OBP or AVG.
+        </div>
+      )}
+      </>
+      )}
     </div>
   );
 }

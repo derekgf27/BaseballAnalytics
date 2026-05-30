@@ -7,6 +7,7 @@ export const RESULT_ALLOWS_HIT_DIRECTION = new Set<PAResult>([
   "triple",
   "hr",
   "out",
+  "foul_out",
   "gidp",
   "fielders_choice",
   "sac",

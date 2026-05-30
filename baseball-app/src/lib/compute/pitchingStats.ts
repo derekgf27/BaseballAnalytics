@@ -58,6 +58,7 @@ export function outsRecordedAgainstPitcher(result: PAResult): number {
   if (result === "gidp") return 2;
   if (
     result === "out" ||
+    result === "foul_out" ||
     result === "so" ||
     result === "so_looking" ||
     result === "sac_fly" ||
@@ -399,7 +400,7 @@ function batsLetter(bats: Bats | null | undefined): "L" | "R" | "S" | null {
  * that also appear in `pas` (at least one PA recorded as pitcher). **G** is games with ≥1 such PA.
  * For platoon splits pass an empty set so G = games in this split only and GS = 0.
  */
-function buildPitchingStatsLine(
+export function buildPitchingStatsLine(
   pas: PlateAppearance[],
   starterGameIds: Set<string>,
   eventsByPaId: Map<string, PitchEvent[]>,

@@ -3,6 +3,7 @@
  */
 
 import { isDemoId } from "@/lib/db/mockData";
+import { getPlayerPrimaryPosition } from "@/lib/playerRoster";
 import type { Player } from "@/lib/types";
 
 /** Input shape for selection (matches dashboard data layer). */
@@ -231,7 +232,7 @@ export function buildRosterPreviewWatchRows(players: Player[]): PlayersToWatchRo
   return list.map((p, i) => ({
     id: p.id,
     name: p.name,
-    position: p.positions?.[0] ?? "—",
+    position: getPlayerPrimaryPosition(p) ?? "—",
     ...templates[i]!,
     isPreview: true,
   }));

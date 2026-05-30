@@ -1,0 +1,44 @@
+/**
+ * Team trends PDF capture: light print-like theme.
+ */
+
+.team-trends-report-root.reports-pdf-capture,
+.reports-print-area.reports-pdf-capture.team-trends-report-root {
+  --bg-base: #ffffff;
+  --bg-card: #ffffff;
+  --bg-elevated: #ffffff;
+  --border: #cbd5e1;
+  --text: #000000;
+  --text-muted: #000000;
+  --text-faint: #000000;
+  --accent: #a16207;
+  background: #ffffff !important;
+  color: var(--text) !important;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.reports-pdf-capture.team-trends-report-root [class*="text-white"] {
+  color: #000000 !important;
+}
+
+.reports-pdf-capture.team-trends-report-root .reports-screen-only {
+  display: none !important;
+}
+
+.team-trends-report-root.reports-pdf-capture.reports-pdf-capture-portrait,
+.reports-pdf-capture .team-trends-report-root.reports-pdf-capture-portrait {
+  width: 816px;
+  max-width: 816px;
+  overflow: visible !important;
+}
+
+.reports-pdf-capture.team-trends-report-root [class*="bg-[var(--bg-card)]"],
+.reports-pdf-capture.team-trends-report-root [class*="bg-[var(--bg-elevated)]"] {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+}
+
+.reports-pdf-capture.team-trends-report-root .shadow-sm {
+  box-shadow: none !important;
+}

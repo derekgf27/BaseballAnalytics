@@ -1,9 +1,8 @@
 import { notFound } from "next/navigation";
 import { computeBattingStatsWithSplitsFromPas } from "@/lib/compute/battingStatsWithSplitsFromPas";
 import { computePitchingStatsWithSplitsForRoster } from "@/lib/compute/pitchingStats";
+import { getCachedGames, getCachedPlayers } from "@/lib/db/cachedQueries";
 import {
-  getGames,
-  getPlayers,
   getPlateAppearancesForGames,
   getGameLineupsForGames,
   getBaserunningEventsForGames,
@@ -28,7 +27,7 @@ import type {
   PitchingStatsWithSplits,
   Player,
 } from "@/lib/types";
-import { OpponentDetailClient } from "../OpponentDetailClient";
+import { OpponentDetailClientGate } from "../OpponentDetailClientGate";
 
 export const dynamic = "force-dynamic";
 
@@ -46,8 +45,8 @@ export default async function OpponentDetailPage({
   }
 
   const [games, players, trackedNames] = await Promise.all([
-    getGames(),
-    getPlayers(),
+    getCachedGames(),
+    getCachedPlayers(),
     getTrackedOpponentNames(),
   ]);
 
@@ -294,7 +293,7 @@ export default async function OpponentDetailPage({
   const playerIdToName = Object.fromEntries(players.map((p) => [p.id, p.name]));
 
   return (
-    <OpponentDetailClient
+    <OpponentDetailClientGate
       opponentName={opponentNameTrim}
       ourTeamLabel={ourTeamLabel}
       games={vsGames}

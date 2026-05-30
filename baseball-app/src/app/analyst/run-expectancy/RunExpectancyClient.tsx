@@ -15,6 +15,7 @@ const RESULT_LABELS: Record<PAResult, string> = {
   triple: "3B",
   hr: "HR",
   out: "Out",
+  foul_out: "FO",
   so: "SO",
   so_looking: "ꓘ",
   bb: "BB",

@@ -26,6 +26,36 @@ function sprayRowCounts(rows: { result: string }[] | null | undefined) {
   return { n, hits, outs };
 }
 
+/** Header above each spray chart: BIP sample + optional platoon PA from split line. */
+export function SprayChartCardSummary({
+  rows,
+  line,
+}: {
+  rows: { result: string }[] | null | undefined;
+  line?: { pa: number; h: number; ab: number } | null;
+}) {
+  const { n, hits, outs } = sprayRowCounts(rows);
+  const splitPa = line?.pa ?? 0;
+  return (
+    <p className="mt-1 text-xs tabular-nums">
+      <span className="text-[var(--accent)]">{n}</span>
+      <span className="text-white"> BIP</span>
+      <span className="text-white"> · </span>
+      <span className="text-[var(--accent)]">{hits}</span>
+      <span className="text-white"> Hits</span>
+      <span className="text-white"> · </span>
+      <span className="text-[var(--accent)]">{outs}</span>
+      <span className="text-white"> Outs</span>
+      {splitPa > 0 ? (
+        <>
+          <span className="text-white"> · </span>
+          <span className="text-[var(--text-muted)]">{splitPa} PA in split</span>
+        </>
+      ) : null}
+    </p>
+  );
+}
+
 function toSprayChartData(rows: { hit_direction: HitDirection; result: string }[] | null | undefined) {
   return (rows ?? []).map(({ hit_direction }) => ({ hit_direction }));
 }
@@ -88,15 +118,7 @@ export function PlayerSprayChartsGrid({
           {showL ? (
           <div className="card-tech min-w-0 rounded-lg border border-[var(--border)] p-4">
             <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-white">vs LHB</h3>
-            <p className="mt-1 text-xs tabular-nums">
-              <span className="text-[var(--accent)]">{sprayRowCounts(filteredSpray.vsL).n}</span>
-              <span className="text-white"> PA: </span>
-              <span className="text-[var(--accent)]">{sprayRowCounts(filteredSpray.vsL).hits}</span>
-              <span className="text-white"> Hits</span>
-              <span className="text-white"> · </span>
-              <span className="text-[var(--accent)]">{sprayRowCounts(filteredSpray.vsL).outs}</span>
-              <span className="text-white"> Outs</span>
-            </p>
+            <SprayChartCardSummary rows={filteredSpray.vsL} line={spraySplits.vsL.line} />
             <div className="mt-3">
               <TeamSprayChart data={toSprayChartData(filteredSpray.vsL)} hand={spraySplits.vsL.hand} compact={chartCompact} />
             </div>
@@ -105,15 +127,7 @@ export function PlayerSprayChartsGrid({
           {showR ? (
           <div className="card-tech min-w-0 rounded-lg border border-[var(--border)] p-4">
             <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-white">vs RHB</h3>
-            <p className="mt-1 text-xs tabular-nums">
-              <span className="text-[var(--accent)]">{sprayRowCounts(filteredSpray.vsR).n}</span>
-              <span className="text-white"> PA: </span>
-              <span className="text-[var(--accent)]">{sprayRowCounts(filteredSpray.vsR).hits}</span>
-              <span className="text-white"> Hits</span>
-              <span className="text-white"> · </span>
-              <span className="text-[var(--accent)]">{sprayRowCounts(filteredSpray.vsR).outs}</span>
-              <span className="text-white"> Outs</span>
-            </p>
+            <SprayChartCardSummary rows={filteredSpray.vsR} line={spraySplits.vsR.line} />
             <div className="mt-3">
               <TeamSprayChart data={toSprayChartData(filteredSpray.vsR)} hand={spraySplits.vsR.hand} compact={chartCompact} />
             </div>
@@ -131,15 +145,7 @@ export function PlayerSprayChartsGrid({
                     ? `${spraySplits.vsL.hand === "R" ? "RHB" : "LHB"} vs LHP`
                     : "vs LHP"}
                 </h3>
-                <p className="mt-1 text-xs tabular-nums">
-                  <span className="text-[var(--accent)]">{sprayRowCounts(filteredSpray.vsL ?? []).n}</span>
-                  <span className="text-white"> PA: </span>
-                  <span className="text-[var(--accent)]">{sprayRowCounts(filteredSpray.vsL ?? []).hits}</span>
-                  <span className="text-white"> Hits</span>
-                  <span className="text-white"> · </span>
-                  <span className="text-[var(--accent)]">{sprayRowCounts(filteredSpray.vsL ?? []).outs}</span>
-                  <span className="text-white"> Outs</span>
-                </p>
+                <SprayChartCardSummary rows={filteredSpray.vsL ?? []} line={spraySplits.vsL?.line} />
                 <div className="mt-3">
                   <TeamSprayChart
                     data={toSprayChartData(filteredSpray.vsL ?? [])}
@@ -162,15 +168,7 @@ export function PlayerSprayChartsGrid({
                     ? `${spraySplits.vsR.hand === "R" ? "RHB" : "LHB"} vs RHP`
                     : "vs RHP"}
                 </h3>
-                <p className="mt-1 text-xs tabular-nums">
-                  <span className="text-[var(--accent)]">{sprayRowCounts(filteredSpray.vsR ?? []).n}</span>
-                  <span className="text-white"> PA: </span>
-                  <span className="text-[var(--accent)]">{sprayRowCounts(filteredSpray.vsR ?? []).hits}</span>
-                  <span className="text-white"> Hits</span>
-                  <span className="text-white"> · </span>
-                  <span className="text-[var(--accent)]">{sprayRowCounts(filteredSpray.vsR ?? []).outs}</span>
-                  <span className="text-white"> Outs</span>
-                </p>
+                <SprayChartCardSummary rows={filteredSpray.vsR ?? []} line={spraySplits.vsR?.line} />
                 <div className="mt-3">
                   <TeamSprayChart
                     data={toSprayChartData(filteredSpray.vsR ?? [])}

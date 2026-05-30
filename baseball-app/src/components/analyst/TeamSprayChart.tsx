@@ -20,6 +20,51 @@ function redForPercentage(pct: number): string {
   return `hsl(0, ${saturation}%, ${lightness}%)`;
 }
 
+function SprayWedgeLabel({
+  x,
+  y,
+  count,
+  pct,
+  total,
+  compact,
+}: {
+  x: number;
+  y: number;
+  count: number;
+  pct: number;
+  total: number;
+  compact: boolean;
+}) {
+  if (total === 0) {
+    return (
+      <text
+        x={x}
+        y={y}
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fill="#1f2937"
+        fontSize={compact ? 12 : 16}
+        fontWeight="700"
+        fontFamily="var(--font-sans)"
+      >
+        —
+      </text>
+    );
+  }
+  const pctSize = compact ? 12 : 16;
+  const countSize = compact ? 10 : 12;
+  return (
+    <text x={x} y={y} textAnchor="middle" fill="#1f2937" fontFamily="var(--font-sans)">
+      <tspan x={x} dy="-0.35em" fontSize={pctSize} fontWeight="700">
+        {Math.round(pct)}%
+      </tspan>
+      <tspan x={x} dy="1.2em" fontSize={countSize} fontWeight="600">
+        ({count})
+      </tspan>
+    </text>
+  );
+}
+
 export function TeamSprayChart({ data, hand, compact = false, className = "" }: TeamSprayChartProps) {
   const width = compact ? 360 : 480;
   const height = compact ? 240 : 320;
@@ -92,19 +137,34 @@ export function TeamSprayChart({ data, hand, compact = false, className = "" }: 
         />
 
         <path d={leftPath} fill={redForPercentage(pctLF)} stroke="var(--border)" strokeWidth="1" />
-        <text x={labelLeft.x} y={labelLeft.y} textAnchor="middle" dominantBaseline="middle" fill="#1f2937" fontSize={compact ? 12 : 16} fontWeight="700" fontFamily="var(--font-sans)">
-          {total > 0 ? `${Math.round(pctLF)}%` : "—"}
-        </text>
+        <SprayWedgeLabel
+          x={labelLeft.x}
+          y={labelLeft.y}
+          count={leftCount}
+          pct={pctLF}
+          total={total}
+          compact={compact}
+        />
 
         <path d={middlePath} fill={redForPercentage(pctCF)} stroke="var(--border)" strokeWidth="1" />
-        <text x={labelMiddle.x} y={labelMiddle.y} textAnchor="middle" dominantBaseline="middle" fill="#1f2937" fontSize={compact ? 12 : 16} fontWeight="700" fontFamily="var(--font-sans)">
-          {total > 0 ? `${Math.round(pctCF)}%` : "—"}
-        </text>
+        <SprayWedgeLabel
+          x={labelMiddle.x}
+          y={labelMiddle.y}
+          count={centerCount}
+          pct={pctCF}
+          total={total}
+          compact={compact}
+        />
 
         <path d={rightPath} fill={redForPercentage(pctRF)} stroke="var(--border)" strokeWidth="1" />
-        <text x={labelRight.x} y={labelRight.y} textAnchor="middle" dominantBaseline="middle" fill="#1f2937" fontSize={compact ? 12 : 16} fontWeight="700" fontFamily="var(--font-sans)">
-          {total > 0 ? `${Math.round(pctRF)}%` : "—"}
-        </text>
+        <SprayWedgeLabel
+          x={labelRight.x}
+          y={labelRight.y}
+          count={rightCount}
+          pct={pctRF}
+          total={total}
+          compact={compact}
+        />
 
         <text x={width * 0.22} y={height * 0.96} textAnchor="middle" fill="var(--text-muted)" fontSize={compact ? 9 : 11} fontFamily="var(--font-display)">LF</text>
         <text x={cx} y={height * 0.96} textAnchor="middle" fill="var(--text-muted)" fontSize={compact ? 9 : 11} fontFamily="var(--font-display)">CF</text>

@@ -1,5 +1,6 @@
 "use client";
 
+import type { RefObject } from "react";
 import {
   LineChart,
   Line,
@@ -16,10 +17,14 @@ export function TeamTrends({
   points,
   insights,
   loading,
+  captureRef,
+  pdfCapture = false,
 }: {
   points: TeamTrendPoint[];
   insights: string[];
   loading?: boolean;
+  captureRef?: RefObject<HTMLDivElement | null>;
+  pdfCapture?: boolean;
 }) {
   const chartData = points.map((p) => ({
     label: p.date.slice(5),
@@ -33,11 +38,23 @@ export function TeamTrends({
   }
 
   return (
-    <div className="space-y-6">
+    <div
+      ref={captureRef}
+      className={`team-trends-report-root space-y-6${pdfCapture ? " reports-print-area reports-pdf-capture" : ""}`}
+    >
+      {!pdfCapture ? (
+        <p
+          data-pdf-exclude="true"
+          className="reports-screen-only rounded-lg border border-dashed border-[var(--border)] bg-[var(--bg-elevated)]/35 px-4 py-3 text-sm leading-relaxed text-[var(--text-muted)]"
+        >
+          On-screen preview of team trends. Use{" "}
+          <span className="font-semibold text-[var(--text)]">Export PDF</span> above to download and open the same view
+          in a new tab.
+        </p>
+      ) : null}
+
       <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-5 transition hover:border-[var(--accent)]/30">
-        <h3 className="font-display text-sm font-semibold uppercase tracking-wider text-[var(--accent)]">
-          Insights
-        </h3>
+        <h3 className="font-display text-sm font-semibold uppercase tracking-wider text-[var(--accent)]">Insights</h3>
         <ul className="mt-3 list-inside list-disc space-y-1 text-sm text-[var(--text)]">
           {insights.map((t, i) => (
             <li key={i}>{t}</li>
@@ -67,15 +84,15 @@ export function TeamTrends({
                 </LineChart>
               </ResponsiveContainer>
             ) : (
-              <p className="flex h-full items-center justify-center text-sm text-[var(--text-muted)]">
-                No games yet.
-              </p>
+              <p className="flex h-full items-center justify-center text-sm text-[var(--text-muted)]">No games yet.</p>
             )}
           </div>
         </div>
 
         <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4 transition hover:border-[var(--accent)]/30">
-          <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">K% & runs (placeholder charts)</h4>
+          <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+            K% & runs
+          </h4>
           <div className="mt-4 h-56 w-full min-h-[14rem]">
             {chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">

@@ -1,6 +1,6 @@
 import { Suspense } from "react";
+import { getCachedPlayers } from "@/lib/db/cachedQueries";
 import {
-  getPlayers,
   getPlateAppearancesByBatter,
   getPlateAppearancesByPitcher,
   getBattingStatsWithSplitsForPlayers,
@@ -18,7 +18,7 @@ export default async function ComparePlayersPage({
   searchParams: Promise<{ p1?: string; p2?: string; scope?: string }>;
 }) {
   const { p1, p2 } = await searchParams;
-  const players = await getPlayers();
+  const players = await getCachedPlayers();
   const roster = players.filter(isClubRosterPlayer);
 
   const playerA = p1 ? roster.find((p) => p.id === p1) ?? null : null;

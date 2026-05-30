@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import type { Game, PlateAppearance } from "@/lib/types";
 import {
   awayInningCell,
@@ -35,7 +36,7 @@ function Cell({ value }: { value: number | null }) {
   return <span className="tabular-nums text-white">{value}</span>;
 }
 
-export function BoxScoreLine({
+export const BoxScoreLine = memo(function BoxScoreLine({
   game,
   pas,
   liveInning,
@@ -180,4 +181,4 @@ export function BoxScoreLine({
       </div>
     </div>
   );
-}
+});

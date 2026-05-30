@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useMemo, useState, useCallback } from "react";
+import { FlashMessage } from "@/components/shared/FlashMessage";
+import { useFlashMessage } from "@/hooks/useFlashMessage";
 import { useRouter } from "next/navigation";
 import { updateGameLogPlateAppearanceAction } from "@/app/analyst/games/actions";
 import { analystGameReviewHref, analystPlayerProfileHref, analystRecordHref } from "@/lib/analystRoutes";
@@ -10,6 +12,7 @@ import { formatDateMMDDYYYY } from "@/lib/format";
 import { matchupLabelUsFirst } from "@/lib/opponentUtils";
 import { RESULT_ALLOWS_HIT_DIRECTION } from "@/lib/paResultSets";
 import { normBaseState } from "@/lib/compute/battingStats";
+import { sortPasChronological } from "@/lib/compute/plateAppearanceOrder";
 import type {
   BaseState,
   BattedBallType,
@@ -41,6 +44,7 @@ const RESULT_SELECT_OPTIONS: { value: PAResult; label: string }[] = [
   { value: "triple", label: "3B" },
   { value: "hr", label: "HR" },
   { value: "out", label: "Out" },
+  { value: "foul_out", label: "FO" },
   { value: "so", label: "SO" },
   { value: "so_looking", label: "SO look" },
   { value: "gidp", label: "GIDP" },
@@ -79,19 +83,30 @@ const HIT_DIR_OPTIONS: { value: HitDirection; label: string }[] = [
   { value: "opposite_field", label: "Oppo" },
 ];
 
-function halfOrder(h: string | null | undefined): number {
-  if (h === "top") return 0;
-  if (h === "bottom") return 1;
-  return 2;
+function scorerShortName(nameById: Map<string, string>, playerId: string): string {
+  const full = nameById.get(playerId);
+  if (!full) return "?";
+  const parts = full.trim().split(/\s+/);
+  return parts[parts.length - 1] ?? full;
 }
 
-function sortPasChronological(pas: PlateAppearance[]): PlateAppearance[] {
-  return [...pas].sort((a, b) => {
-    if (a.inning !== b.inning) return a.inning - b.inning;
-    const ho = halfOrder(a.inning_half) - halfOrder(b.inning_half);
-    if (ho !== 0) return ho;
-    return String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
-  });
+function runsScoredOnPa(pa: PlateAppearance): string[] {
+  return pa.runs_scored_player_ids ?? [];
+}
+
+function formatRunsScoredLabel(
+  pa: PlateAppearance,
+  nameById: Map<string, string>
+): string {
+  const scorers = runsScoredOnPa(pa);
+  if (scorers.length === 0) return "—";
+  const unearned = new Set(pa.unearned_runs_scored_player_ids ?? []);
+  return scorers
+    .map((id) => {
+      const name = scorerShortName(nameById, id);
+      return unearned.has(id) ? `${name} (UE)` : name;
+    })
+    .join(", ");
 }
 
 function groupPasByInningHalf(sorted: PlateAppearance[]): { key: string; label: string; items: PlateAppearance[] }[] {
@@ -148,7 +163,7 @@ export function GameLogPageClient({
   const [pas, setPas] = useState<PlateAppearance[]>(initialPas);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const { message: toast, dismissing: toastDismissing, show: showFlash } = useFlashMessage();
 
   const nameById = useMemo(() => {
     const m = new Map<string, string>();
@@ -169,10 +184,12 @@ export function GameLogPageClient({
   const recordHref = analystRecordHref(gameId);
   const reviewHref = analystGameReviewHref(gameId);
 
-  const showToast = useCallback((type: "ok" | "err", text: string) => {
-    setToast({ type, text });
-    window.setTimeout(() => setToast(null), 5000);
-  }, []);
+  const showToast = useCallback(
+    (type: "ok" | "err", text: string) => {
+      showFlash({ type, text });
+    },
+    [showFlash]
+  );
 
   const applyPatch = useCallback(
     async (
@@ -182,6 +199,7 @@ export function GameLogPageClient({
         batted_ball_type?: BattedBallType | null;
         base_state?: BaseState;
         hit_direction?: HitDirection | null;
+        unearned_runs_scored_player_ids?: string[];
       }
     ) => {
       if (!canEdit) return;
@@ -217,7 +235,7 @@ export function GameLogPageClient({
             <>
               This game is <strong className="font-medium text-[var(--text)]">finalized</strong>. Use{" "}
               <strong className="font-medium text-[var(--text)]">Edit</strong> on a row to fix result, bases, batted
-              ball, and spray — the full PA form stays closed.
+              ball, spray, and earned vs unearned runs — the full PA form stays closed.
             </>
           ) : (
             <>
@@ -225,8 +243,10 @@ export function GameLogPageClient({
               <strong className="font-medium text-[var(--text)]">Edit</strong> on a row to change{" "}
               <strong className="font-medium text-[var(--text)]">result</strong>,{" "}
               <strong className="font-medium text-[var(--text)]">runners on</strong>,{" "}
-              <strong className="font-medium text-[var(--text)]">batted ball type</strong>, and{" "}
-              <strong className="font-medium text-[var(--text)]">hit direction</strong> without opening Record.
+              <strong className="font-medium text-[var(--text)]">batted ball type</strong>,{" "}
+              <strong className="font-medium text-[var(--text)]">hit direction</strong>, and{" "}
+              <strong className="font-medium text-[var(--text)]">earned vs unearned runs</strong> without opening
+              Record.
             </>
           )}
         </p>
@@ -258,18 +278,7 @@ export function GameLogPageClient({
         </Link>
       </nav>
 
-      {toast && (
-        <div
-          role="status"
-          className={`rounded-lg border px-3 py-2 text-sm ${
-            toast.type === "ok"
-              ? "border-[var(--success)] bg-[var(--success-dim)] text-[var(--success)]"
-              : "border-[var(--danger)] bg-[var(--danger-dim)] text-[var(--danger)]"
-          }`}
-        >
-          {toast.text}
-        </div>
-      )}
+      <FlashMessage message={toast} dismissing={toastDismissing} className="px-3 py-2 text-sm" />
 
       {!canEdit && paCount > 0 && (
         <p className="text-xs text-[var(--text-muted)]">
@@ -333,7 +342,7 @@ export function GameLogPageClient({
                 </span>
               </h2>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[820px] border-collapse text-left text-xs sm:text-sm">
+                <table className="w-full min-w-[920px] border-collapse text-left text-xs sm:text-sm">
                   <thead>
                     <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]/80">
                       <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-white">
@@ -362,6 +371,9 @@ export function GameLogPageClient({
                       </th>
                       <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-white">
                         Dir
+                      </th>
+                      <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-white">
+                        Runs
                       </th>
                       <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-white">
                         RBI
@@ -397,6 +409,20 @@ export function GameLogPageClient({
                         BASE_STATE_OPTIONS.find((o) => o.value === basesNorm)?.label ?? basesNorm;
                       const batLtr = batterHandLetter(batterPl?.bats);
                       const pitLtr = pa.pitcher_id ? pitcherHandLetter(pa, pitcherPl) : null;
+                      const scorers = runsScoredOnPa(pa);
+                      const unearnedSet = new Set(pa.unearned_runs_scored_player_ids ?? []);
+
+                      const setScorerEarned = (scorerId: string, earned: boolean) => {
+                        const next = earned
+                          ? (pa.unearned_runs_scored_player_ids ?? []).filter((id) => id !== scorerId)
+                          : [
+                              ...new Set([
+                                ...(pa.unearned_runs_scored_player_ids ?? []),
+                                scorerId,
+                              ]),
+                            ];
+                        void applyPatch(pa.id, { unearned_runs_scored_player_ids: next });
+                      };
 
                       return (
                         <tr key={pa.id} className="border-b border-[var(--border)] last:border-0">
@@ -543,6 +569,67 @@ export function GameLogPageClient({
                               )
                             ) : (
                               <span className="text-[var(--text-faint)]">—</span>
+                            )}
+                          </td>
+                          <td className="min-w-[6.5rem] px-2 py-2 align-top">
+                            {scorers.length === 0 ? (
+                              <span className="text-[var(--text-faint)]">—</span>
+                            ) : rowEditing ? (
+                              <div className="flex flex-col gap-1.5">
+                                {scorers.map((scorerId) => {
+                                  const shortName = scorerShortName(nameById, scorerId);
+                                  const unearned = unearnedSet.has(scorerId);
+                                  return (
+                                    <div
+                                      key={scorerId}
+                                      className="flex flex-wrap items-center gap-1"
+                                    >
+                                      <span className="min-w-[2.5rem] text-[11px] font-medium text-[var(--text)]">
+                                        {shortName}
+                                      </span>
+                                      <div
+                                        className="flex gap-0.5"
+                                        role="group"
+                                        aria-label={`Earned or unearned run for ${shortName}`}
+                                      >
+                                        <button
+                                          type="button"
+                                          disabled={busy}
+                                          title="Earned run (counts toward pitcher ER)"
+                                          onClick={() => setScorerEarned(scorerId, true)}
+                                          className={`min-h-[26px] min-w-[1.75rem] rounded border px-1.5 text-[10px] font-bold tabular-nums transition ${
+                                            !unearned
+                                              ? "border-[var(--accent)] bg-[var(--accent)]/25 text-[var(--accent)]"
+                                              : "border-[var(--border)] bg-[var(--bg-input)] text-[var(--text-muted)] hover:border-[var(--accent)]/50"
+                                          }`}
+                                        >
+                                          E
+                                        </button>
+                                        <button
+                                          type="button"
+                                          disabled={busy}
+                                          title="Unearned run (does not count toward pitcher ER)"
+                                          onClick={() => setScorerEarned(scorerId, false)}
+                                          className={`min-h-[26px] min-w-[2rem] rounded border px-1.5 text-[10px] font-bold tabular-nums transition ${
+                                            unearned
+                                              ? "border-[var(--danger)]/85 bg-[var(--danger-dim)] text-[var(--danger)]"
+                                              : "border-[var(--border)] bg-[var(--bg-input)] text-[var(--text-muted)] hover:border-[var(--danger)]/35"
+                                          }`}
+                                        >
+                                          UE
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <span
+                                className="text-[var(--text-muted)]"
+                                title="Earned unless marked (UE)"
+                              >
+                                {formatRunsScoredLabel(pa, nameById)}
+                              </span>
                             )}
                           </td>
                           <td className="px-2 py-2 tabular-nums text-[var(--text)]">{pa.rbi}</td>

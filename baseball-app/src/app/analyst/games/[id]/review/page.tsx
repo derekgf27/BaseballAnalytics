@@ -8,7 +8,7 @@ import {
   getBaserunningTotalsForGame,
 } from "@/lib/db/queries";
 import { hasSupabase } from "@/lib/db/client";
-import { GameReviewClient } from "./GameReviewClient";
+import { GameReviewClientGate } from "./GameReviewClientGate";
 import { notFound } from "next/navigation";
 import type { GameLineupSlot } from "@/lib/types";
 
@@ -74,7 +74,7 @@ export default async function GameReviewPage({
       );
 
   return (
-    <GameReviewClient
+    <GameReviewClientGate
       game={game}
       canEdit={hasSupabase()}
       pasAll={pas}

@@ -1,4 +1,5 @@
 import { normBaseState } from "@/lib/compute/battingStats";
+import { getPlayerPrimaryPosition } from "@/lib/playerRoster";
 import type { BattingStatsWithSplits, Game, GameLineupSlot, PlateAppearance, Player } from "@/lib/types";
 import type { CoachPacketLineupRow, CoachPacketModel, CoachPacketPaRow } from "./coachPacketTypes";
 
@@ -27,7 +28,7 @@ function lineupRow(
   return {
     slot: slot.slot,
     name: p?.name ?? slot.player_id.slice(0, 8),
-    position: (slot.position?.trim() || p?.positions?.[0] || "").trim(),
+    position: (slot.position?.trim() || getPlayerPrimaryPosition(p) || "").trim(),
     jersey: p?.jersey != null && String(p.jersey).trim() !== "" ? String(p.jersey).trim() : "",
     bats: p?.bats ?? "",
     avg: o && Number.isFinite(o.avg) ? o.avg : null,

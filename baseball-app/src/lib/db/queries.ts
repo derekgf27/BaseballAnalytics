@@ -27,8 +27,14 @@ import {
   platoonPitchingPasSplits,
 } from "@/lib/compute/pitchingStats";
 import { kPctToKRate, type PlayerStatsForWatch } from "@/lib/playersToWatch";
+import { getPlayerPrimaryPosition } from "@/lib/playerRoster";
 import { isSprayChartBipResult } from "@/lib/sprayChartFilters";
-import { gamesReferencedByPas, isClubRosterPlayer, isPitcherPlayer } from "@/lib/opponentUtils";
+import {
+  gamesReferencedByPas,
+  isClubRosterPlayer,
+  isPitcherPlayer,
+  opponentNameKey,
+} from "@/lib/opponentUtils";
 import { isGameFinalized } from "@/lib/gameRecord";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isDemoId } from "./mockData";
@@ -399,6 +405,26 @@ export async function getPlayersByIds(ids: string[]): Promise<Player[]> {
     .select("*")
     .in("id", ids);
   return (data ?? []) as Player[];
+}
+
+/**
+ * Club roster plus both teams in a game (by opponent tag). Smaller payload than `getPlayers()` for Record / log.
+ */
+export async function getPlayersForGame(
+  game: Pick<Game, "home_team" | "away_team">
+): Promise<Player[]> {
+  const supabase = await getSupabase();
+  if (!supabase) return [];
+  const { data } = await supabase.from("players").select("*").order("name");
+  const awayKey = opponentNameKey(game.away_team);
+  const homeKey = opponentNameKey(game.home_team);
+  return ((data ?? []) as Player[]).filter((p) => {
+    if (isClubRosterPlayer(p)) return true;
+    const tag = p.opponent_team?.trim();
+    if (!tag) return false;
+    const key = opponentNameKey(tag);
+    return key === awayKey || key === homeKey;
+  });
 }
 
 export async function getGameLineup(gameId: string): Promise<GameLineupSlot[]> {
@@ -1883,7 +1909,12 @@ export async function updatePlateAppearanceRow(
   updates: Partial<
     Pick<
       PlateAppearance,
-      "result" | "batted_ball_type" | "hit_direction" | "error_fielder_id" | "base_state"
+      | "result"
+      | "batted_ball_type"
+      | "hit_direction"
+      | "error_fielder_id"
+      | "base_state"
+      | "unearned_runs_scored_player_ids"
     >
   >
 ): Promise<PlateAppearance | null> {
@@ -2194,7 +2225,7 @@ export async function getPlayersToWatchInput(): Promise<PlayerStatsForWatch[]> {
     out.push({
       id: p.id,
       name: p.name,
-      position: p.positions?.[0] ?? "—",
+      position: getPlayerPrimaryPosition(p) ?? "—",
       pa: season?.pa ?? 0,
       avg: season?.avg ?? 0,
       obp: season?.obp ?? 0,

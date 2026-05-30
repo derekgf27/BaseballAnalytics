@@ -132,14 +132,15 @@ function coachPadStatWrap(
   label: string,
   title: string,
   compact: boolean,
-  value: ReactNode
+  value: ReactNode,
+  nowrap = false
 ) {
   const stat = coachPadStatTypography(coachPadExpanded);
   return (
     <span
-      className={`inline-flex min-w-0 max-w-full flex-wrap items-baseline gap-x-1 gap-y-0 ${
-        coachPadExpanded ? "leading-none" : "leading-snug"
-      }`}
+      className={`inline-flex min-w-0 max-w-full items-baseline gap-x-1 gap-y-0 ${
+        nowrap ? "flex-nowrap whitespace-nowrap" : "flex-wrap"
+      } ${coachPadExpanded ? "leading-none" : "leading-snug"}`}
       title={compact && !coachPadExpanded ? undefined : title}
     >
       <span className={stat.label}>{label}</span>
@@ -167,6 +168,32 @@ function countBaseRunners(baseState: string | null | undefined): number {
     .padStart(3, "0")
     .slice(0, 3);
   return (bits.match(/1/g) || []).length;
+}
+
+/** Pitches thrown by `pitcherId` in the current half-inning (pitch log when available, else `pitches_seen`). */
+export function pitchesThisInningForPitcher(
+  pas: PlateAppearance[],
+  pitchEvents: PitchEvent[],
+  pitcherId: string,
+  inning: number,
+  inningHalf: "top" | "bottom"
+): number {
+  const half = inningHalf === "bottom" ? "bottom" : "top";
+  const inningPas = pas.filter((p) => {
+    if (p.pitcher_id !== pitcherId || p.inning !== inning) return false;
+    const paHalf = p.inning_half === "bottom" ? "bottom" : "top";
+    return paHalf === half;
+  });
+  const eventsByPaId = groupPitchEventsByPaId(pitchEvents);
+  let total = 0;
+  for (const pa of inningPas) {
+    const evs = eventsByPaId.get(pa.id);
+    if (evs != null && evs.length > 0) total += evs.length;
+    else if (typeof pa.pitches_seen === "number" && pa.pitches_seen > 0) {
+      total += pa.pitches_seen;
+    }
+  }
+  return total;
 }
 
 export function lobByPitcherFromPas(pas: PlateAppearance[]): Map<string, number> {
@@ -206,6 +233,11 @@ const EMPTY_EXTRAS: PitchMixExtrasAgg = {
   fb: 0,
   iff: 0,
 };
+
+/** Same stat order / 2×2 blocks as coach pitch pad (`coachPad` + `coachPadExpanded`). */
+function pitchPadLayoutFlags(pitchPadLayout?: boolean) {
+  return pitchPadLayout ? { coachPad: true as const, coachPadExpanded: true as const } : {};
+}
 
 const EMPTY_TWO_STRIKE_AGG: TwoStrikePitchAgg = {
   pitchesAtTwoStrikes: 0,
@@ -504,14 +536,17 @@ function PitchMixRatesLine({
     "FPS:",
     "First pitch strikes",
     compact,
-    <span className={mix.firstPitchOpportunities > 0 ? valClass : missingClass}>
+    <span
+      className={`inline whitespace-nowrap ${mix.firstPitchOpportunities > 0 ? valClass : missingClass}`}
+    >
       {mix.firstPitchOpportunities > 0
-        ? `${mix.firstPitchStrikes} / ${mix.firstPitchOpportunities}`
+        ? `${mix.firstPitchStrikes}/${mix.firstPitchOpportunities}`
         : "—"}
       {mix.firstPitchStrikePct != null && mix.firstPitchOpportunities > 0 ? (
         <span className={stat.sub}> ({formatPct(mix.firstPitchStrikePct)})</span>
       ) : null}
-    </span>
+    </span>,
+    true
   );
   const strikePctBlock = coachPadStatWrap(
     coachPadExpanded,
@@ -572,9 +607,9 @@ function PitchMixRatesLine({
         <>
           {strikesBlock}
           {ballsBlock}
-          {ppaBlock}
           {fpsBlock}
           {strikePctBlock}
+          {ppaBlock}
         </>
       ) : coachPadExpanded ? (
         <>
@@ -587,11 +622,11 @@ function PitchMixRatesLine({
         </>
       ) : (
         <>
+          {hidePitchesInRates ? emptyCell : pitchesBlock}
+          {strikesBlock}
+          {ballsBlock}
           {fpsBlock}
           {strikePctBlock}
-          {ballsBlock}
-          {strikesBlock}
-          {hidePitchesInRates ? emptyCell : pitchesBlock}
           {ppaBlock}
           {showLob ? (
             <>
@@ -997,6 +1032,9 @@ export function BattingPitchMixCard({
   pitchEvents = [],
   compact = false,
   currentPitcherId = null,
+  pitchPadLayout = false,
+  inning,
+  inningHalf,
 }: {
   pas: PlateAppearance[];
   players: Player[];
@@ -1008,7 +1046,13 @@ export function BattingPitchMixCard({
    * Use `PitchingPitchMixSupplement` below the pitching box table for other arms + team totals.
    */
   currentPitcherId?: string | null;
+  /** Match pitch pad tracker block order (Rates → Contact → 2 strikes → Mix). */
+  pitchPadLayout?: boolean;
+  /** With `inningHalf`, shows “Pitches this inning” beside the pitcher name. */
+  inning?: number;
+  inningHalf?: "top" | "bottom";
 }) {
+  const pad = pitchPadLayoutFlags(pitchPadLayout);
   const eventsByPaId = useMemo(() => groupPitchEventsByPaId(pitchEvents), [pitchEvents]);
 
   const rows = useMemo(() => {
@@ -1061,12 +1105,37 @@ export function BattingPitchMixCard({
     const extras = aggregatePitchMixExtrasFromPas(pitcherPas, eventsByPaId);
     const twoStrikeAgg = aggregateTwoStrikePitchAggFromPas(pitcherPas, eventsByPaId);
     const stripTypeDistribution = pitchTypeDistributionFromPitchLog(pitcherPas, eventsByPaId);
-    const name = byId.get(currentPitcherId)?.name?.trim() || "Unknown";
+    const pitcher = byId.get(currentPitcherId);
+    const name = pitcher?.name?.trim() || "Unknown";
+    const jersey = pitcher?.jersey?.trim() || null;
     const lob = lobByPitcher.get(currentPitcherId) ?? 0;
-    return { pitcherId: currentPitcherId, name, mix, lob, extras, twoStrikeAgg, stripTypeDistribution };
+    return {
+      pitcherId: currentPitcherId,
+      name,
+      jersey,
+      mix,
+      lob,
+      extras,
+      twoStrikeAgg,
+      stripTypeDistribution,
+    };
   }, [highlightCurrent, currentPitcherId, pas, players, eventsByPaId]);
 
-  const nameClass = pitchDataCardNameClass(compact);
+  const pitchesThisInning =
+    highlightCurrent &&
+    primaryRow &&
+    typeof inning === "number" &&
+    inningHalf != null &&
+    currentPitcherId
+      ? pitchesThisInningForPitcher(pas, pitchEvents, currentPitcherId, inning, inningHalf)
+      : null;
+
+  const nameClass = pitchDataCardNameClass(
+    compact,
+    pad.coachPad,
+    false,
+    pad.coachPadExpanded
+  );
 
   const teamTotalsNameClass =
     "truncate font-display font-bold uppercase tracking-[0.12em] text-white " +
@@ -1095,7 +1164,10 @@ export function BattingPitchMixCard({
   );
 
   return (
-    <div className={pitchDataPairCardShellClass(compact)} aria-label="Pitch data">
+    <div
+      className={pitchDataPairCardShellClass(compact, pad.coachPad, false, pad.coachPadExpanded)}
+      aria-label="Pitch data"
+    >
       {!highlightCurrent && multi ? (
         <div className="mb-1 flex flex-wrap items-baseline justify-end gap-x-2">
           <span className="text-[9px] font-medium tabular-nums text-[var(--text-muted)]">
@@ -1108,16 +1180,27 @@ export function BattingPitchMixCard({
         <p className="text-[10px] text-[var(--text-muted)]">—</p>
       ) : highlightCurrent && primaryRow ? (
         <>
-          <div className="mb-1.5 flex flex-wrap items-start gap-x-3 gap-y-0.5">
-            <p className={`min-w-0 flex-1 ${nameClass}`} title={primaryRow.name}>
-              {primaryRow.name}
-            </p>
+          <div className="mb-1.5 flex flex-wrap items-baseline gap-x-4 gap-y-0.5">
             <p
-              className={`${pitchDataCardHeaderStatClass(compact)} text-transparent`}
-              aria-hidden
+              className={`min-w-0 flex-1 ${nameClass}`}
+              title={primaryRow.jersey ? `${primaryRow.name} #${primaryRow.jersey}` : primaryRow.name}
             >
-              &nbsp;
+              {primaryRow.name}
+              {primaryRow.jersey ? (
+                <span className="font-semibold text-[var(--accent)]"> #{primaryRow.jersey}</span>
+              ) : null}
             </p>
+            {pitchesThisInning != null ? (
+              <p
+                className={`${pitchDataCardHeaderStatClass(compact)} shrink-0 whitespace-nowrap pr-6 sm:pr-10 md:pr-14`}
+                title={`Pitches thrown by ${primaryRow.name} in ${inningHalf === "bottom" ? "bottom" : "top"} ${inning}`}
+              >
+                <span className="font-medium text-[var(--text-muted)]">Pitches this inning: </span>
+                <span className="font-semibold tabular-nums text-[var(--accent)]">
+                  {pitchesThisInning}
+                </span>
+              </p>
+            ) : null}
           </div>
           <div className="flex min-h-0 flex-1 flex-col">
             <PitchMixRow
@@ -1133,7 +1216,9 @@ export function BattingPitchMixCard({
               flush
               as="div"
               omitName
+              layout={pitchPadLayout ? "strip" : "grid"}
               stripTypeDistribution={primaryRow.stripTypeDistribution}
+              {...pad}
             />
           </div>
         </>
@@ -1331,6 +1416,8 @@ export function CurrentBatterPitchDataCard({
   coachPadExpanded = false,
   /** When true, only name + game line (e.g. coach pad shows pitch mix in page header). */
   omitPitchMixRow = false,
+  /** Record: same stat order as pitch pad without other coach-pad chrome. */
+  pitchPadLayout = false,
 }: {
   batterName: string;
   pas: PlateAppearance[];
@@ -1341,7 +1428,11 @@ export function CurrentBatterPitchDataCard({
   coachPadDense?: boolean;
   coachPadExpanded?: boolean;
   omitPitchMixRow?: boolean;
+  pitchPadLayout?: boolean;
 }) {
+  const padFromRecord = pitchPadLayoutFlags(pitchPadLayout);
+  const padCoach = coachPad || padFromRecord.coachPad;
+  const padExpanded = coachPadExpanded || padFromRecord.coachPadExpanded;
   const eventsByPaId = useMemo(() => groupPitchEventsByPaId(pitchEvents), [pitchEvents]);
   const eventsByPaIdForDistribution = useMemo(
     () => groupPitchEventsByPaId(distributionPitchEvents ?? pitchEvents),
@@ -1374,23 +1465,23 @@ export function CurrentBatterPitchDataCard({
     [pasForGameStatLine]
   );
 
-  const nameClass = pitchDataCardNameClass(compact, coachPad, coachPadDense, coachPadExpanded);
+  const nameClass = pitchDataCardNameClass(compact, padCoach, coachPadDense, padExpanded);
 
   return (
     <div
-      className={pitchDataPairCardShellClass(compact, coachPad, coachPadDense, coachPadExpanded)}
+      className={pitchDataPairCardShellClass(compact, padCoach, coachPadDense, padExpanded)}
       aria-label="Batter pitch data"
     >
       <div
         className={`flex flex-wrap items-start gap-x-3 ${
-          coachPadExpanded ? "mb-1.5 shrink-0 gap-y-0.5 md:mb-2" : coachPad ? "mb-1.5 gap-y-1 md:mb-2" : "mb-1.5 gap-y-0.5"
+          padExpanded ? "mb-1.5 shrink-0 gap-y-0.5 md:mb-2" : padCoach ? "mb-1.5 gap-y-1 md:mb-2" : "mb-1.5 gap-y-0.5"
         }`}
       >
         <p className={`min-w-0 flex-1 ${nameClass}`} title={batterName}>
           {batterName}
         </p>
         <p
-          className={pitchDataCardHeaderStatClass(compact, coachPad, coachPadDense, coachPadExpanded)}
+          className={pitchDataCardHeaderStatClass(compact, padCoach, coachPadDense, padExpanded)}
           title="This game — completed PAs: H-AB, results in order, RBI (current PA on the form is not included)"
         >
           {gameStatLine}
@@ -1407,15 +1498,15 @@ export function CurrentBatterPitchDataCard({
             twoStrikePerspective="batter"
             nameClass={nameClass}
             compact={compact}
-            coachPad={coachPad}
+            coachPad={padCoach}
             coachPadDense={coachPadDense}
-            coachPadExpanded={coachPadExpanded}
+            coachPadExpanded={padExpanded}
             multi={false}
             showLob={false}
             flush
             as="div"
             omitName
-            layout={coachPad ? "strip" : "grid"}
+            layout={padCoach ? "strip" : "grid"}
             stripTypeDistribution={stripTypeDistribution}
           />
         </div>
