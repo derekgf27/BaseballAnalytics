@@ -8,7 +8,6 @@ import {
   createGameWithLineupAction,
   updateGameOnlyAction,
   deleteGameAction,
-  fetchCurrentGameLineupName,
   fetchGameLineupSlots,
   fetchOpponentGameLineupSlots,
   replaceOurGameLineupAction,
@@ -22,8 +21,7 @@ import { formatDateMMDDYYYY } from "@/lib/format";
 import { StyledDatePicker } from "@/components/shared/StyledDatePicker";
 import { FlashMessage } from "@/components/shared/FlashMessage";
 import { useFlashMessage } from "@/hooks/useFlashMessage";
-import type { Game, Player, SavedLineup } from "@/lib/types";
-import { fetchSavedLineupWithSlots } from "@/app/analyst/lineup/actions";
+import type { Game, Player } from "@/lib/types";
 import { OpponentLineupModal } from "@/components/analyst/OpponentLineupModal";
 import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
 import {
@@ -39,7 +37,6 @@ const OPP_CUSTOM_SENTINEL = "__custom_opponent__";
 
 interface GamesPageClientProps {
   initialGames: Game[];
-  initialSavedLineups: SavedLineup[];
   initialPlayers: Player[];
   /** Names from Analyst → Opponents (tracked_opponents). */
   initialTrackedOpponentNames: string[];
@@ -48,7 +45,6 @@ interface GamesPageClientProps {
 
 export function GamesPageClient({
   initialGames,
-  initialSavedLineups,
   initialPlayers,
   initialTrackedOpponentNames,
   canEdit,
@@ -85,7 +81,6 @@ export function GamesPageClient({
 
   const handleSaveGame = async (
     game: Omit<Game, "id" | "created_at">,
-    savedLineupId?: string | null,
     opponentSlots?: { player_id: string; position?: string | null }[] | null,
     ourSlotsOverride?: { player_id: string; position?: string | null }[] | null
   ) => {
@@ -124,7 +119,7 @@ export function GamesPageClient({
       try {
         const created = await createGameWithLineupAction(
           game,
-          savedLineupId,
+          null,
           opponentSlots && opponentSlots.length > 0 ? opponentSlots : null,
           ourCustom
         );
@@ -138,12 +133,10 @@ export function GamesPageClient({
           text: hasOpp && hasOur
             ? "Game added with both lineups."
             : hasOpp
-              ? "Game added with second lineup."
+              ? "Game added with opponent lineup."
               : hasOur
                 ? "Game added with custom lineup."
-                : savedLineupId
-                  ? "Game added with selected lineup."
-                  : "Game added with default lineup.",
+                : "Game added with default lineup.",
         });
         refresh();
       } catch (e) {
@@ -204,7 +197,6 @@ export function GamesPageClient({
             <GameForm
               key={editingGame?.id ?? "new-game"}
               game={editingGame && isGameFinalized(editingGame) ? null : editingGame}
-              savedLineups={initialSavedLineups}
               players={initialPlayers}
               trackedOpponentNames={initialTrackedOpponentNames}
               onSave={handleSaveGame}
@@ -325,7 +317,6 @@ export function GamesPageClient({
 
 function GameForm({
   game,
-  savedLineups,
   players,
   trackedOpponentNames,
   onSave,
@@ -337,12 +328,10 @@ function GameForm({
   titleId = "game-form-title",
 }: {
   game: Game | null;
-  savedLineups: SavedLineup[];
   players: Player[];
   trackedOpponentNames: string[];
   onSave: (
     g: Omit<Game, "id" | "created_at">,
-    savedLineupId?: string | null,
     opponentSlots?: { player_id: string; position?: string | null }[] | null,
     ourSlotsOverride?: { player_id: string; position?: string | null }[] | null
   ) => Promise<void>;
@@ -363,16 +352,6 @@ function GameForm({
   const [opponent, setOpponent] = useState<string>(() =>
     game ? (game.our_side === "home" ? game.away_team : game.home_team) : ""
   );
-  const [game_time, setGameTime] = useState<string>(() => {
-    const t = game?.game_time;
-    if (!t) return "";
-    const part = t.trim().split(":").slice(0, 2).join(":");
-    return part || "";
-  });
-  const [lineupId, setLineupId] = useState<string>(
-    isEditing ? "__keep__" : (savedLineups[0]?.id ?? "")
-  );
-  const [currentLineupName, setCurrentLineupName] = useState<string>("Current lineup");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteGameConfirmOpen, setDeleteGameConfirmOpen] = useState(false);
@@ -438,29 +417,27 @@ function GameForm({
 
   useEffect(() => {
     if (!game?.id) return;
-    let cancelled = false;
-    fetchCurrentGameLineupName(game.id).then((name) => {
-      if (!cancelled) setCurrentLineupName(name);
-    });
-    return () => { cancelled = true; };
-  }, [game?.id]);
-
-  useEffect(() => {
-    const t = game?.game_time;
-    if (t == null) setGameTime("");
-    else setGameTime(t.trim().split(":").slice(0, 2).join(":") || "");
-  }, [game?.id, game?.game_time]);
-
-  useEffect(() => {
-    if (!game?.id) return;
     setOurSide(game.our_side);
     setOurTeam(game.our_side === "home" ? game.home_team : game.away_team);
     setOpponent(game.our_side === "home" ? game.away_team : game.home_team);
   }, [game?.id, game?.our_side, game?.home_team, game?.away_team]);
 
   useEffect(() => {
-    setOurOrderedSlots([]);
-  }, [lineupId]);
+    if (!game?.id) {
+      setOurOrderedSlots([]);
+      return;
+    }
+    let cancelled = false;
+    fetchGameLineupSlots(game.id).then((rows) => {
+      if (cancelled) return;
+      setOurOrderedSlots(
+        rows.map((s) => ({ player_id: s.player_id, position: s.position ?? null }))
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [game?.id]);
 
   useEffect(() => {
     setOpponentUseCustom(false);
@@ -498,28 +475,18 @@ function GameForm({
     ordered: { player_id: string; position: string | null }[];
     title: string;
   }> {
-    if (lineupId === "__keep__" && game?.id) {
+    if (game?.id) {
       const slots = await fetchGameLineupSlots(game.id);
       return {
         ordered: slots.map((s) => ({ player_id: s.player_id, position: s.position ?? null })),
-        title: currentLineupName,
+        title: "Lineup",
       };
     }
-    if (lineupId === "") {
-      const club = activePlayers.filter((p) => isClubRosterPlayer(p));
-      return {
-        ordered: club.slice(0, 9).map((p) => ({ player_id: p.id, position: getPlayerPrimaryPosition(p) ?? null })),
-        title: "Club roster (first 9)",
-      };
-    }
-    const data = await fetchSavedLineupWithSlots(lineupId);
-    if (!data?.slots?.length) {
-      return { ordered: [], title: "Lineup" };
-    }
-    const ordered = [...data.slots]
-      .sort((a, b) => a.slot - b.slot)
-      .map((s) => ({ player_id: s.player_id, position: s.position ?? null }));
-    return { ordered, title: data.name };
+    const club = activePlayers.filter((p) => isClubRosterPlayer(p));
+    return {
+      ordered: club.slice(0, 9).map((p) => ({ player_id: p.id, position: getPlayerPrimaryPosition(p) ?? null })),
+      title: "Club roster (first 9)",
+    };
   }
 
   async function openOurLineupModal() {
@@ -565,7 +532,7 @@ function GameForm({
         home_team,
         away_team,
         our_side,
-        game_time: game_time.trim() || null,
+        game_time: null,
         final_score_home: isEditing && game ? game.final_score_home : null,
         final_score_away: isEditing && game ? game.final_score_away : null,
         our_sp_plan_notes: isEditing && game ? game.our_sp_plan_notes ?? null : null,
@@ -577,7 +544,6 @@ function GameForm({
           our_side === "home" ? spOpp || null : spOur || null,
         save_pitcher_id: isEditing && game ? game.save_pitcher_id ?? null : null,
       },
-      isEditing ? lineupId : (lineupId || null),
       isEditing
         ? opponentOrderedSlots
         : opponentOrderedSlots.length > 0
@@ -592,8 +558,10 @@ function GameForm({
 
   const fieldLabel = "mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]";
   const sectionKicker = "text-[9px] font-bold uppercase tracking-[0.18em] text-[var(--accent)]";
-  const lineupColumnShell =
-    "space-y-2 rounded-lg border border-[var(--border)]/70 bg-[var(--bg-elevated)]/20 p-3";
+  const lineupCard =
+    "flex h-full flex-col gap-3 rounded-lg border border-[var(--border)]/70 bg-[var(--bg-elevated)]/20 p-3";
+  const lineupActionBtn =
+    "mt-auto w-full rounded-lg border border-[var(--accent)]/40 bg-transparent px-3 py-2 text-sm font-semibold text-[var(--accent)] transition hover:border-[var(--accent)] hover:bg-[var(--accent-dim)] disabled:cursor-not-allowed disabled:opacity-45";
   const bothTeamsNamed =
     matchupGame.home_team.trim().length > 0 && matchupGame.away_team.trim().length > 0;
 
@@ -625,7 +593,7 @@ function GameForm({
           <h4 id="game-form-when" className={`${sectionKicker} mb-2`}>
             When
           </h4>
-          <div className="grid gap-2.5 sm:grid-cols-2">
+          <div className="grid gap-2.5">
             <label className="min-w-0">
               <span className={fieldLabel}>Date</span>
               <StyledDatePicker
@@ -636,15 +604,6 @@ function GameForm({
                 }}
                 className="input-tech mt-1 block w-full px-3 py-2"
                 required
-              />
-            </label>
-            <label className="min-w-0">
-              <span className={fieldLabel}>Time (optional)</span>
-              <input
-                type="time"
-                value={game_time}
-                onChange={(e) => setGameTime(e.target.value)}
-                className="input-tech mt-1 block w-full px-3 py-2"
               />
             </label>
           </div>
@@ -839,71 +798,41 @@ function GameForm({
           <h4 id="game-form-lineup-heading" className={`${sectionKicker} mb-2`}>
             Lineups
           </h4>
-          <div className="grid items-start gap-4 lg:grid-cols-2">
-            <div className={lineupColumnShell}>
-              <span className={`${fieldLabel} text-[var(--text)]`}>Our club</span>
+          <div className="grid items-stretch gap-3 lg:grid-cols-2">
+            <div className={lineupCard}>
+              <div className="min-w-0">
+                <p className={fieldLabel}>Our club</p>
+                <p className="truncate text-sm font-semibold text-white">
+                  {our_team.trim() || "—"}
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => void openOurLineupModal()}
                 disabled={ourModalOpening}
-                className="w-full rounded-lg border border-[var(--accent)]/50 bg-[var(--bg-elevated)] px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm transition hover:border-[var(--accent)] hover:bg-[var(--bg-card)] disabled:opacity-60"
+                className={lineupActionBtn}
+                aria-label={`Edit ${our_team.trim() || "club"} lineup`}
               >
-                {ourModalOpening
-                  ? "Opening…"
-                  : `Preview / edit ${our_team.trim() || "club"} lineup`}
+                {ourModalOpening ? "Opening…" : "Edit lineup"}
               </button>
-              {ourOrderedSlots.length > 0 ? (
-                <span className="block text-sm text-[var(--text-muted)]">{ourOrderedSlots.length} in lineup</span>
-              ) : null}
-              <label className="block min-w-0" htmlFor="game-form-lineup-template">
-                <span className={fieldLabel}>Our lineup template (optional)</span>
-                <select
-                  id="game-form-lineup-template"
-                  value={lineupId}
-                  onChange={(e) => setLineupId(e.target.value)}
-                  className="input-tech mt-1 min-w-0 max-w-full px-3 py-2"
-                  aria-label="Our lineup template"
-                >
-                  {isEditing ? (
-                    <>
-                      <option value="__keep__">{currentLineupName}</option>
-                      {savedLineups.map((l) => (
-                        <option key={l.id} value={l.id}>
-                          {l.name}
-                        </option>
-                      ))}
-                    </>
-                  ) : (
-                    <>
-                      {savedLineups.length === 0 ? (
-                        <option value="">No saved lineups</option>
-                      ) : null}
-                      {savedLineups.map((l) => (
-                        <option key={l.id} value={l.id}>
-                          {l.name}
-                        </option>
-                      ))}
-                    </>
-                  )}
-                </select>
-              </label>
             </div>
 
-            <div className={lineupColumnShell}>
-              <span className={`${fieldLabel} text-[var(--text)]`}>Opponent</span>
+            <div className={lineupCard}>
+              <div className="min-w-0">
+                <p className={fieldLabel}>Opponent</p>
+                <p className="truncate text-sm font-semibold text-white">
+                  {opponent.trim() || "—"}
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => setOpponentModalOpen(true)}
                 disabled={!bothTeamsNamed}
-                className="w-full rounded-lg border border-[var(--accent)]/50 bg-[var(--bg-elevated)] px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm transition hover:border-[var(--accent)] hover:bg-[var(--bg-card)] disabled:cursor-not-allowed disabled:opacity-45"
+                className={lineupActionBtn}
+                aria-label={`Edit ${opponent.trim() || "opponent"} lineup`}
               >
-                Preview / edit {opponent.trim() || "opponent"} lineup
+                Edit lineup
               </button>
-              {opponentOrderedSlots.length > 0 ? (
-                <span className="block text-sm text-[var(--text-muted)]">
-                  {opponentOrderedSlots.length} in lineup
-                </span>
-              ) : null}
             </div>
           </div>
         </section>

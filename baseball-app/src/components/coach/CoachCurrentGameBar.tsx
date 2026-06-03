@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { fetchCoachGamePasAction } from "@/app/coach/actions";
 import { CoachMiniLinescore } from "@/components/coach/CoachMiniLinescore";
 import { formatDateMMDDYYYY } from "@/lib/format";
+import { coachMatchupHref } from "@/lib/coachRoutes";
 import type { TodayGameInfo } from "@/app/coach/CoachTodayClient";
 import type { PlateAppearance } from "@/lib/types";
 
@@ -56,13 +58,16 @@ export function CoachCurrentGameBar({
             {game.venue}
           </span>
           <span className="text-[var(--neo-text-muted)]"> · {formatDateMMDDYYYY(game.date)}</span>
-          {game.startTime ? (
-            <span className="text-[var(--neo-text-muted)]"> · {game.startTime}</span>
-          ) : null}
         </p>
         <p className="mt-0.5 text-base font-semibold leading-snug text-[var(--neo-text)]">
           {ourClub} vs {game.opponent}
         </p>
+        <Link
+          href={coachMatchupHref(game.id)}
+          className="mt-2 inline-flex text-sm font-medium text-[var(--accent-coach)] hover:underline"
+        >
+          Matchup
+        </Link>
       </div>
       <div className="flex w-full min-w-0 justify-end lg:flex-1">
         <CoachMiniLinescore

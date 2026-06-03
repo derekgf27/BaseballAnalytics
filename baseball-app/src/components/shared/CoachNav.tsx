@@ -9,7 +9,8 @@ const STORAGE_KEY = "coach-sidebar-collapsed";
 
 const LINKS = [
   { href: "/coach", label: "Today", icon: "\u{1F4CB}", exact: true },
-  { href: "/coach/pitch-tracker", label: "Pitch tracker", icon: "\u{1F3AF}", exact: false },
+  { href: "/coach/matchup", label: "Matchup", icon: "\u{1F3AF}", exact: false },
+  { href: "/coach/pitch-tracker", label: "Pitch tracker", icon: "\u{26BE}", exact: false },
   { href: "/coach/players", label: "Players", icon: "\u{1F464}", exact: false },
   { href: "/coach/lineup", label: "Lineup", icon: "\u{1F4DD}", exact: false },
   { href: "/coach/stats", label: "Stats", icon: "\u{1F4C8}", exact: false },

@@ -807,6 +807,16 @@ export async function getTeamPlateAppearancesForCharts(): Promise<
     }));
 }
 
+/** Parallel bundle for analyst charts page (spray + pitching spray + snapshot PAs). */
+export async function getChartsPagePlateData() {
+  const [sprayData, pitchingSprayData, chartPas] = await Promise.all([
+    getTeamPlateAppearancesForSpray(),
+    getTeamPlateAppearancesForPitchingSpray(),
+    getTeamPlateAppearancesForCharts(),
+  ]);
+  return { sprayData, pitchingSprayData, chartPas };
+}
+
 export async function getPlateAppearancesByBatter(batterId: string): Promise<PlateAppearance[]> {
   const supabase = await getSupabase();
   if (!supabase || isDemoId(batterId)) return [];

@@ -155,7 +155,13 @@ export function battingStatsFromPAs(
   };
 }
 
-export type LineupAggregateRates = Pick<BattingStats, "avg" | "obp" | "slg" | "ops" | "opsPlus" | "woba" | "pPa" | "kPct">;
+export type LineupAggregateRates = Pick<
+  BattingStats,
+  "avg" | "obp" | "slg" | "ops" | "opsPlus" | "woba" | "pPa" | "kPct" | "bbPct"
+> & {
+  /** Walks per strikeout (combined lineup). */
+  bbPerK: number | null;
+};
 
 /**
  * True combined rates for a lineup: sum counting stats across batters, then apply the same
@@ -209,8 +215,10 @@ export function lineupAggregateFromBattingStats(
 
     const so = batters.reduce((s, b) => s + (b.so ?? 0), 0);
     const kPct = pa > 0 ? so / pa : 0;
+    const bbPct = pa > 0 ? walks / pa : 0;
+    const bbPerK = so > 0 ? walks / so : null;
 
-    return { avg, obp, slg, ops, opsPlus, woba, pPa, kPct };
+    return { avg, obp, slg, ops, opsPlus, woba, pPa, kPct, bbPct, bbPerK };
   }
 
   const n = batters.length;
@@ -226,8 +234,11 @@ export function lineupAggregateFromBattingStats(
   const pPa = pPaList.length > 0 ? pPaList.reduce((a, b) => a + b, 0) / pPaList.length : undefined;
   const totalPa = batters.reduce((s, b) => s + (b.pa ?? 0), 0);
   const totalSo = batters.reduce((s, b) => s + (b.so ?? 0), 0);
+  const totalWalks = batters.reduce((s, b) => s + (b.bb ?? 0) + (b.ibb ?? 0), 0);
   const kPct = totalPa > 0 ? totalSo / totalPa : 0;
-  return { avg, obp, slg, ops, opsPlus, woba, pPa, kPct };
+  const bbPct = totalPa > 0 ? totalWalks / totalPa : mean("bbPct");
+  const bbPerK = totalSo > 0 ? totalWalks / totalSo : null;
+  return { avg, obp, slg, ops, opsPlus, woba, pPa, kPct, bbPct, bbPerK };
 }
 
 /**

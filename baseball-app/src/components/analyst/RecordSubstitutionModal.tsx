@@ -95,6 +95,71 @@ function batsShort(bats: string | null | undefined): string {
   return c === "S" ? "S" : c === "L" ? "L" : c === "R" ? "R" : "—";
 }
 
+function applyPlayerToSlot(
+  prev: LineupSlotState[],
+  player: Player,
+  slotIndex: number
+): LineupSlotState[] {
+  if (slotIndex < 0 || slotIndex > 8) return prev;
+
+  const currentSlot = prev.findIndex((s) => s.player?.id === player.id);
+  const displacedSlot = prev[slotIndex];
+  const next = prev.map((s) => ({ ...s }));
+
+  const primaryPosition = getPlayerPrimaryPosition(player);
+  const preferred =
+    primaryPosition && LINEUP_POSITIONS.includes(primaryPosition as (typeof LINEUP_POSITIONS)[number])
+      ? primaryPosition
+      : defaultPositionForPlayer(player);
+  const taken = new Set<string>();
+  next.forEach((s, i) => {
+    if (i === slotIndex || i === currentSlot) return;
+    if (s.player && isLineupPosition(s.position)) taken.add(s.position);
+  });
+  const defaultPosition =
+    !taken.has(preferred) ? preferred : LINEUP_POSITIONS.find((p) => !taken.has(p)) ?? preferred;
+
+  next[slotIndex] = { player, position: defaultPosition };
+  if (currentSlot >= 0) next[currentSlot] = { player: displacedSlot.player, position: displacedSlot.position };
+
+  if (currentSlot >= 0 && next[currentSlot].player) {
+    const t = new Set<string>();
+    next.forEach((s, i) => {
+      if (i === currentSlot) return;
+      if (s.player && isLineupPosition(s.position)) t.add(s.position);
+    });
+    const curPos = next[currentSlot].position;
+    if (isLineupPosition(curPos) && t.has(curPos)) {
+      const alt = LINEUP_POSITIONS.find((p) => !t.has(p));
+      if (alt) next[currentSlot] = { ...next[currentSlot], position: alt };
+    }
+  }
+  return dedupeFilledPositions(next);
+}
+
+function DraggablePoolPlayer({ player, onAdd }: { player: Player; onAdd: () => void }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: player.id,
+    data: { player },
+  });
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      {...listeners}
+      {...attributes}
+      onClick={onAdd}
+      className={`flex w-full min-w-0 touch-none select-none items-center gap-2 rounded border border-transparent bg-transparent px-0 py-0 text-left transition hover:border-[var(--accent)]/30 active:cursor-grabbing ${
+        isDragging ? "opacity-50" : ""
+      }`}
+      title={`Add ${player.name} to lineup`}
+    >
+      <span className="truncate text-sm font-medium text-[var(--text)]">{player.name}</span>
+      {player.jersey && <span className="shrink-0 text-xs text-[var(--text-muted)]">#{player.jersey}</span>}
+    </button>
+  );
+}
+
 function DraggablePlayer({ player }: { player: Player }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: player.id,
@@ -332,6 +397,27 @@ export function RecordSubstitutionModal({
 
   const sideLabel = side === "away" ? game.away_team : game.home_team;
 
+  function assignPlayerToSlot(player: Player, slotIndex: number) {
+    if (isPitcherPlayer(player)) return;
+    setPositionError(null);
+    const currentSlot = lineup.findIndex((s) => s.player?.id === player.id);
+    const displacedSlot = lineup[slotIndex];
+    if (currentSlot < 0 && displacedSlot.player) {
+      addUnavailableForSide(side, displacedSlot.player.id);
+    }
+    setLineup((prev) => applyPlayerToSlot(prev, player, slotIndex));
+  }
+
+  function placePlayerInFirstOpenSlot(player: Player) {
+    if (isPitcherPlayer(player)) return;
+    setPositionError(null);
+    setLineup((prev) => {
+      const openSlot = prev.findIndex((s) => s.player == null);
+      if (openSlot < 0) return prev;
+      return applyPlayerToSlot(prev, player, openSlot);
+    });
+  }
+
   function handleDragStart(event: DragStartEvent) {
     setActiveId(String(event.active.id));
   }
@@ -364,46 +450,7 @@ export function RecordSubstitutionModal({
 
     if (!overId.startsWith("record-sub-slot-")) return;
     const slotIndex = parseInt(overId.replace("record-sub-slot-", ""), 10);
-    if (slotIndex < 0 || slotIndex > 8) return;
-
-    const currentSlot = lineup.findIndex((s) => s.player?.id === playerId);
-    const displacedSlot = lineup[slotIndex];
-    if (currentSlot < 0 && displacedSlot.player) {
-      addUnavailableForSide(side, displacedSlot.player.id);
-    }
-
-    setLineup((prev) => {
-      const next = prev.map((s) => ({ ...s }));
-      const primaryPosition = getPlayerPrimaryPosition(player);
-      const preferred =
-        primaryPosition && LINEUP_POSITIONS.includes(primaryPosition as (typeof LINEUP_POSITIONS)[number])
-          ? primaryPosition
-          : defaultPositionForPlayer(player);
-      const taken = new Set<string>();
-      next.forEach((s, i) => {
-        if (i === slotIndex || i === currentSlot) return;
-        if (s.player && isLineupPosition(s.position)) taken.add(s.position);
-      });
-      const defaultPosition =
-        !taken.has(preferred) ? preferred : LINEUP_POSITIONS.find((p) => !taken.has(p)) ?? preferred;
-
-      next[slotIndex] = { player, position: defaultPosition };
-      if (currentSlot >= 0) next[currentSlot] = { player: displacedSlot.player, position: displacedSlot.position };
-
-      if (currentSlot >= 0 && next[currentSlot].player) {
-        const t = new Set<string>();
-        next.forEach((s, i) => {
-          if (i === currentSlot) return;
-          if (s.player && isLineupPosition(s.position)) t.add(s.position);
-        });
-        const curPos = next[currentSlot].position;
-        if (isLineupPosition(curPos) && t.has(curPos)) {
-          const alt = LINEUP_POSITIONS.find((p) => !t.has(p));
-          if (alt) next[currentSlot] = { ...next[currentSlot], position: alt };
-        }
-      }
-      return dedupeFilledPositions(next);
-    });
+    assignPlayerToSlot(player, slotIndex);
   }
 
   function setSlotPosition(slotIndex: number, position: string) {
@@ -451,7 +498,7 @@ export function RecordSubstitutionModal({
     }
     const missingPlayer = lineup.some((s) => !s.player);
     if (missingPlayer) {
-      setPositionError("Fill all nine spots (drag players from the bench or swap within the order).");
+      setPositionError("Fill all nine spots (click or drag players from the bench or swap within the order).");
       return;
     }
     const missingPos = lineup.some((s) => s.player && !isLineupPosition(s.position));
@@ -556,9 +603,9 @@ export function RecordSubstitutionModal({
                           availablePlayers.map((p) => (
                             <div
                               key={p.id}
-                              className="flex items-center gap-2 rounded border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-2"
+                              className="flex items-center gap-2 rounded border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-2 transition hover:border-[var(--accent)]/40"
                             >
-                              <DraggablePlayer player={p} />
+                              <DraggablePoolPlayer player={p} onAdd={() => placePlayerInFirstOpenSlot(p)} />
                             </div>
                           ))
                         )}

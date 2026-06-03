@@ -7,7 +7,6 @@ export interface GameStatusHeaderProps {
   venue: string;
   venueType: "home" | "away";
   date: string;
-  startTime?: string;
   /** Optional: not in DB yet — placeholder when missing */
   inning?: string | null;
   /** Optional: not in DB yet — placeholder when missing */
@@ -19,7 +18,6 @@ export function GameStatusHeader({
   venue,
   venueType,
   date,
-  startTime,
   inning = null,
   score = null,
 }: GameStatusHeaderProps) {
@@ -34,7 +32,6 @@ export function GameStatusHeader({
         <div className="section-label">Current game</div>
         <p className="mt-1 text-sm text-[var(--neo-text-muted)]">
           {venue} · {date}
-          {startTime ? ` · ${startTime}` : ""}
         </p>
         <p className="mt-0.5 text-base font-semibold text-[var(--neo-text)]">
           {venueType === "home" ? "vs" : "@"} {opponent}

@@ -2,24 +2,27 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import {
-  DndContext,
-  DragOverlay,
-  useDraggable,
-  useDroppable,
-  type DragEndEvent,
-  type DragStartEvent,
-} from "@dnd-kit/core";
+import { DndContext, DragOverlay, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { useTouchOptimizedDndSensors } from "@/lib/dndTouchSensors";
 import Link from "next/link";
 import type { BattingStats, BattingStatsWithSplits, Player, SavedLineup } from "@/lib/types";
 import { lineupAggregateFromBattingStats } from "@/lib/compute/battingStats";
-import { fmtDecimalNoLeadingZero, formatPPa } from "@/lib/format";
-import { formatBattingTripleSlash } from "@/lib/format/battingSlash";
 import { comparePlayersByLastNameThenFull } from "@/lib/playerSort";
 import { getPlayerPrimaryPosition } from "@/lib/playerRoster";
 
-export type LineupSplitView = "overall" | "vsL" | "vsR" | "risp";
+import type { LineupSplitView, PoolSortKey, RosterTableRow } from "./lineupWorkbenchUi";
+
+export type { LineupSplitView, PoolSortKey } from "./lineupWorkbenchUi";
+import {
+  AvailablePlayerGrid,
+  LineupCollectiveStatsBar,
+  LineupFooterTools,
+  LineupOrderPanel,
+  LineupSaveActions,
+  PlayerPoolDropZone,
+  RosterStatsControls,
+  UnifiedRosterStatsTable,
+} from "./lineupWorkbenchUi";
 import {
   deleteSavedLineupForCoach,
   fetchGameLineupForCoach,
@@ -28,6 +31,7 @@ import {
 } from "@/app/coach/lineup/actions";
 import { fetchSavedLineupWithSlots, saveLineupTemplate, deleteSavedLineup } from "./actions";
 import { formatDateMMDDYYYY } from "@/lib/format";
+import { isGameFinalized } from "@/lib/gameRecord";
 import { matchupLabelUsFirst } from "@/lib/opponentUtils";
 import type { Game, LineupSide } from "@/lib/types";
 
@@ -46,53 +50,12 @@ const LINEUP_POSITIONS = [
 
 type LineupSlotState = { player: Player | null; position: string };
 
-const BATTING_TAIL_LABELS: { key: keyof BattingStats; label: string; format: "avg" | "int" | "pct" }[] = [
-  { key: "kPct", label: "K%", format: "pct" },
-  { key: "pPa", label: "P/PA", format: "avg" },
-];
-
-function formatSlashCell(s: BattingStats | undefined): string {
-  if (!s) return "—";
-  return formatBattingTripleSlash(s.avg, s.obp, s.slg);
-}
-
-function formatLineupBattingCell(s: BattingStats | undefined, key: keyof BattingStats, format: "avg" | "int" | "pct"): string {
-  if (!s) return "—";
-  if (key === "pPa") {
-    return s.pPa != null && !Number.isNaN(s.pPa) ? formatPPa(s.pPa) : "—";
-  }
-  if (format === "pct") {
-    const v = s[key];
-    if (typeof v !== "number" || Number.isNaN(v)) return "—";
-    return `${(v * 100).toFixed(1)}%`;
-  }
-  return formatStat(Number(s[key]) || 0, format);
-}
-
-function formatStat(value: number, format: "avg" | "int"): string {
-  if (format === "int") return String(value);
-  return fmtDecimalNoLeadingZero(value, 3);
-}
-
-type PoolSortKey = "name" | "obp" | "ops" | "avg";
-
 function getStatValue(statsMap: Record<string, BattingStats>, playerId: string, key: PoolSortKey): number {
   if (key === "name") return 0;
   const s = statsMap[playerId];
   if (!s) return -1;
   const v = (s as unknown as Record<string, unknown>)[key];
   return typeof v === "number" ? v : -1;
-}
-
-/** Label + formatted value for pool cards when sorting by a stat (not name). */
-function poolCardStatLine(
-  poolSortBy: PoolSortKey,
-  stats: BattingStats | undefined
-): { label: string; value: string } | null {
-  if (poolSortBy === "name") return null;
-  const label = poolSortBy === "avg" ? "AVG" : poolSortBy === "ops" ? "OPS" : "OBP";
-  const key = poolSortBy as keyof BattingStats;
-  return { label, value: formatLineupBattingCell(stats, key, "avg") };
 }
 
 /** Suggest batting order: fill 9 slots with best 9 by stat (or reorder current 9). */
@@ -140,10 +103,6 @@ function formatGameLabel(game: Game): string {
   return `${d} ${matchupLabelUsFirst(game, true)}`;
 }
 
-function opponentSide(side: LineupSide): LineupSide {
-  return side === "home" ? "away" : "home";
-}
-
 function slotsToLineupState(
   slots: { slot: number; player_id: string; position: string | null }[],
   playerMap: Map<string, Player>
@@ -186,273 +145,6 @@ function getStatsForLineupSplit(splits: Record<string, BattingStatsWithSplits>, 
   return s.risp ?? undefined;
 }
 
-// Normalize handedness codes coming from data (e.g. "BL", "BR", "BS", "TL", "TR")
-const batsLabel: Record<string, string> = {
-  L: "Left",
-  R: "Right",
-  S: "Switch",
-  BL: "Left",
-  BR: "Right",
-  BS: "Switch",
-};
-const throwsLabel: Record<string, string> = {
-  L: "Left",
-  R: "Right",
-  TL: "Left",
-  TR: "Right",
-};
-
-function formatHandedness(bats: string | null | undefined, throws: string | null | undefined): string {
-  const b = bats != null && bats !== "" ? batsLabel[bats] ?? bats : "—";
-  const t = throws != null && throws !== "" ? throwsLabel[throws] ?? throws : "—";
-  return `Bats: ${b} · Throws: ${t}`;
-}
-
-function PlayerCard({
-  player,
-  isDragging,
-  compact,
-  poolStatLine,
-}: {
-  player: Player;
-  isDragging?: boolean;
-  /** Inline one-line display for lineup slots so all 9 fit on screen */
-  compact?: boolean;
-  /** When sorting the pool by AVG/OPS/OBP, show that stat on the card */
-  poolStatLine?: { label: string; value: string } | null;
-}) {
-  const position = getPlayerPrimaryPosition(player) ?? "—";
-  const handedness = formatHandedness(player.bats, player.throws);
-  if (compact) {
-    return (
-      <div
-        className={`flex cursor-grab touch-none select-none items-center gap-2 active:cursor-grabbing ${
-          isDragging ? "opacity-50" : ""
-        }`}
-      >
-        <span className="truncate text-base font-medium text-[var(--text)]">{player.name}</span>
-        {player.jersey && (
-          <span className="shrink-0 text-sm text-[var(--text-muted)]">#{player.jersey}</span>
-        )}
-      </div>
-    );
-  }
-  return (
-    <div
-      className={`card-tech flex cursor-grab touch-none select-none items-center gap-3 rounded-lg border p-3 active:cursor-grabbing ${
-        isDragging ? "opacity-50" : ""
-      }`}
-    >
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center justify-between gap-3">
-          <p className="min-w-0 flex-1 truncate font-medium text-[var(--text)]">{player.name}</p>
-          {poolStatLine != null && (
-            <div className="shrink-0 text-right text-sm tabular-nums">
-              <span className="text-xs font-medium uppercase tracking-wide text-white">
-                {poolStatLine.label}
-              </span>{" "}
-              <span className="font-semibold text-[var(--accent)]">{poolStatLine.value}</span>
-            </div>
-          )}
-        </div>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--text-muted)]">
-          {player.jersey && <span>#{player.jersey}</span>}
-          <span className="font-medium text-[var(--accent)]">{position}</span>
-          <span className="font-semibold text-[var(--text)]">{handedness}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DraggablePlayer({
-  player,
-  compact,
-  poolStatLine,
-}: {
-  player: Player;
-  compact?: boolean;
-  poolStatLine?: { label: string; value: string } | null;
-}) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: player.id,
-    data: { player },
-  });
-  return (
-    <div
-      ref={setNodeRef}
-      {...listeners}
-      {...attributes}
-      className={compact ? "min-w-0 flex-1 touch-none select-none" : "touch-none select-none"}
-    >
-      <PlayerCard player={player} isDragging={isDragging} compact={compact} poolStatLine={poolStatLine} />
-    </div>
-  );
-}
-
-function batsShort(bats: string | null | undefined): string {
-  if (bats == null || bats === "") return "—";
-  const code = bats.toUpperCase();
-  const c = code[0];
-  return c === "S" ? "S" : c === "L" ? "L" : c === "R" ? "R" : code;
-}
-
-function LineupTableRow({
-  slotIndex,
-  player,
-  position,
-  positionsTakenByOthers,
-  onPositionChange,
-  rowStriped,
-}: {
-  slotIndex: number;
-  player: Player | null;
-  position: string;
-  positionsTakenByOthers: Set<string>;
-  onPositionChange: (slotIndex: number, value: string) => void;
-  rowStriped: boolean;
-}) {
-  const { setNodeRef, isOver } = useDroppable({ id: `slot-${slotIndex}` });
-
-  return (
-    <tr
-      ref={setNodeRef}
-      className={`border-b border-[var(--neo-border)] transition ${
-        isOver
-          ? "bg-[var(--neo-accent-dim)]"
-          : rowStriped
-            ? "bg-[#10151a]"
-            : "bg-[#12181f]"
-      }`}
-    >
-      <td className="w-12 border-r border-[var(--neo-border)] px-3 py-2 text-center">
-        <span className="inline-flex h-7 w-7 items-center justify-center rounded bg-[var(--neo-accent)] text-sm font-bold text-[var(--bg-base)] shadow-[0_0_16px_rgba(214,186,72,0.55)]">
-          {slotIndex + 1}
-        </span>
-      </td>
-      <td className="min-w-[5.5rem] w-24 border-r border-[var(--neo-border)] bg-black/20 px-2 py-2 text-center">
-        {player ? (
-          <select
-            value={position || LINEUP_POSITIONS[0]}
-            onChange={(e) => onPositionChange(slotIndex, e.target.value)}
-            className="min-w-[3rem] w-full rounded border border-[var(--neo-border)] bg-[#111619] px-2 py-1 text-center text-sm font-medium text-[var(--neo-text)] focus:border-[var(--neo-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--neo-accent)]"
-            aria-label={`Position for slot ${slotIndex + 1}`}
-          >
-            {LINEUP_POSITIONS.map((pos) => (
-              <option key={pos} value={pos} disabled={positionsTakenByOthers.has(pos)}>
-                {pos}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <span className="text-xs text-[var(--text-faint)]">—</span>
-        )}
-      </td>
-      <td className="min-w-0 px-3 py-2">
-        {player ? (
-          <DraggablePlayer player={player} compact />
-        ) : (
-          <span className="text-sm text-[var(--text-faint)]">Drop player here</span>
-        )}
-      </td>
-      <td className="w-12 border-l border-[var(--border)] px-3 py-2 text-center text-sm font-semibold text-[var(--text)]">
-        {player ? batsShort(player.bats) : "—"}
-      </td>
-    </tr>
-  );
-}
-
-function PlayerPoolDroppable({ children }: { children: React.ReactNode }) {
-  const { setNodeRef, isOver } = useDroppable({ id: "player-pool" });
-  return (
-    <div
-      ref={setNodeRef}
-      className={`transition-opacity ${isOver ? "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[var(--bg-base)] rounded-lg" : ""}`}
-    >
-      {children}
-    </div>
-  );
-}
-
-function PlayerStatsTable({
-  players,
-  statsMap,
-  emptyMessage,
-  showSpot,
-  showOps,
-}: {
-  players: Player[];
-  statsMap: Record<string, BattingStats>;
-  emptyMessage: string;
-  showSpot?: boolean;
-  showOps?: boolean;
-}) {
-  if (players.length === 0) {
-    return (
-      <p className="py-4 text-center text-sm text-[var(--text-faint)]">{emptyMessage}</p>
-    );
-  }
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-left text-sm">
-        <thead>
-          <tr className="border-b border-[var(--border)] text-[var(--text-muted)]">
-            {showSpot && (
-              <th className="font-display py-1.5 pr-2 text-center text-xs font-semibold uppercase">#</th>
-            )}
-            <th className="font-display py-1.5 pr-2 text-xs font-semibold uppercase">Player</th>
-            <th
-              className="font-display py-1.5 px-2 text-center text-xs font-semibold uppercase"
-              title="AVG / OBP / SLG"
-            >
-              AVG/OBP/SLG
-            </th>
-            {showOps && (
-              <th className="font-display py-1.5 px-2 text-center text-xs font-semibold uppercase">OPS</th>
-            )}
-            {BATTING_TAIL_LABELS.map(({ key, label }) => (
-              <th key={key} className="font-display py-1.5 px-2 text-center text-xs font-semibold uppercase">
-                {label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {players.map((player, index) => {
-            const s = statsMap[player.id];
-            return (
-              <tr key={player.id} className="border-b border-[var(--border)] last:border-0">
-                {showSpot && (
-                  <td className="py-1.5 pr-2 text-center text-[var(--text-muted)]">
-                    {index + 1}
-                  </td>
-                )}
-                <td className="py-1.5 pr-2 font-medium text-[var(--text)]">
-                  {player.name}
-                  {player.jersey && (
-                    <span className="ml-1 text-[var(--text-muted)]">#{player.jersey}</span>
-                  )}
-                </td>
-                <td className="py-1.5 px-2 text-center text-[var(--text)] tabular-nums">{formatSlashCell(s)}</td>
-                {showOps && (
-                  <td className="py-1.5 px-2 text-center text-[var(--text)] tabular-nums">
-                    {formatLineupBattingCell(s, "ops", "avg")}
-                  </td>
-                )}
-                {BATTING_TAIL_LABELS.map(({ key, format }) => (
-                  <td key={key} className="py-1.5 px-2 text-center text-[var(--text)] tabular-nums">
-                    {formatLineupBattingCell(s, key, format)}
-                  </td>
-                ))}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 export default function LineupConstructionClient({
   initialPlayers,
   initialBattingStatsWithSplits,
@@ -464,10 +156,15 @@ export default function LineupConstructionClient({
 }: LineupConstructionClientProps) {
   const router = useRouter();
   const gameMode = games != null && games.length > 0;
+  const editableGames = useMemo(
+    () => (games ?? []).filter((g) => !isGameFinalized(g)),
+    [games]
+  );
   const playerMap = useMemo(() => new Map(initialPlayers.map((p) => [p.id, p])), [initialPlayers]);
   const lineupSplitForStats: LineupSplitView = "overall";
-  const [selectedGameId, setSelectedGameId] = useState<string | null>(gameMode ? initialGameId : null);
-  const [lineupSide, setLineupSide] = useState<LineupSide>(() => initialGameOurSide ?? "home");
+  const [selectedGameId, setSelectedGameId] = useState<string | null>(
+    gameMode ? (initialGameId ?? null) : null
+  );
   const [loadingLineup, setLoadingLineup] = useState(false);
   const [lineup, setLineup] = useState<LineupSlotState[]>(() => {
     if (gameMode && initialGameLineup.length > 0) {
@@ -495,11 +192,21 @@ export default function LineupConstructionClient({
     if (s) poolBattingStats[p.id] = s;
   }
 
+  const selectedGame =
+    selectedGameId != null ? editableGames.find((g) => g.id === selectedGameId) ?? null : null;
+  const lineupSide: LineupSide = selectedGame?.our_side ?? initialGameOurSide ?? "home";
+
   useEffect(() => {
     if (saveStatus !== "ok") return;
     const t = setTimeout(() => setSaveStatus("idle"), 2500);
     return () => clearTimeout(t);
   }, [saveStatus]);
+
+  useEffect(() => {
+    if (!gameMode) return;
+    if (selectedGameId && editableGames.some((g) => g.id === selectedGameId)) return;
+    setSelectedGameId(editableGames[0]?.id ?? null);
+  }, [gameMode, editableGames, selectedGameId]);
 
   useEffect(() => {
     if (!gameMode || !selectedGameId) {
@@ -532,9 +239,6 @@ export default function LineupConstructionClient({
   ]);
 
   const sensors = useTouchOptimizedDndSensors();
-  const selectedGame = selectedGameId && games ? games.find((g) => g.id === selectedGameId) ?? null : null;
-  const ourSide = selectedGame?.our_side ?? "home";
-  const oppSide = opponentSide(ourSide);
 
   const inLineupIds = new Set(
     lineup.filter((s) => s.player != null).map((s) => s.player!.id)
@@ -550,12 +254,45 @@ export default function LineupConstructionClient({
   });
 
   const lineupPlayers = lineup.map((s) => s.player).filter((p): p is Player => p != null);
-  const lineupBattingStatsNine =
-    lineupPlayers.length === 9
-      ? lineupPlayers.map((p) => initialBattingStats[p.id]).filter((s): s is BattingStats => s != null)
-      : [];
+  const lineupBattingStats = lineupPlayers
+    .map((p) => poolBattingStats[p.id] ?? initialBattingStats[p.id])
+    .filter((s): s is BattingStats => s != null);
   const lineupQuality =
-    lineupBattingStatsNine.length === 9 ? lineupAggregateFromBattingStats(lineupBattingStatsNine) : null;
+    lineupBattingStats.length > 0 ? lineupAggregateFromBattingStats(lineupBattingStats) : null;
+
+  const rosterTableRows: RosterTableRow[] = useMemo(() => {
+    const rows: RosterTableRow[] = [];
+    lineup.forEach((slot, i) => {
+      if (slot.player) {
+        rows.push({
+          player: slot.player,
+          spot: i + 1,
+          position: slot.position,
+          inLineup: true,
+        });
+      }
+    });
+    for (const player of sortedAvailablePlayers) {
+      rows.push({ player, spot: null, position: "", inLineup: false });
+    }
+    return rows;
+  }, [lineup, sortedAvailablePlayers]);
+
+  const duplicatePositions = useMemo(() => {
+    const positionCounts = new Map<string, number>();
+    for (const s of lineup) {
+      if (s.player && s.position) {
+        positionCounts.set(s.position, (positionCounts.get(s.position) ?? 0) + 1);
+      }
+    }
+    return [...positionCounts.entries()].filter(([, c]) => c > 1).map(([pos]) => pos);
+  }, [lineup]);
+
+  function removePlayerFromLineup(playerId: string) {
+    setLineup((prev) =>
+      prev.map((s) => (s.player?.id === playerId ? { player: null, position: "" } : s))
+    );
+  }
 
   function handleSuggestBy(stat: "obp" | "avg") {
     const nine =
@@ -648,6 +385,35 @@ export default function LineupConstructionClient({
     ? initialPlayers.find((p) => p.id === activeId) ?? null
     : null;
 
+  function defaultLineupPosition(player: Player): string {
+    const primary = getPlayerPrimaryPosition(player);
+    return primary && LINEUP_POSITIONS.includes(primary as (typeof LINEUP_POSITIONS)[number]) ? primary : "DH";
+  }
+
+  function assignPlayerToSlot(player: Player, slotIndex: number) {
+    if (slotIndex < 0 || slotIndex > 8) return;
+    const currentSlot = lineup.findIndex((s) => s.player?.id === player.id);
+    const displaced = lineup[slotIndex];
+
+    setLineup((prev) => {
+      const next = prev.map((s) => ({ ...s }));
+      next[slotIndex] = { player, position: defaultLineupPosition(player) };
+      if (currentSlot >= 0 && currentSlot !== slotIndex) {
+        next[currentSlot] = {
+          player: displaced.player,
+          position: displaced.position ?? "",
+        };
+      }
+      return next;
+    });
+  }
+
+  function placePlayerInFirstOpenSlot(player: Player) {
+    const openSlot = lineup.findIndex((s) => s.player == null);
+    if (openSlot < 0) return;
+    assignPlayerToSlot(player, openSlot);
+  }
+
   function handleDragStart(event: DragStartEvent) {
     setActiveId(String(event.active.id));
   }
@@ -677,44 +443,15 @@ export default function LineupConstructionClient({
     if (!overId.startsWith("slot-")) return;
 
     const slotIndex = parseInt(overId.replace("slot-", ""), 10);
-    if (slotIndex < 0 || slotIndex > 8) return;
-
-    const currentSlot = lineup.findIndex((s) => s.player?.id === playerId);
-    const displacedSlot = lineup[slotIndex];
-
-    const primaryPosition = getPlayerPrimaryPosition(player);
-    const defaultPosition =
-      primaryPosition && LINEUP_POSITIONS.includes(primaryPosition as (typeof LINEUP_POSITIONS)[number])
-        ? primaryPosition
-        : "DH";
-
-    setLineup((prev) => {
-      const next = prev.map((s) => ({ ...s }));
-      next[slotIndex] = {
-        player,
-        position: defaultPosition,
-      };
-      if (currentSlot >= 0) {
-        next[currentSlot] = {
-          player: displacedSlot.player,
-          position: displacedSlot.position,
-        };
-      }
-      return next;
-    });
+    assignPlayerToSlot(player, slotIndex);
   }
 
   return (
-    <div className="app-shell space-y-6 pb-8">
-      <header>
-        <h1 className="font-display text-3xl font-semibold tracking-tight text-white">
+    <div className="app-shell flex min-h-[calc(100dvh-5rem)] flex-col gap-3 pb-4">
+      <header className="shrink-0">
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-white md:text-3xl">
           {gameMode ? "Lineup" : "Lineup construction"}
         </h1>
-        <p className="mt-1 text-sm text-[var(--neo-text-muted)]">
-          {gameMode
-            ? "View or edit the batting order for a game. Drag players into slots or use Suggest by OBP or AVG."
-            : "Drag players from the roster into the lineup slots (1–9)."}
-        </p>
       </header>
 
       {gameMode && games!.length === 0 ? (
@@ -729,398 +466,146 @@ export default function LineupConstructionClient({
         </div>
       ) : null}
 
-      {gameMode && games!.length > 0 ? (
+      {gameMode && games!.length > 0 && editableGames.length === 0 ? (
+        <div className="neo-card border border-dashed border-[var(--neo-border)] p-8 text-center">
+          <p className="font-medium text-[var(--neo-text)]">No open games</p>
+          <p className="mt-2 text-sm text-[var(--neo-text-muted)]">
+            All games are finalized. Create a new game or clear final scores on an existing game to edit its lineup
+            here.
+          </p>
+          <Link href="/analyst/games" className="mt-4 inline-block text-sm text-[var(--neo-accent)] hover:underline">
+            Go to Games →
+          </Link>
+        </div>
+      ) : null}
+
+      {gameMode && editableGames.length > 0 ? (
         <section className="neo-card p-4">
-          <div className="section-label">Game</div>
-          <select
-            value={selectedGameId ?? ""}
-            onChange={(e) => {
-              const id = e.target.value || null;
-              setSelectedGameId(id);
-              if (id) {
-                const g = games!.find((x) => x.id === id);
-                if (g) setLineupSide(g.our_side);
-              }
-            }}
-            className="input-tech mt-2 w-full max-w-md rounded-lg px-3 py-1.5 text-sm text-[var(--neo-text)]"
-            aria-label="Select game"
-          >
-            <option value="">Select a game</option>
-            {games!.map((g) => (
-              <option key={g.id} value={g.id}>
-                {formatGameLabel(g)}
-              </option>
-            ))}
-          </select>
-          {selectedGame ? (
-            <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Which team lineup to edit">
-              <button
-                type="button"
-                onClick={() => setLineupSide(ourSide)}
-                className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
-                  lineupSide === ourSide
-                    ? "border-[var(--neo-accent)] bg-[var(--neo-accent-dim)] text-[var(--neo-accent)]"
-                    : "border-[var(--neo-border)] text-[var(--neo-text-muted)] hover:border-[var(--neo-accent)]/40"
-                }`}
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
+            <div className="min-w-0 w-full flex-1 lg:max-w-[min(100%,30rem)]">
+              <div className="section-label">Game</div>
+              <select
+                value={selectedGameId ?? ""}
+                onChange={(e) => setSelectedGameId(e.target.value || null)}
+                className="input-tech mt-2 w-full min-w-0 rounded-lg px-3 py-2 text-sm text-[var(--neo-text)]"
+                aria-label="Select game"
               >
-                {ourSide === "home" ? selectedGame.home_team : selectedGame.away_team}{" "}
-                <span className="text-[var(--neo-text-muted)]">({ourSide === "home" ? "Home" : "Away"})</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setLineupSide(oppSide)}
-                className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
-                  lineupSide === oppSide
-                    ? "border-[var(--neo-accent)] bg-[var(--neo-accent-dim)] text-[var(--neo-accent)]"
-                    : "border-[var(--neo-border)] text-[var(--neo-text-muted)] hover:border-[var(--neo-accent)]/40"
-                }`}
-              >
-                {oppSide === "home" ? selectedGame.home_team : selectedGame.away_team}{" "}
-                <span className="text-[var(--neo-text-muted)]">({oppSide === "home" ? "Home" : "Away"})</span>
-              </button>
+                <option value="">Select a game</option>
+                {editableGames.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {formatGameLabel(g)}
+                  </option>
+                ))}
+              </select>
             </div>
-          ) : null}
+            <LineupCollectiveStatsBar embedded lineupQuality={lineupQuality} />
+          </div>
         </section>
       ) : null}
 
-      {(!gameMode || games!.length > 0) && (
-      <>
-      {/* Lineup optimization + templates — single card; templates left, optimization right on large screens */}
-      <section className="neo-card p-4">
-        <div className="grid gap-6 lg:grid-cols-2 lg:items-start lg:gap-8">
-          <div className="min-w-0">
-            <div className="section-label">Lineup templates</div>
-            {initialSavedLineups.length > 0 && (
-              <div className="mt-3">
-                <h3 className="font-display mb-2 text-xs font-semibold uppercase tracking-wider text-white">
-                  Saved templates
-                </h3>
-                <ul className="flex flex-wrap gap-3" role="list">
-                  {initialSavedLineups.map((l) => (
-                    <li
-                      key={l.id}
-                      className="flex items-center gap-4 rounded-lg border border-[var(--neo-border)] bg-[#10151a] px-4 py-3"
-                    >
-                      <span className="font-medium text-[var(--neo-text)]">{l.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleLoadTemplate(l.id)}
-                        disabled={loadStatus === "loading"}
-                        className="text-sm text-[var(--neo-accent)] hover:underline disabled:opacity-50"
-                      >
-                        Load
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteTemplate(l.id)}
-                        className="text-sm text-[var(--danger)] hover:underline"
-                        aria-label={`Delete ${l.name}`}
-                      >
-                        Delete
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
+      {(!gameMode || editableGames.length > 0) && (
+        <>
+          {(!gameMode || selectedGameId) && (
+            <DndContext
+              sensors={sensors}
+              autoScroll={false}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+            >
+              <div className="flex min-h-0 flex-1 flex-col gap-3">
+                {!gameMode ? (
+                  <LineupCollectiveStatsBar lineupQuality={lineupQuality} />
+                ) : null}
 
-          <div className="min-w-0 lg:border-l lg:border-[var(--neo-border)] lg:pl-8">
-            <div className="section-label">Lineup optimization</div>
-            <div className="mt-3 flex flex-col gap-3">
-              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                <button
-                  type="button"
-                  onClick={() => handleSuggestBy("obp")}
-                  disabled={initialPlayers.length === 0}
-                  className="rounded-lg border border-[var(--neo-accent)]/50 bg-[var(--neo-accent-dim)] px-3 py-1.5 text-sm font-medium text-[var(--neo-accent)] transition hover:bg-[var(--neo-accent)]/20 disabled:opacity-50 disabled:pointer-events-none"
-                >
-                  Suggest by OBP
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSuggestBy("avg")}
-                  disabled={initialPlayers.length === 0}
-                  className="rounded-lg border border-[var(--neo-accent)]/50 bg-[var(--neo-accent-dim)] px-3 py-1.5 text-sm font-medium text-[var(--neo-accent)] transition hover:bg-[var(--neo-accent)]/20 disabled:opacity-50 disabled:pointer-events-none"
-                >
-                  Suggest by AVG
-                </button>
-              </div>
-              {lineupQuality != null && (
-                <p className="text-sm leading-relaxed text-[var(--neo-text)]">
-                  <span className="mr-1 font-display text-xs font-semibold uppercase tracking-wider text-white">
-                    Combined lineup:
-                  </span>
-                  <span className="inline-flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <span>
-                      AVG{" "}
-                      <strong className="tabular-nums text-[var(--neo-accent)]">{formatStat(lineupQuality.avg, "avg")}</strong>
-                    </span>
-                    <span className="text-[var(--neo-border)]">·</span>
-                    <span>
-                      OBP{" "}
-                      <strong className="tabular-nums text-[var(--neo-accent)]">{formatStat(lineupQuality.obp, "avg")}</strong>
-                    </span>
-                    <span className="text-[var(--neo-border)]">·</span>
-                    <span>
-                      SLG{" "}
-                      <strong className="tabular-nums text-[var(--neo-accent)]">{formatStat(lineupQuality.slg, "avg")}</strong>
-                    </span>
-                    <span className="text-[var(--neo-border)]">·</span>
-                    <span>
-                      OPS{" "}
-                      <strong className="tabular-nums text-[var(--neo-accent)]">{formatStat(lineupQuality.ops, "avg")}</strong>
-                    </span>
-                    <span className="text-[var(--neo-border)]">·</span>
-                    <span>
-                      K%{" "}
-                      <strong className="tabular-nums text-[var(--neo-accent)]">
-                        {lineupQuality.kPct != null && !Number.isNaN(lineupQuality.kPct)
-                          ? `${(lineupQuality.kPct * 100).toFixed(1)}%`
-                          : "—"}
-                      </strong>
-                    </span>
-                    {lineupQuality.pPa != null && (
-                      <>
-                        <span className="text-[var(--neo-border)]">·</span>
-                        <span>
-                          P/PA{" "}
-                          <strong className="tabular-nums text-[var(--neo-accent)]">{formatPPa(lineupQuality.pPa)}</strong>
+                <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,0.85fr)_minmax(0,1.5fr)] lg:gap-3 lg:items-stretch">
+                  <div className="neo-card flex min-h-0 flex-col p-3">
+                    <h2 className="section-label mb-2 shrink-0">
+                      Available ({sortedAvailablePlayers.length})
+                    </h2>
+                    <PlayerPoolDropZone className="min-h-0 flex-1">
+                      <AvailablePlayerGrid
+                        players={sortedAvailablePlayers}
+                        onAddPlayer={placePlayerInFirstOpenSlot}
+                      />
+                    </PlayerPoolDropZone>
+                  </div>
+
+                  <div className="neo-card flex min-h-0 flex-col gap-2 p-3">
+                    <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+                      <h2 className="section-label">Batting order</h2>
+                      <LineupSaveActions
+                        gameMode={gameMode}
+                        templateName={templateName}
+                        onTemplateNameChange={(name) => setTemplateName(name ?? "")}
+                        onSave={gameMode ? handleSaveGameLineup : handleSaveTemplate}
+                        onClear={clearLineup}
+                        saveStatus={saveStatus}
+                        saveErrorMessage={saveErrorMessage}
+                        hasAnyPlayerInLineup={hasAnyPlayerInLineup}
+                        saveDisabled={gameMode ? !selectedGameId : !templateName.trim()}
+                      />
+                    </div>
+                    <LineupOrderPanel
+                      className="min-h-0 flex-1"
+                      lineup={lineup}
+                      loading={loadingLineup}
+                      positionsTakenByOthers={(i) =>
+                        new Set(
+                          lineup
+                            .map((s, j) => (j !== i && s.player && s.position ? s.position : null))
+                            .filter((p): p is string => p != null)
+                        )
+                      }
+                      onPositionChange={setSlotPosition}
+                      duplicatePositions={duplicatePositions}
+                    />
+                  </div>
+
+                  <div className="neo-card flex min-h-0 min-w-0 flex-col p-3">
+                    <div className="mb-2 flex shrink-0 flex-col gap-2">
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <h2 className="section-label">Roster stats</h2>
+                        <span className="text-[10px] text-[var(--neo-text-muted)]">
+                          In lineup · click name to add/remove
                         </span>
-                      </>
-                    )}
-                  </span>
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {(!gameMode || selectedGameId) && (
-      <DndContext
-        sensors={sensors}
-        autoScroll={false}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-      >
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-          {/* Left: Available players (droppable to return players from lineup) */}
-          <PlayerPoolDroppable>
-            <div className="neo-card flex min-h-[20rem] flex-col p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="section-label">Available players</h2>
-                <div className="flex flex-wrap items-center gap-2">
-                  <label className="flex items-center gap-2 text-xs text-[var(--neo-text-muted)]">
-                    <span>Sort by</span>
-                    <select
-                      value={poolSortBy}
-                      onChange={(e) => setPoolSortBy(e.target.value as PoolSortKey)}
-                      className="input-tech rounded border border-[var(--neo-border)] bg-[var(--neo-bg-base)] px-2 py-1 text-[var(--neo-text)]"
-                      aria-label="Sort pool by stat"
-                    >
-                      <option value="name">Name</option>
-                      <option value="obp">OBP</option>
-                      <option value="ops">OPS</option>
-                      <option value="avg">AVG</option>
-                    </select>
-                  </label>
-
-                  <label className="flex items-center gap-2 text-xs text-[var(--neo-text-muted)]">
-                    <span>Split</span>
-                    <select
-                      value={poolSplitView}
-                      onChange={(e) => setPoolSplitView(e.target.value as LineupSplitView)}
-                      className="input-tech rounded border border-[var(--neo-border)] bg-[var(--neo-bg-base)] px-2 py-1 text-[var(--neo-text)]"
-                      aria-label="Split pool by handedness"
-                    >
-                      <option value="overall">Overall</option>
-                      <option value="vsL">vs LHP</option>
-                      <option value="vsR">vs RHP</option>
-                    </select>
-                  </label>
+                      </div>
+                      <RosterStatsControls
+                        poolSortBy={poolSortBy}
+                        poolSplitView={poolSplitView}
+                        onSortChange={setPoolSortBy}
+                        onSplitChange={setPoolSplitView}
+                      />
+                    </div>
+                    <UnifiedRosterStatsTable
+                      rows={rosterTableRows}
+                      statsMap={poolBattingStats}
+                      onAddPlayer={placePlayerInFirstOpenSlot}
+                      onRemovePlayer={removePlayerFromLineup}
+                    />
+                  </div>
                 </div>
               </div>
-              <p className="mt-1 text-xs text-[var(--neo-text-muted)]">
-                Drag players here to return them to the pool.
-              </p>
-              <ul className="mt-3 space-y-2" role="list">
-                {sortedAvailablePlayers.length === 0 ? (
-                  <li className="rounded-lg border border-dashed border-[var(--neo-border)] py-6 text-center text-sm text-[var(--neo-text-muted)]">
-                    All players are in the lineup or no players yet.{" "}
-                    <Link href="/analyst/roster" className="text-[var(--accent)] hover:underline">
-                      Add players
-                    </Link>
-                  </li>
-                ) : (
-                  sortedAvailablePlayers.map((player) => (
-                    <li key={player.id}>
-                      <DraggablePlayer
-                        player={player}
-                        poolStatLine={poolCardStatLine(poolSortBy, poolBattingStats[player.id])}
-                      />
-                    </li>
-                  ))
-                )}
-              </ul>
-            </div>
-          </PlayerPoolDroppable>
 
-          {/* Right: Lineup slots */}
-          <div className="neo-card flex min-h-[20rem] flex-col p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="section-label">Batting order</h2>
-              <div className="flex flex-wrap items-center gap-2">
-                {!gameMode ? (
-                  <input
-                    type="text"
-                    value={templateName}
-                    onChange={(e) => setTemplateName(e.target.value)}
-                    placeholder="Template name"
-                    className="input-tech w-36 px-2.5 py-1.5 text-sm"
-                    aria-label="Template name for saving lineup"
-                  />
+              <DragOverlay dropAnimation={null}>
+                {activePlayer ? (
+                  <div className="cursor-grabbing rounded border border-[var(--neo-border)] bg-[var(--neo-bg-card)] px-3 py-2 text-sm shadow-lg">
+                    {activePlayer.name}
+                  </div>
                 ) : null}
-                <button
-                  type="button"
-                  onClick={gameMode ? handleSaveGameLineup : handleSaveTemplate}
-                  disabled={
-                    saveStatus === "saving" ||
-                    !hasAnyPlayerInLineup ||
-                    (gameMode ? !selectedGameId : !templateName.trim())
-                  }
-                  className="rounded-lg bg-[var(--neo-accent)] px-3 py-1.5 text-sm font-medium text-[var(--bg-base)] transition hover:opacity-90 disabled:opacity-50"
-                >
-                  {saveStatus === "saving" ? "Saving…" : "Save lineup"}
-                </button>
-                {saveStatus === "ok" && (
-                  <span className="text-sm text-[var(--neo-success)]">Saved.</span>
-                )}
-                {saveStatus === "err" && (
-                  <span className="text-sm text-[var(--danger)]" title={saveErrorMessage ?? undefined}>
-                    {saveErrorMessage ?? "Save failed."}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  onClick={clearLineup}
-                  disabled={!hasAnyPlayerInLineup || saveStatus === "saving"}
-                  className="rounded-lg border border-[var(--neo-border)] bg-transparent px-3 py-1.5 text-sm font-medium text-[var(--neo-text-muted)] transition hover:bg-[#151b21] hover:text-[var(--neo-text)] disabled:opacity-50 disabled:pointer-events-none"
-                >
-                  Clear lineup
-                </button>
-              </div>
-            </div>
-            {loadingLineup ? (
-              <p className="mt-3 py-6 text-center text-sm text-[var(--neo-text-muted)]">Loading lineup…</p>
-            ) : (
-            <>
-            {(() => {
-              const positionCounts = new Map<string, number>();
-              for (const s of lineup) {
-                if (s.player && s.position) {
-                  positionCounts.set(s.position, (positionCounts.get(s.position) ?? 0) + 1);
-                }
-              }
-              const duplicatePositions = [...positionCounts.entries()]
-                .filter(([, c]) => c > 1)
-                .map(([pos]) => pos);
-              return duplicatePositions.length > 0 ? (
-                <p className="mt-2 rounded-md border border-[var(--warning)] bg-[var(--warning-dim)] px-3 py-2 text-sm text-[var(--warning)]">
-                  Duplicate positions: {duplicatePositions.join(", ")}. Each position can only be used once.
-                </p>
-              ) : null;
-            })()}
-            <div className="mt-3 overflow-hidden rounded-lg border border-[var(--neo-border)] bg-[#0f141a]">
-              <table className="w-full border-collapse text-left">
-                <thead>
-                  <tr className="bg-[#151b21]">
-                    <th className="font-display border-b border-r border-[var(--neo-border)] px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
-                      #
-                    </th>
-                    <th className="font-display border-b border-r border-[var(--neo-border)] px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
-                      POS
-                    </th>
-                    <th className="font-display border-b border-r border-[var(--neo-border)] px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
-                      Player
-                    </th>
-                    <th className="font-display border-b border-[var(--neo-border)] px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
-                      Bats
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => {
-                    const positionsTakenByOthers = new Set(
-                      lineup
-                        .map((s, j) => (j !== i && s.player && s.position ? s.position : null))
-                        .filter((p): p is string => p != null)
-                    );
-                    return (
-                      <LineupTableRow
-                        key={i}
-                        slotIndex={i}
-                        player={lineup[i]?.player ?? null}
-                        position={lineup[i]?.position ?? ""}
-                        positionsTakenByOthers={positionsTakenByOthers}
-                        onPositionChange={setSlotPosition}
-                        rowStriped={i % 2 === 0}
-                      />
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            </>
-            )}
-          </div>
-        </div>
+              </DragOverlay>
+            </DndContext>
+          )}
 
-      {/* Single stats container below both columns */}
-      <section className="mt-6 neo-card p-4">
-        <div className="section-label">Player stats</div>
-          <div className="mt-3 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <div className="min-w-0">
-              <h3 className="font-display mb-2 text-xs font-semibold uppercase tracking-wider text-white">
-                Pool
-              </h3>
-              <PlayerStatsTable
-                players={availablePlayers}
-                statsMap={initialBattingStats}
-                emptyMessage="No players in pool."
-                showOps
-              />
-            </div>
-            <div className="min-w-0">
-              <h3 className="font-display mb-2 text-xs font-semibold uppercase tracking-wider text-white">
-                Lineup
-              </h3>
-              <PlayerStatsTable
-                players={lineup.map((s) => s.player).filter((p): p is Player => p != null)}
-                statsMap={initialBattingStats}
-                emptyMessage="No players in lineup."
-                showSpot
-              />
-            </div>
-          </div>
-        </section>
-
-        <DragOverlay dropAnimation={null}>
-          {activePlayer ? (
-            <div className="will-change-transform cursor-grabbing rounded-lg border border-[var(--neo-border)] bg-[var(--neo-bg-card)] shadow-lg">
-              <PlayerCard player={activePlayer} />
-            </div>
-          ) : null}
-        </DragOverlay>
-      </DndContext>
-      )}
-
-      {gameMode && selectedGameId && !loadingLineup && lineup.every((s) => !s.player) && (
-        <div className="rounded-lg border border-[var(--neo-border)] bg-[var(--neo-bg-card)] p-4 text-sm text-[var(--neo-text-muted)]">
-          No players in this lineup yet. Drag players from the pool or use Suggest by OBP or AVG.
-        </div>
-      )}
-      </>
+          <LineupFooterTools
+            onSuggestObp={() => handleSuggestBy("obp")}
+            onSuggestAvg={() => handleSuggestBy("avg")}
+            suggestDisabled={initialPlayers.length === 0}
+            initialSavedLineups={initialSavedLineups}
+            loadStatus={loadStatus}
+            onLoadTemplate={handleLoadTemplate}
+            onDeleteTemplate={handleDeleteTemplate}
+          />
+        </>
       )}
     </div>
   );

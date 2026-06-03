@@ -1,0 +1,283 @@
+/**
+ * Charts PDF capture: light print-like theme (screen capture ignores @media print).
+ */
+
+.charts-report-root.reports-pdf-capture,
+.reports-print-area.reports-pdf-capture.charts-report-root {
+  --bg-base: #ffffff;
+  --bg-card: #ffffff;
+  --bg-elevated: #f8fafc;
+  --bg-input: #ffffff;
+  --border: #cbd5e1;
+  --text: #000000;
+  --text-muted: #334155;
+  --text-faint: #475569;
+  --neo-text-muted: #334155;
+  --neo-text-faint: #475569;
+  --neo-accent: #a16207;
+  --accent: #a16207;
+  background: #ffffff !important;
+  color: var(--text) !important;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.reports-pdf-capture.charts-report-root [class*="text-white"] {
+  color: #000000 !important;
+}
+
+.reports-pdf-capture.charts-report-root .reports-screen-only,
+.reports-pdf-capture.charts-report-root [data-pdf-exclude="true"] {
+  display: none !important;
+}
+
+.charts-report-root.reports-pdf-capture.reports-pdf-capture-landscape,
+.reports-pdf-capture .charts-report-root.reports-pdf-capture-landscape {
+  width: 1056px;
+  max-width: 1056px;
+  overflow: visible !important;
+}
+
+.reports-pdf-capture.charts-report-root [data-pdf-subsection] {
+  overflow: visible !important;
+  box-sizing: border-box !important;
+}
+
+.reports-pdf-capture.charts-report-root .card-tech,
+.reports-pdf-capture.charts-report-root [class*="bg-[var(--bg-card)]"],
+.reports-pdf-capture.charts-report-root [class*="bg-[var(--bg-elevated)]"],
+.reports-pdf-capture.charts-report-root [class*="bg-[var(--bg-base)]"] {
+  background-color: #ffffff !important;
+  background-image: none !important;
+  border-color: #cbd5e1 !important;
+}
+
+.reports-pdf-capture.charts-report-root [class*="bg-gradient"] {
+  background-image: none !important;
+  background-color: #ffffff !important;
+}
+
+.reports-pdf-capture.charts-report-root .shadow-\[inset_0_0_0_1px_rgba\(255\,204\,0\,\.16\)\] {
+  box-shadow: inset 0 0 0 1px #cbd5e1 !important;
+}
+
+.reports-pdf-capture.charts-report-root .max-h-\[280px\] {
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.reports-pdf-capture.charts-report-root svg {
+  overflow: visible !important;
+}
+
+.reports-pdf-capture.charts-report-root .charts-pdf-header {
+  padding-bottom: 0.35rem !important;
+  margin-bottom: 0 !important;
+  border-color: #cbd5e1 !important;
+}
+
+.reports-pdf-capture.charts-report-root .charts-pdf-header > div:first-child {
+  gap: 0.25rem !important;
+}
+
+.reports-pdf-capture.charts-report-root .charts-pdf-applied-label {
+  margin-top: 0.2rem !important;
+  margin-bottom: 0 !important;
+  font-size: 8px !important;
+  letter-spacing: 0.06em !important;
+  line-height: 1.2 !important;
+}
+
+.reports-pdf-capture.charts-report-root .charts-pdf-filters-grid {
+  display: grid !important;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  gap: 0.2rem 0.3rem !important;
+  margin-top: 0.15rem !important;
+}
+
+.reports-pdf-capture.charts-report-root .charts-pdf-filter-chip {
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 0.2rem !important;
+  background: #f8fafc !important;
+  padding: 0.12rem 0.28rem !important;
+  min-width: 0 !important;
+}
+
+.reports-pdf-capture.charts-report-root .charts-pdf-filter-chip dt,
+.reports-pdf-capture.charts-report-root .charts-pdf-filter-label {
+  margin: 0 !important;
+  font-size: 7px !important;
+  line-height: 1.15 !important;
+  letter-spacing: 0.04em !important;
+  color: #a16207 !important;
+}
+
+.reports-pdf-capture.charts-report-root .charts-pdf-filter-chip dd,
+.reports-pdf-capture.charts-report-root .charts-pdf-filter-value {
+  margin: 0 !important;
+  font-size: 9px !important;
+  line-height: 1.2 !important;
+  color: #000000 !important;
+  font-weight: 600 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.reports-pdf-capture.charts-report-root .charts-pdf-samples {
+  margin-top: 0.2rem !important;
+  font-size: 9px !important;
+  line-height: 1.25 !important;
+  color: #334155 !important;
+}
+
+.reports-pdf-capture.charts-report-root .charts-pdf-header h1 {
+  font-size: 1.1rem !important;
+  line-height: 1.2 !important;
+  color: #000000 !important;
+}
+
+.reports-pdf-capture.charts-report-root .charts-pdf-header > div:first-child p {
+  font-size: 8px !important;
+  color: #334155 !important;
+}
+
+.reports-pdf-capture.charts-report-root h2,
+.reports-pdf-capture.charts-report-root h3 {
+  color: #000000 !important;
+}
+
+.reports-pdf-capture.charts-report-root .text-amber-300 {
+  color: #b45309 !important;
+}
+
+/* One continuous document — tighter vertical rhythm (no per-section full pages). */
+.reports-pdf-capture.charts-report-root.space-y-8 > * + * {
+  margin-top: 0.5rem !important;
+}
+
+.reports-pdf-capture.charts-report-root .charts-pdf-block {
+  scroll-margin-top: 0 !important;
+}
+
+.reports-pdf-capture.charts-report-root .charts-pdf-block.space-y-3 > * + * {
+  margin-top: 0.35rem !important;
+}
+
+.reports-pdf-capture.charts-report-root .charts-pdf-kpis > div {
+  padding: 0.35rem 0.45rem !important;
+  box-shadow: inset 0 0 0 1px #cbd5e1 !important;
+}
+
+.reports-pdf-capture.charts-report-root .charts-pdf-kpis > div > div:first-child {
+  font-size: 8px !important;
+  color: #000000 !important;
+}
+
+.reports-pdf-capture.charts-report-root .charts-pdf-kpis > div > div:nth-child(2) {
+  margin-top: 0.1rem !important;
+  font-size: 1rem !important;
+  line-height: 1.1 !important;
+  color: #000000 !important;
+}
+
+.reports-pdf-capture.charts-report-root .charts-pdf-kpis > div > p {
+  display: none !important;
+}
+
+.reports-pdf-capture.charts-report-root .charts-spray-card-desc {
+  display: none !important;
+}
+
+.reports-pdf-capture.charts-report-root .grid.gap-6 {
+  gap: 0.45rem !important;
+}
+
+.reports-pdf-capture.charts-report-root .grid.gap-3 {
+  gap: 0.35rem !important;
+}
+
+.reports-pdf-capture.charts-report-root .card-tech {
+  padding: 0.45rem 0.5rem !important;
+}
+
+.reports-pdf-capture.charts-report-root .card-tech h3 {
+  font-size: 10px !important;
+  line-height: 1.2 !important;
+}
+
+.reports-pdf-capture.charts-report-root .card-tech > p.text-xs {
+  margin-top: 0.15rem !important;
+  font-size: 9px !important;
+  line-height: 1.2 !important;
+  color: #000000 !important;
+}
+
+.reports-pdf-capture.charts-report-root .card-tech > p.text-xs span {
+  color: #000000 !important;
+}
+
+.reports-pdf-capture.charts-report-root .card-tech > .mt-4 {
+  margin-top: 0.25rem !important;
+}
+
+.reports-pdf-capture.charts-report-root .min-h-\[280px\] {
+  min-height: 168px !important;
+}
+
+.reports-pdf-capture.charts-report-root h2.font-display {
+  font-size: 10px !important;
+  line-height: 1.2 !important;
+  margin: 0 !important;
+}
+
+.reports-pdf-capture.charts-report-root #charts-spray-pitching > h2.font-display {
+  font-size: 13px !important;
+  line-height: 1.3 !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.05em !important;
+}
+
+.reports-pdf-capture.charts-report-root #charts-snapshot {
+  padding: 0.5rem !important;
+}
+
+.reports-pdf-capture.charts-report-root .card-tech .text-amber-300,
+.reports-pdf-capture.charts-report-root .card-tech .mt-2.text-xs {
+  display: none !important;
+}
+
+.reports-pdf-capture.charts-report-root #charts-snapshot .grid.gap-4 {
+  gap: 0.65rem !important;
+}
+
+.reports-pdf-capture .charts-snapshot-card-header {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  margin-bottom: 0.4rem !important;
+  min-height: 1.1rem !important;
+}
+
+.reports-pdf-capture .charts-snapshot-section-title {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif !important;
+  font-size: 10px !important;
+  line-height: 1.35 !important;
+  letter-spacing: 0.04em !important;
+  white-space: nowrap !important;
+  overflow: visible !important;
+}
+
+/* Player leaders: one full-width column in PDF (stack 1–5 then 6–10). */
+.reports-pdf-capture .charts-player-leaders-columns {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0.35rem !important;
+}
+
+.reports-pdf-capture .charts-player-leader-name {
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+}

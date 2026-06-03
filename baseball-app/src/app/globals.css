@@ -3,6 +3,7 @@
 @import "./pregame-pdf-export.css";
 @import "./postgame-pdf-export.css";
 @import "./team-trends-pdf-export.css";
+@import "./charts-pdf-export.css";
 
 /* High-tech / tactical palette — neo colors applied app-wide */
 :root {

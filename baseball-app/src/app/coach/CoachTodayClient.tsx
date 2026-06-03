@@ -19,8 +19,6 @@ export interface TodayGameInfo {
   opponent: string;
   venue: string;
   venueType: "home" | "away";
-  /** Display time e.g. 7:05 PM */
-  startTime?: string;
   weatherShort?: string;
   awayTeam: string;
   homeTeam: string;

@@ -86,8 +86,9 @@ function sanitizeUnsupportedColors(root: HTMLElement): void {
   }
 }
 
+/** Remove nodes excluded from PDF layout. Do not remove `.reports-screen-only` — those stay in the DOM for the live page. */
 function stripPdfExcludedNodes(root: HTMLElement): void {
-  root.querySelectorAll<HTMLElement>("[data-pdf-exclude='true'], .reports-screen-only").forEach((el) => {
+  root.querySelectorAll<HTMLElement>("[data-pdf-exclude='true']").forEach((el) => {
     el.remove();
   });
 }

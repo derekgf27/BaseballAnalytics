@@ -9,13 +9,13 @@ import {
   getPitchingStatsForPlayers,
   getPitchingStatsForPitcherVsOurClub,
 } from "@/lib/db/queries";
-import { formatGameTime } from "@/lib/format";
 import type { Game, PitchingStats, PlateAppearance } from "@/lib/types";
 import { battingStatsFromPAs } from "@/lib/compute/battingStats";
 import { trendFromRecentPAs, TREND_RECENT_PA_COUNT } from "@/lib/compute/trends";
 import { platoonFromSplits } from "@/lib/compute/platoon";
 import { isActiveRosterPlayer } from "@/lib/opponentUtils";
 import { getPlayerPrimaryPosition } from "@/lib/playerRoster";
+import { pickCoachDashboardGame } from "@/lib/coachGamePick";
 import type { CoachTodayClient, TodayLineupSlot } from "./CoachTodayClient";
 import { CoachTodayClientGate } from "./CoachTodayClientGate";
 
@@ -26,37 +26,6 @@ export const dynamic = "force-dynamic";
 // Demo presentation mode: force a visible hot/cold mix in lineup intelligence.
 const DEMO_FORCE_TRENDS = true;
 const PITCHER_POSITIONS = new Set(["P", "SP", "RP", "CP"]);
-
-function todayIsoDate(): string {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-function gameTimeSortValue(time: string | null | undefined): string {
-  const raw = (time ?? "").trim();
-  return raw === "" ? "99:99:99" : raw;
-}
-
-function pickCoachDashboardGame(games: Game[]): Game | null {
-  if (games.length === 0) return null;
-  const today = todayIsoDate();
-  const upcoming = games
-    .filter((g) => g.date >= today)
-    .sort((a, b) => {
-      if (a.date !== b.date) return a.date.localeCompare(b.date);
-      return gameTimeSortValue(a.game_time).localeCompare(gameTimeSortValue(b.game_time));
-    });
-  if (upcoming.length > 0) return upcoming[0] ?? null;
-
-  const recentPast = [...games].sort((a, b) => {
-    if (a.date !== b.date) return b.date.localeCompare(a.date);
-    return gameTimeSortValue(b.game_time).localeCompare(gameTimeSortValue(a.game_time));
-  });
-  return recentPast[0] ?? null;
-}
 
 export default async function CoachPage() {
   const games = await getGamesForCoachDashboard();
@@ -126,7 +95,6 @@ export default async function CoachPage() {
       awayTeam: game.away_team,
       homeTeam: game.home_team,
       ourSide: game.our_side as "home" | "away",
-      startTime: game.game_time ? formatGameTime(game.game_time) : undefined,
     };
 
     /** Gameday batting order from `game_lineups` only (no roster fallback). */

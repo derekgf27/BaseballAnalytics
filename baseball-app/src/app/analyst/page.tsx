@@ -10,7 +10,7 @@ import {
 } from "@/lib/db/queries";
 import { selectPlayersToWatch } from "@/lib/playersToWatch";
 import { computeTeamRecordFromGames, formatTeamRecordString } from "@/lib/gameRecord";
-import { fmtDecimalNoLeadingZero, fmtPitchDecimal, formatDateMMDDYYYY, formatGameTime, formatPPa } from "@/lib/format";
+import { fmtDecimalNoLeadingZero, fmtPitchDecimal, formatDateMMDDYYYY, formatPPa } from "@/lib/format";
 import { ScheduleCalendarGate } from "./ScheduleCalendarGate";
 import { isClubRosterPlayer, isPitcherPlayer } from "@/lib/opponentUtils";
 import type { Game } from "@/lib/types";
@@ -147,11 +147,6 @@ export default async function AnalystDashboard() {
             <span className="mt-1 text-sm font-medium text-[var(--text)]">
               {formatDateMMDDYYYY(nextGame.date)} — {getOpponentLabel(nextGame)}
             </span>
-            {nextGame.game_time?.trim() ? (
-              <span className="mt-0.5 text-xs text-[var(--text-muted)]">
-                {formatGameTime(nextGame.game_time)}
-              </span>
-            ) : null}
             <span className="mt-1 text-xs text-[var(--text-muted)] group-hover:text-[var(--accent)]">
               Open game log →
             </span>

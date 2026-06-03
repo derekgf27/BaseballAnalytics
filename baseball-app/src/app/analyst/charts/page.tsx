@@ -1,17 +1,11 @@
 import { Suspense } from "react";
 import { getCachedGames, getCachedPlayers } from "@/lib/db/cachedQueries";
-import {
-  getTeamPlateAppearancesForSpray,
-  getTeamPlateAppearancesForPitchingSpray,
-  getTeamPlateAppearancesForCharts,
-} from "@/lib/db/queries";
+import { getChartsPagePlateData } from "@/lib/db/queries";
 import { ChartsClientGate } from "./ChartsClientGate";
 
 export default async function ChartsPage() {
-  const [sprayData, pitchingSprayData, chartPas, players, games] = await Promise.all([
-    getTeamPlateAppearancesForSpray(),
-    getTeamPlateAppearancesForPitchingSpray(),
-    getTeamPlateAppearancesForCharts(),
+  const [{ sprayData, pitchingSprayData, chartPas }, players, games] = await Promise.all([
+    getChartsPagePlateData(),
     getCachedPlayers(),
     getCachedGames(),
   ]);
