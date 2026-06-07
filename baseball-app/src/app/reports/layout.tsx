@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { AnalystNav } from "@/components/shared/AnalystNav";
 import { AnalystBreadcrumbs } from "@/components/shared/AnalystBreadcrumbs";
 
@@ -8,7 +9,9 @@ export default function ReportsLayout({
 }) {
   return (
     <div className="flex min-h-0 flex-1 bg-[var(--bg-base)]">
-      <AnalystNav />
+      <Suspense fallback={<aside className="sidebar shrink-0" aria-hidden />}>
+        <AnalystNav />
+      </Suspense>
       <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:mx-auto lg:max-w-[96rem]">
         <AnalystBreadcrumbs />
         {children}
