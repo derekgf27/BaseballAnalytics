@@ -288,9 +288,9 @@ export function LineupOrderPanel({
         <div
           className={`${LINEUP_ROW_GRID} shrink-0 border-b border-[var(--neo-border)] bg-[#151b21] text-[10px] font-medium uppercase text-[var(--neo-text-muted)]`}
         >
-          <div className="border-r border-[var(--neo-border)] px-1 py-1.5 text-center">#</div>
-          <div className="border-r border-[var(--neo-border)] py-1.5 text-center">Pos</div>
-          <div className="border-r border-[var(--neo-border)] px-2 py-1.5">Player</div>
+          <div className="px-1 py-1.5 text-center">#</div>
+          <div className="py-1.5 text-center">Pos</div>
+          <div className="px-2 py-1.5">Player</div>
           <div className="py-1.5 text-center">B</div>
         </div>
         <div className="grid min-h-0 flex-1 grid-rows-9">
@@ -337,12 +337,12 @@ function LineupSlotRow({
         isOver ? "bg-[var(--neo-accent-dim)]" : slotIndex % 2 === 0 ? "bg-[#10151a]" : "bg-[#12181f]"
       }`}
     >
-      <div className="flex h-full items-center justify-center border-r border-[var(--neo-border)] px-1">
+      <div className="flex h-full items-center justify-center px-1">
         <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded bg-[var(--neo-accent)] text-[10px] font-bold text-[var(--bg-base)]">
           {slotIndex + 1}
         </span>
       </div>
-      <div className="flex h-full items-center justify-center border-r border-[var(--neo-border)] px-0.5">
+      <div className="flex h-full items-center justify-center px-0.5">
         {player ? (
           <select
             value={position && LINEUP_POSITIONS.includes(position as (typeof LINEUP_POSITIONS)[number]) ? position : LINEUP_POSITIONS[0]}
@@ -360,7 +360,7 @@ function LineupSlotRow({
           <span className="text-[var(--text-faint)]">—</span>
         )}
       </div>
-      <div className="flex h-full min-w-0 items-center border-r border-[var(--neo-border)] px-2">
+      <div className="flex h-full min-w-0 items-center px-2">
         {player ? (
           <DraggableLineupName player={player} />
         ) : (
