@@ -23,8 +23,6 @@ import { CoachTodayClientGate } from "./CoachTodayClientGate";
  * Coach Today: real game + lineup from DB, with trend (hot/cold) and platoon (vs LHP/RHP).
  */
 export const dynamic = "force-dynamic";
-// Demo presentation mode: force a visible hot/cold mix in lineup intelligence.
-const DEMO_FORCE_TRENDS = true;
 const PITCHER_POSITIONS = new Set(["P", "SP", "RP", "CP"]);
 
 export default async function CoachPage() {
@@ -179,51 +177,6 @@ export default async function CoachPage() {
           position: getPlayerPrimaryPosition(p) ?? null,
           bats: p.bats ?? null,
         }));
-
-      if (DEMO_FORCE_TRENDS && recommendedLineup.length > 0) {
-        // Keep it deterministic for demos: first two hot, next two cold, rest neutral.
-        recommendedLineup = recommendedLineup.map((slot, idx) => {
-          if (idx < 2) {
-            return {
-              ...slot,
-              trend: "hot" as const,
-              recentStats: {
-                pa: 15,
-                ab: 13,
-                h: 7,
-                double: 2,
-                triple: 0,
-                hr: 1,
-                rbi: 5,
-                bb: 2,
-                so: 3,
-                avg: 7 / 13,
-                ops: 1.08,
-              },
-            };
-          }
-          if (idx < 4) {
-            return {
-              ...slot,
-              trend: "cold" as const,
-              recentStats: {
-                pa: 15,
-                ab: 14,
-                h: 2,
-                double: 0,
-                triple: 0,
-                hr: 0,
-                rbi: 1,
-                bb: 1,
-                so: 7,
-                avg: 2 / 14,
-                ops: 0.49,
-              },
-            };
-          }
-          return slot;
-        });
-      }
     }
   }
 

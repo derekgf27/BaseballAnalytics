@@ -1,6 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { isEmailAllowed } from "@/lib/auth/allowlist";
+import { resolveUserRole } from "@/lib/auth/profile";
+import { isPathAllowedForRole, resolvePostLoginPath, type AppRole } from "@/lib/auth/roles";
 
 /** When false, anyone can use the app without signing in (default). Set AUTH_REQUIRED=true to enforce login. */
 function isAuthEnforced(): boolean {
@@ -20,9 +22,6 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   if (!isAuthEnforced()) {
-    if (pathname === "/login") {
-      return NextResponse.redirect(new URL("/", request.nextUrl));
-    }
     return NextResponse.next();
   }
 
@@ -55,8 +54,7 @@ export async function middleware(request: NextRequest) {
 
   if (user && !isEmailAllowed(user.email ?? undefined)) {
     await supabase.auth.signOut();
-    const redirect = NextResponse.redirect(new URL("/login?error=forbidden", request.url));
-    return redirect;
+    return NextResponse.redirect(new URL("/login?error=forbidden", request.url));
   }
 
   if (!user && !isPublicPath(pathname)) {
@@ -65,9 +63,32 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(login);
   }
 
-  if (user && pathname === "/login") {
-    const next = request.nextUrl.searchParams.get("next") ?? "/";
-    return NextResponse.redirect(new URL(next, request.url));
+  let role: AppRole | null = null;
+  if (user) {
+    role = await resolveUserRole(supabase, user);
+  }
+
+  if (user && !role && pathname !== "/forbidden" && !isPublicPath(pathname)) {
+    const denied = new URL("/forbidden", request.url);
+    denied.searchParams.set("error", "no_role");
+    return NextResponse.redirect(denied);
+  }
+
+  if (user && role && pathname === "/login") {
+    const next = request.nextUrl.searchParams.get("next");
+    const destination = resolvePostLoginPath(next, role);
+    return NextResponse.redirect(new URL(destination, request.url));
+  }
+
+  if (user && role === "coach" && pathname === "/") {
+    return NextResponse.redirect(new URL("/coach", request.url));
+  }
+
+  if (user && role && !isPathAllowedForRole(pathname, role) && pathname !== "/forbidden") {
+    const denied = new URL("/forbidden", request.url);
+    denied.searchParams.set("error", "role");
+    denied.searchParams.set("from", pathname);
+    return NextResponse.redirect(denied);
   }
 
   return supabaseResponse;

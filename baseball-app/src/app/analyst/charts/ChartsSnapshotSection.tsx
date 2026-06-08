@@ -83,6 +83,7 @@ type ChartsSnapshotSectionProps = {
   leaderSort: LeaderSortKey;
   controlsDisabled?: boolean;
   onLeaderSortChange: (sort: LeaderSortKey) => void;
+  playerProfileHref?: (playerId: string) => string;
 };
 
 export function ChartsSnapshotSection({
@@ -94,6 +95,7 @@ export function ChartsSnapshotSection({
   leaderSort,
   controlsDisabled,
   onLeaderSortChange,
+  playerProfileHref,
 }: ChartsSnapshotSectionProps) {
   const {
     battedBallCounts,
@@ -167,6 +169,7 @@ export function ChartsSnapshotSection({
             leaderSort={leaderSort}
             controlsDisabled={controlsDisabled}
             onLeaderSortChange={onLeaderSortChange}
+            playerProfileHref={playerProfileHref}
           />
         </div>
 

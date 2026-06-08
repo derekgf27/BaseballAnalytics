@@ -48,14 +48,19 @@ Without Supabase, the app runs with demo data only; nothing is saved.
 
 ## Sign-in (Supabase Auth)
 
-Routes are **open by default** (no login wall). The **login page** shows **Google only**; email magic-link helpers live in `src/lib/auth/emailMagicLink.ts` if you add that UI back later.
+Routes are **open by default** (no login wall). With **`AUTH_REQUIRED=true`**, users sign in at **`/login`** with **username + password**, then choose Analyst or Coach on the portal home page.
 
 - **Enforce sign-in (e.g. production):** set **`AUTH_REQUIRED=true`** in `.env.local` / Vercel. Until then, you won’t be redirected to `/login`, and visiting `/login` sends you to the home page.
 - **Emergency bypass** if you ever lock yourself out: **`AUTH_DISABLED=true`** (forces the app open even when `AUTH_REQUIRED=true`).
 
-### Email provider (Supabase)
+### Username + password (Supabase)
 
-When you re-enable the email UI, enable **Email** under **Supabase → Authentication → Providers**.
+Login uses **usernames** (e.g. `coach.rivera`). Supabase still stores an internal email per user (`username@login.baseballanalytics.internal`) — coaches never see it.
+
+1. **Authentication → Providers → Email**: enable Email sign-in.
+2. **Disable public sign-ups** (recommended): **Authentication → Settings** → turn off **Allow new users to sign up**. Admins create accounts in **Admin → User profiles** (`/admin/users`).
+3. Set **`SUPABASE_SERVICE_ROLE_KEY`** in Vercel (server-only) so the admin dashboard can create and delete users.
+4. Run **`supabase/migrations/20260609_profiles_username.sql`** after the profiles roles migration.
 
 ### Sign in with Google
 
@@ -76,6 +81,26 @@ When you re-enable the email UI, enable **Email** under **Supabase → Authentic
 
 - (Optional) Set **`ALLOWED_EMAILS`** in Vercel / `.env.local` to a comma-separated allowlist (applies to Google and email). If unset, any authenticated user can access.
 - **Row Level Security:** After auth works, run `supabase/rls_policies.sql` in the SQL Editor so anonymous traffic cannot read tables. Adjust policies for your org.
+
+### Roles (coach vs analyst)
+
+When **`AUTH_REQUIRED=true`**, route access is enforced by role in `public.profiles`:
+
+| Role | Access |
+|------|--------|
+| `coach` | `/coach/*` only (stats, matchup, pitch pad, etc.) |
+| `analyst` | Full app including `/analyst/*` and `/reports` |
+| `admin` | Full app (same as analyst; home page shows both portals) |
+
+**Setup (once per Supabase project):**
+
+1. Run **`supabase/migrations/20260608_profiles_roles.sql`** in the SQL Editor (creates `profiles`, backfills existing users as `coach`).
+2. Promote staff accounts: **Table Editor → profiles** → set `role` to `analyst` or `admin` for your logging staff.
+3. New users default to **`coach`** unless you set **Authentication → Users → Add user → Raw App Meta Data** to `{ "role": "analyst" }` when inviting.
+
+Coaches who hit `/analyst` are sent to **`/forbidden`**. Analyst server actions call `requireAnalystAccess()` when auth is enforced.
+
+**Admin dashboard:** Sign in as `admin` → portal home → **Admin** → `/admin/users`. Create coaches/analysts, change roles, view last sign-in, delete accounts.
 
 ## PWA (install on phone / desktop)
 

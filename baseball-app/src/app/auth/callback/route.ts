@@ -1,5 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { resolveUserRole } from "@/lib/auth/profile";
+import { resolvePostLoginPath } from "@/lib/auth/roles";
 
 export async function GET(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -26,6 +28,17 @@ export async function GET(request: NextRequest) {
     });
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        const role = await resolveUserRole(supabase, user);
+        if (role) {
+          const destination = resolvePostLoginPath(next, role);
+          return NextResponse.redirect(new URL(destination, origin));
+        }
+        return NextResponse.redirect(new URL("/forbidden?error=no_role", origin));
+      }
       return response;
     }
   }

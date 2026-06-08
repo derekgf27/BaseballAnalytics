@@ -1,0 +1,19 @@
+import { listAdminUsersAction } from "./actions";
+import { AdminUsersClient } from "./AdminUsersClient";
+
+export const metadata = {
+  title: "Users · Admin · Baseball Analytics",
+};
+
+export default async function AdminUsersPage() {
+  const res = await listAdminUsersAction();
+
+  return (
+    <AdminUsersClient
+      initialUsers={res.ok ? res.users : []}
+      initialOrphans={res.ok ? res.orphans : []}
+      initialError={res.ok ? null : res.error}
+      adminConfigured={res.ok ? true : res.adminConfigured}
+    />
+  );
+}

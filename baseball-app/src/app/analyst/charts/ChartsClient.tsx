@@ -26,6 +26,7 @@ import { ChartsPdfFilters } from "./ChartsPdfFilters";
 import { ChartsSpraySection } from "./ChartsSpraySection";
 import { useChartsDerivedData } from "./useChartsDerivedData";
 import { useDeferredMount } from "./useDeferredMount";
+import { usePlayerProfileHref } from "@/lib/usePlayerProfileHref";
 
 const ChartsSnapshotSection = dynamic(
   () => import("./ChartsSnapshotSection").then((m) => ({ default: m.ChartsSnapshotSection })),
@@ -47,9 +48,16 @@ export interface ChartsClientProps {
   games: Game[];
 }
 
-export function ChartsClient({ sprayData, pitchingSprayData, chartPas, players, games }: ChartsClientProps) {
+export function ChartsClient({
+  sprayData,
+  pitchingSprayData,
+  chartPas,
+  players,
+  games,
+}: ChartsClientProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const playerProfileHref = usePlayerProfileHref();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
 
@@ -308,6 +316,7 @@ export function ChartsClient({ sprayData, pitchingSprayData, chartPas, players, 
                 leaderSort={leaderSort}
                 controlsDisabled={controlsDisabled}
                 onLeaderSortChange={(sort) => setManyParams({ leaderSort: sort === "pa" ? null : sort })}
+                playerProfileHref={playerProfileHref}
               />
             </div>
           ) : (

@@ -2042,7 +2042,9 @@ export async function createGameWithLineup(
     }
     if (slots.length === 0) {
       const players = await getPlayers();
-      const club = players.filter((p) => !isDemoId(p.id) && isClubRosterPlayer(p));
+      const club = players.filter(
+        (p) => !isDemoId(p.id) && isClubRosterPlayer(p) && !isPitcherPlayer(p)
+      );
       slots = club.slice(0, 9).map((p) => ({ player_id: p.id, position: null }));
     }
     if (slots.length > 0) await insertGameLineup(created.id, created.our_side as LineupSide, slots);

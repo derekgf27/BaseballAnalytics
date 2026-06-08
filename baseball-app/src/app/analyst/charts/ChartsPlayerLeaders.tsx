@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { analystPlayerProfileHref } from "@/lib/analystRoutes";
 import { fmtDecimalNoLeadingZero } from "@/lib/format";
 import type { LeaderSortKey } from "./chartTypes";
 import { chartsSelectClass } from "./chartsUi";
@@ -14,18 +15,27 @@ type ChartsPlayerLeadersProps = {
   leaderSort: LeaderSortKey;
   controlsDisabled?: boolean;
   onLeaderSortChange: (sort: LeaderSortKey) => void;
+  playerProfileHref?: (playerId: string) => string;
 };
 
 const LEADER_ROW_GRID =
   "grid grid-cols-[1.3rem_minmax(0,1fr)_repeat(5,2rem)_1.75rem] items-center gap-x-1 gap-y-0.5";
 
-function LeaderRow({ player, rank }: { player: PlayerLeaderRow; rank: number }) {
+function LeaderRow({
+  player,
+  rank,
+  playerProfileHref,
+}: {
+  player: PlayerLeaderRow;
+  rank: number;
+  playerProfileHref: (playerId: string) => string;
+}) {
   return (
     <div className={`${LEADER_ROW_GRID} rounded border border-[var(--border)] bg-[var(--bg-elevated)] px-1.5 py-1 text-xs`}>
       <span className="text-center tabular-nums text-[var(--neo-accent)]">{rank}</span>
       <div className="min-w-0">
         <Link
-          href={`/analyst/roster/${player.playerId}`}
+          href={playerProfileHref(player.playerId)}
           className="charts-player-leader-name block truncate font-medium text-[var(--text)] hover:text-[var(--neo-accent)] hover:underline"
           title={player.name}
         >
@@ -74,6 +84,7 @@ export function ChartsPlayerLeaders({
   leaderSort,
   controlsDisabled,
   onLeaderSortChange,
+  playerProfileHref = analystPlayerProfileHref,
 }: ChartsPlayerLeadersProps) {
   const visible = leaders.slice(0, LEADER_MAX_PLAYERS);
   const [leftColumn, rightColumn] = splitLeadersIntoColumns(visible);
@@ -110,7 +121,14 @@ export function ChartsPlayerLeaders({
               <LeaderColumnHeader />
               {column.map((p, rowIdx) => {
                 const rank = colIdx === 0 ? rowIdx + 1 : leftColumn.length + rowIdx + 1;
-                return <LeaderRow key={p.playerId} player={p} rank={rank} />;
+                return (
+                  <LeaderRow
+                    key={p.playerId}
+                    player={p}
+                    rank={rank}
+                    playerProfileHref={playerProfileHref}
+                  />
+                );
               })}
             </div>
           ))}

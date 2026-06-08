@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { LoginForm } from "./LoginForm";
 
 export const metadata = {
@@ -24,7 +23,9 @@ export default async function LoginPage({
           <h1 className="mt-3 font-display text-3xl font-semibold uppercase tracking-wider text-[var(--neo-text)]">
             Baseball Analytics
           </h1>
-          <p className="mt-1 text-sm text-[var(--neo-text-muted)]">Continue with Google to sign in.</p>
+          <p className="mt-1 text-sm text-[var(--neo-text-muted)]">
+            Sign in with your username and password to continue.
+          </p>
         </div>
 
         {err === "forbidden" && (
@@ -34,17 +35,11 @@ export default async function LoginPage({
         )}
         {err === "auth" && (
           <p className="mt-4 rounded-lg border border-[var(--danger)]/40 bg-[var(--danger)]/10 px-3 py-2 text-center text-sm text-[var(--danger)]">
-            Sign-in failed. Try again or request a new link.
+            Sign-in failed. Check your username and password, then try again.
           </p>
         )}
 
         <LoginForm nextPath={nextPath} />
-
-        <p className="mt-6 text-center text-xs text-[var(--neo-text-muted)]">
-          <Link href="/" className="text-[var(--neo-accent)] hover:underline">
-            Home
-          </Link>
-        </p>
       </div>
     </div>
   );

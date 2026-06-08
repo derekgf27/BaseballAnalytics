@@ -5,20 +5,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { guardNavUntilSidebarExpanded } from "@/lib/sidebarCollapsedNav";
 
-const STORAGE_KEY = "coach-sidebar-collapsed";
+const STORAGE_KEY = "admin-sidebar-collapsed";
 
-const LINKS = [
-  { href: "/coach", label: "Today", icon: "\u{1F4CB}", exact: true },
-  { href: "/coach/matchup", label: "Matchup", icon: "\u{1F3AF}", exact: false },
-  { href: "/coach/pitch-tracker", label: "Pitch tracker", icon: "\u{26BE}", exact: false },
-  { href: "/coach/players", label: "Players", icon: "\u{1F464}", exact: false },
-  { href: "/coach/lineup", label: "Lineup", icon: "\u{1F4DD}", exact: false },
-  { href: "/coach/stats", label: "Stats", icon: "\u{1F4C8}", exact: false },
-  { href: "/coach/compare-players", label: "Compare players", icon: "\u{2696}\u{FE0F}", exact: false },
-  { href: "/coach/charts", label: "Charts", icon: "\u{1F4C9}", exact: false },
-] as const;
+const LINKS = [{ href: "/admin/users", label: "Users", icon: "\u{1F465}", exact: false }] as const;
 
-export function CoachNav({ footer }: { footer?: ReactNode }) {
+export function AdminNav({ footer }: { footer?: ReactNode }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [prefsReady, setPrefsReady] = useState(false);
@@ -48,7 +39,7 @@ export function CoachNav({ footer }: { footer?: ReactNode }) {
   return (
     <aside
       className="sidebar"
-      aria-label="Coach navigation"
+      aria-label="Admin navigation"
       data-collapsed={showCollapsed ? "true" : undefined}
       suppressHydrationWarning
     >
@@ -58,7 +49,7 @@ export function CoachNav({ footer }: { footer?: ReactNode }) {
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[var(--text)] hover:bg-white/[0.06]"
           onClick={() => persistCollapsed(!collapsed)}
           aria-expanded={collapsed ? "false" : "true"}
-          aria-controls="coach-sidebar-nav"
+          aria-controls="admin-sidebar-nav"
           aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
           title={collapsed ? "Expand navigation" : "Collapse navigation"}
         >
@@ -67,16 +58,16 @@ export function CoachNav({ footer }: { footer?: ReactNode }) {
           </span>
         </button>
         <Link
-          href="/coach"
-          title={showCollapsed ? "Open menu — tap again to go to Coach home" : undefined}
+          href="/admin/users"
+          title={showCollapsed ? "Open menu — tap again to go to Admin home" : undefined}
           onClick={(e) => guardNavUntilSidebarExpanded(e, showCollapsed, expandOnly)}
           className="font-orbitron flex min-w-0 flex-1 items-center py-2 pl-0.5 text-sm font-semibold tracking-tight text-[var(--text)]"
         >
-          <span className="sidebar-label truncate text-[var(--accent-coach)]">Coach</span>
+          <span className="sidebar-label truncate text-violet-300">Admin</span>
         </Link>
       </div>
       <nav
-        id="coach-sidebar-nav"
+        id="admin-sidebar-nav"
         className="flex min-h-0 flex-col gap-0.5 overflow-y-auto py-3"
       >
         {LINKS.map((link) => {
@@ -89,7 +80,7 @@ export function CoachNav({ footer }: { footer?: ReactNode }) {
               href={href}
               title={showCollapsed ? `Open menu — tap again for ${label}` : undefined}
               onClick={(e) => guardNavUntilSidebarExpanded(e, showCollapsed, expandOnly)}
-              className={`sidebar-link sidebar-link-coach ${active ? "[data-active=true]" : ""}`}
+              className={`sidebar-link sidebar-link-admin ${active ? "[data-active=true]" : ""}`}
               data-active={active ? "true" : undefined}
             >
               <span className="sidebar-icon" aria-hidden>

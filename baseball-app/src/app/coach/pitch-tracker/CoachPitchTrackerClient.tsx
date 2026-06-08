@@ -27,9 +27,9 @@ import { pitchMixFromPlateAppearancesOrPitchLog } from "@/lib/compute/battingSta
 import { groupPitchEventsByPaId } from "@/lib/compute/contactProfileFromPas";
 import { pitchingStatsFromPAs } from "@/lib/compute/pitchingStats";
 import { isDemoId } from "@/lib/db/mockData";
-import { formatDateMMDDYYYY } from "@/lib/format";
 import { isGameFinalized } from "@/lib/gameRecord";
-import { matchupLabelUsFirst } from "@/lib/opponentUtils";
+import { pickCoachDashboardGame, sortGamesForCoachSelect } from "@/lib/coachGamePick";
+import { PitchPadGamePicker } from "./PitchPadGamePicker";
 import {
   PITCH_TRACKER_TYPES,
   pitchTrackerAbbrev,
@@ -1809,7 +1809,12 @@ export default function CoachPitchTrackerClient({
 
   const [games, setGames] = useState<Game[]>([]);
   const [gamesLoading, setGamesLoading] = useState(true);
-  const [pickGameId, setPickGameId] = useState("");
+
+  const featuredGame = useMemo(() => pickCoachDashboardGame(games), [games]);
+  const otherGames = useMemo(() => {
+    if (!featuredGame || games.length <= 1) return [];
+    return games.filter((g) => g.id !== featuredGame.id);
+  }, [games, featuredGame]);
 
   useEffect(() => {
     if (!supabase) {
@@ -1831,17 +1836,13 @@ export default function CoachPitchTrackerClient({
           return;
         }
         const rows = (data ?? []) as Game[];
-        setGames(rows.filter((g) => !isGameFinalized(g)));
+        setGames(sortGamesForCoachSelect(rows.filter((g) => !isGameFinalized(g))));
         setGamesLoading(false);
       });
     return () => {
       cancelled = true;
     };
   }, [supabase]);
-
-  useEffect(() => {
-    if (gameIdProp) setPickGameId(gameIdProp);
-  }, [gameIdProp]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -1893,7 +1894,6 @@ export default function CoachPitchTrackerClient({
         if (!cancelled) {
           setResolveError(e instanceof Error ? e.message : "Could not start session");
           setSession(null);
-          setPickGameId(gameIdProp);
         }
       } finally {
         if (!cancelled) setResolving(false);
@@ -1959,70 +1959,14 @@ export default function CoachPitchTrackerClient({
   }
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-zinc-950 px-4 py-8 text-zinc-100">
-      <div className="mx-auto w-full max-w-md space-y-6">
-        <Link
-          href="/coach"
-          className="touch-manipulation inline-flex h-11 items-center gap-1.5 rounded-lg border border-zinc-600 bg-zinc-800/90 px-3 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-700 active:bg-zinc-600"
-          aria-label="Back to coach home"
-        >
-          <span className="text-base leading-none" aria-hidden>
-            ←
-          </span>
-          <span>Back</span>
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Pitch pad</h1>
-          <p className="mt-2 text-sm text-zinc-400">
-            Choose a game, then open the pad. Batter, count, and outs stay synced with the analyst Record screen on
-            the pitch pad.
-          </p>
-        </div>
-
-        {resolveError ? (
-          <p className="rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-sm text-red-200">
-            {resolveError}
-          </p>
-        ) : null}
-
-        <div className="space-y-4">
-          <label className="block">
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500">
-              Game
-            </span>
-            <select
-              value={pickGameId}
-              onChange={(e) => {
-                const id = e.target.value;
-                setPickGameId(id);
-                if (id) void enterPitchPadForGame(id);
-              }}
-              disabled={gamesLoading}
-              className="h-12 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 text-base text-zinc-100"
-            >
-              <option value="">{gamesLoading ? "Loading games…" : "Select game"}</option>
-              {games.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {formatDateMMDDYYYY(g.date)} — {matchupLabelUsFirst(g, true)}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <button
-            type="button"
-            disabled={!pickGameId || resolving}
-            onClick={() => pickGameId && void enterPitchPadForGame(pickGameId)}
-            className="h-14 w-full rounded-xl bg-emerald-600 text-lg font-bold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Open pitch pad
-          </button>
-        </div>
-
-        <p className="text-center text-xs text-zinc-500">
-          Short links only need <code className="text-zinc-400">gameId</code>.
-        </p>
-      </div>
-    </div>
+    <PitchPadGamePicker
+      games={games}
+      gamesLoading={gamesLoading}
+      featuredGame={featuredGame}
+      otherGames={otherGames}
+      resolveError={resolveError}
+      resolving={resolving}
+      onSelectGame={(id) => void enterPitchPadForGame(id)}
+    />
   );
 }

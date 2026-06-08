@@ -15,7 +15,7 @@ import {
   fetchLineupSlotsForBallparkSideAction,
 } from "./actions";
 import { isGameFinalized, ourTeamOutcomeFromFinalScore } from "@/lib/gameRecord";
-import { isActiveRosterPlayer, isClubRosterPlayer, matchupLabelUsFirst, pitchersForGameTeamSide } from "@/lib/opponentUtils";
+import { isActiveRosterPlayer, isClubRosterPlayer, isPitcherPlayer, matchupLabelUsFirst, pitchersForGameTeamSide } from "@/lib/opponentUtils";
 import { getPlayerPrimaryPosition } from "@/lib/playerRoster";
 import { formatDateMMDDYYYY } from "@/lib/format";
 import { StyledDatePicker } from "@/components/shared/StyledDatePicker";
@@ -482,10 +482,10 @@ function GameForm({
         title: "Lineup",
       };
     }
-    const club = activePlayers.filter((p) => isClubRosterPlayer(p));
+    const club = activePlayers.filter((p) => isClubRosterPlayer(p) && !isPitcherPlayer(p));
     return {
       ordered: club.slice(0, 9).map((p) => ({ player_id: p.id, position: getPlayerPrimaryPosition(p) ?? null })),
-      title: "Club roster (first 9)",
+      title: "Club roster (first 9 batters)",
     };
   }
 

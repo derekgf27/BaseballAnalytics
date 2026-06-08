@@ -25,7 +25,7 @@ import {
   type SprayResultFilterKey,
   parseSprayResultFilterKey,
 } from "@/lib/sprayChartFilters";
-import { analystPlayerProfileHref } from "@/lib/analystRoutes";
+import { usePlayerProfileHref } from "@/lib/usePlayerProfileHref";
 import {
   battingSheetCompareHighlight,
   battingSheetDataColumns,
@@ -187,9 +187,11 @@ function CompareSlotHeaderPlaceholder({
 function ComparePlayerBattingHeaderCell({
   player,
   variant,
+  playerProfileHref,
 }: {
   player: Player;
   variant: "leftCol" | "rightCol";
+  playerProfileHref: (playerId: string) => string;
 }) {
   const bats = normalizeHand(player.bats);
   const throws = normalizeHand(player.throws);
@@ -204,7 +206,7 @@ function ComparePlayerBattingHeaderCell({
     <div className={`min-w-0 ${textAlign}`}>
       <div className={`flex flex-wrap items-baseline gap-x-1.5 ${nameRowJustify}`}>
         <Link
-          href={analystPlayerProfileHref(player.id)}
+          href={playerProfileHref(player.id)}
           className="font-display text-sm font-semibold leading-snug text-[var(--accent)] hover:underline sm:text-base"
         >
           {player.name}
@@ -251,6 +253,7 @@ function CompareBattingThreeColumnTable({
   lineB,
   overallA,
   overallB,
+  playerProfileHref,
 }: {
   playerA: Player | null;
   playerB: Player | null;
@@ -259,6 +262,7 @@ function CompareBattingThreeColumnTable({
   lineB: BattingStats | undefined;
   overallA: BattingStats | undefined;
   overallB: BattingStats | undefined;
+  playerProfileHref: (playerId: string) => string;
 }) {
   const statRowBorder = (key: (typeof dataCols)[number]["key"]) =>
     battingSheetStandardStatBorderLeft(key);
@@ -276,7 +280,11 @@ function CompareBattingThreeColumnTable({
             <th className="pb-2 pl-0 pr-1 pt-1 align-top font-normal">
               <CompareBattingHeaderDropZone id={PANEL_DROP_A_ID}>
                 {playerA ? (
-                  <ComparePlayerBattingHeaderCell player={playerA} variant="leftCol" />
+                  <ComparePlayerBattingHeaderCell
+                    player={playerA}
+                    variant="leftCol"
+                    playerProfileHref={playerProfileHref}
+                  />
                 ) : (
                   <CompareSlotHeaderPlaceholder variant="leftCol" label="Player 1" />
                 )}
@@ -291,7 +299,11 @@ function CompareBattingThreeColumnTable({
             <th className="pb-2 pl-1 pr-0 pt-1 align-top font-normal">
               <CompareBattingHeaderDropZone id={PANEL_DROP_B_ID}>
                 {playerB ? (
-                  <ComparePlayerBattingHeaderCell player={playerB} variant="rightCol" />
+                  <ComparePlayerBattingHeaderCell
+                    player={playerB}
+                    variant="rightCol"
+                    playerProfileHref={playerProfileHref}
+                  />
                 ) : (
                   <CompareSlotHeaderPlaceholder variant="rightCol" label="Player 2" />
                 )}
@@ -338,11 +350,13 @@ function ComparePitchingThreeColumnTable({
   playerB,
   lineA,
   lineB,
+  playerProfileHref,
 }: {
   playerA: Player | null;
   playerB: Player | null;
   lineA: PitchingStats | undefined;
   lineB: PitchingStats | undefined;
+  playerProfileHref: (playerId: string) => string;
 }) {
   const dataCols = PITCHING_COMPARE_STANDARD_COLUMNS;
   const statRowBorder = (key: (typeof dataCols)[number]["key"]) => pitchingCompareStatBorderLeft(key);
@@ -360,7 +374,11 @@ function ComparePitchingThreeColumnTable({
             <th className="pb-2 pl-0 pr-1 pt-1 align-top font-normal">
               <CompareBattingHeaderDropZone id={PANEL_DROP_A_ID}>
                 {playerA ? (
-                  <ComparePlayerBattingHeaderCell player={playerA} variant="leftCol" />
+                  <ComparePlayerBattingHeaderCell
+                    player={playerA}
+                    variant="leftCol"
+                    playerProfileHref={playerProfileHref}
+                  />
                 ) : (
                   <CompareSlotHeaderPlaceholder variant="leftCol" label="Player 1" />
                 )}
@@ -375,7 +393,11 @@ function ComparePitchingThreeColumnTable({
             <th className="pb-2 pl-1 pr-0 pt-1 align-top font-normal">
               <CompareBattingHeaderDropZone id={PANEL_DROP_B_ID}>
                 {playerB ? (
-                  <ComparePlayerBattingHeaderCell player={playerB} variant="rightCol" />
+                  <ComparePlayerBattingHeaderCell
+                    player={playerB}
+                    variant="rightCol"
+                    playerProfileHref={playerProfileHref}
+                  />
                 ) : (
                   <CompareSlotHeaderPlaceholder variant="rightCol" label="Player 2" />
                 )}
@@ -423,12 +445,14 @@ function CompareBattingPanel({
   battingA,
   battingB,
   compareScope,
+  playerProfileHref,
 }: {
   playerA: Player | null;
   playerB: Player | null;
   battingA: BattingStatsWithSplits | null;
   battingB: BattingStatsWithSplits | null;
   compareScope: CompareBattingScope;
+  playerProfileHref: (playerId: string) => string;
 }) {
   const dataCols = battingSheetDataColumns("standard");
   const lineA = compareBattingLineFromSplits(battingA, compareScope);
@@ -469,6 +493,7 @@ function CompareBattingPanel({
           lineB={lineB}
           overallA={lineA}
           overallB={lineB}
+          playerProfileHref={playerProfileHref}
         />
       </div>
       {missingSplit}
@@ -483,12 +508,14 @@ function ComparePitchingPanel({
   pitchingA,
   pitchingB,
   compareScope,
+  playerProfileHref,
 }: {
   playerA: Player | null;
   playerB: Player | null;
   pitchingA: PitchingStatsWithSplits | null;
   pitchingB: PitchingStatsWithSplits | null;
   compareScope: CompareBattingScope;
+  playerProfileHref: (playerId: string) => string;
 }) {
   const lineA = comparePitchingLineFromSplits(pitchingA, compareScope);
   const lineB = comparePitchingLineFromSplits(pitchingB, compareScope);
@@ -537,6 +564,7 @@ function ComparePitchingPanel({
           playerB={playerB}
           lineA={lineA}
           lineB={lineB}
+          playerProfileHref={playerProfileHref}
         />
       </div>
       {missingSplit}
@@ -646,6 +674,7 @@ export function PlayerCompareClient({
 }: PlayerCompareClientProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const playerProfileHref = usePlayerProfileHref();
   const searchParams = useSearchParams();
   const scopeParam = searchParams.get("scope");
   const compareScope = useMemo(() => parseCompareBattingScope(scopeParam), [scopeParam]);
@@ -899,6 +928,7 @@ export function PlayerCompareClient({
                 battingA={battingA}
                 battingB={battingB}
                 compareScope={compareScope}
+                playerProfileHref={playerProfileHref}
               />
             ) : (
               <>
@@ -908,6 +938,7 @@ export function PlayerCompareClient({
                   pitchingA={pitchingA}
                   pitchingB={pitchingB}
                   compareScope={compareScope}
+                  playerProfileHref={playerProfileHref}
                 />
                 <ComparePitchTypeBaaPanel
                   playerA={playerA}

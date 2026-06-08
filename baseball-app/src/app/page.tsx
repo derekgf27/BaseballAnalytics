@@ -1,9 +1,41 @@
 import Link from "next/link";
+import {
+  canSeeAdminPortal,
+  canSeeAnalystPortal,
+  canSeeCoachPortal,
+} from "@/lib/auth/roles";
+import { getSessionWithRole } from "@/lib/auth/session";
+import { SidebarAuthSession } from "@/components/auth/SidebarAuthSession";
 
-export default function Home() {
+function isAuthEnforced(): boolean {
+  if (process.env.AUTH_DISABLED === "true") return false;
+  return process.env.AUTH_REQUIRED === "true";
+}
+
+export default async function Home() {
+  const authOn = isAuthEnforced();
+  const session = authOn ? await getSessionWithRole() : null;
+  const showAnalyst = !authOn || canSeeAnalystPortal(session?.role ?? null);
+  const showCoach = !authOn || canSeeCoachPortal(session?.role ?? null);
+  const showAdmin = authOn && canSeeAdminPortal(session?.role ?? null);
+
   return (
     <div className="home-page flex min-h-screen flex-col bg-[var(--bg-base)]">
-      {/* Compact hero */}
+      {authOn && session ? (
+        <div className="flex justify-end px-4 pt-4 sm:px-6">
+          <SidebarAuthSession variant="bar" />
+        </div>
+      ) : !authOn ? (
+        <div className="flex justify-end px-4 pt-4 sm:px-6">
+          <Link
+            href="/login"
+            className="text-sm font-medium text-[var(--accent)] hover:underline"
+          >
+            Sign in
+          </Link>
+        </div>
+      ) : null}
+
       <header className="shrink-0 py-8 text-center sm:py-10">
         <div
           className="home-icon-pulse inline-flex h-12 w-12 items-center justify-center rounded-xl border-2 border-[var(--accent)]/40 bg-[var(--bg-card)] text-2xl shadow-[0_0_24px_var(--accent)]"
@@ -19,42 +51,69 @@ export default function Home() {
         </p>
       </header>
 
-      {/* Two mode panes — app theme (neo cyan), full-page layout */}
       <nav
-        className="flex min-h-0 flex-1 flex-col gap-4 px-4 pb-8 sm:flex-row sm:items-stretch sm:gap-6"
+        className="flex min-h-0 flex-1 flex-col gap-4 px-4 pb-8 sm:flex-row sm:flex-wrap sm:items-stretch sm:justify-center sm:gap-6"
         aria-label="Select mode"
       >
-        <Link
-          href="/analyst"
-          className="home-mode-pane home-mode-pane-analyst group relative flex min-h-[45vh] flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-[var(--accent)]/60 bg-[var(--accent-dim)]/40 px-6 py-12 shadow-[0_0_32px_rgba(214,186,72,0.32)] transition sm:min-h-0 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 focus:ring-offset-[var(--bg-base)] hover:border-[var(--accent)] hover:bg-[var(--accent-dim)]/60"
-        >
-          <span className="text-4xl sm:text-5xl" aria-hidden>📊</span>
-          <span className="font-orbitron text-xl font-semibold uppercase tracking-wider text-[var(--text)] sm:text-2xl">
-            Analyst
-          </span>
-          <p className="max-w-[260px] text-center text-sm text-[var(--text-muted)]">
-            Log games, manage players, view charts and overrides.
-          </p>
-          <span className="mt-1 text-xs font-medium uppercase tracking-wider text-[var(--accent)] opacity-0 transition group-hover:opacity-100">
-            Enter →
-          </span>
-        </Link>
+        {showAnalyst ? (
+          <Link
+            href="/analyst"
+            className="home-mode-pane home-mode-pane-analyst group relative flex min-h-[40vh] flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-[var(--accent)]/60 bg-[var(--accent-dim)]/40 px-6 py-12 shadow-[0_0_32px_rgba(214,186,72,0.32)] transition sm:min-h-[36vh] sm:max-w-md focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 focus:ring-offset-[var(--bg-base)] hover:border-[var(--accent)] hover:bg-[var(--accent-dim)]/60"
+          >
+            <span className="text-4xl sm:text-5xl" aria-hidden>
+              📊
+            </span>
+            <span className="font-orbitron text-xl font-semibold uppercase tracking-wider text-[var(--text)] sm:text-2xl">
+              Analyst
+            </span>
+            <p className="max-w-[260px] text-center text-sm text-[var(--text-muted)]">
+              Log games, manage players, view charts and overrides.
+            </p>
+            <span className="mt-1 text-xs font-medium uppercase tracking-wider text-[var(--accent)] opacity-0 transition group-hover:opacity-100">
+              Enter →
+            </span>
+          </Link>
+        ) : null}
 
-        <Link
-          href="/coach"
-          className="home-mode-pane home-mode-pane-coach group relative flex min-h-[45vh] flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-[var(--accent-coach)]/60 bg-[var(--accent-coach-dim)]/40 px-6 py-12 shadow-[0_0_32px_rgba(214,186,72,0.32)] transition sm:min-h-0 focus:outline-none focus:ring-2 focus:ring-[var(--accent-coach)] focus:ring-offset-2 focus:ring-offset-[var(--bg-base)] hover:border-[var(--accent-coach)] hover:bg-[var(--accent-coach-dim)]/60"
-        >
-          <span className="text-4xl sm:text-5xl" aria-hidden>👟</span>
-          <span className="font-orbitron text-xl font-semibold uppercase tracking-wider text-[var(--text)] sm:text-2xl">
-            Coach
-          </span>
-          <p className="max-w-[260px] text-center text-sm text-[var(--text-muted)]">
-            Today’s lineup, players, stats, and green lights.
-          </p>
-          <span className="mt-1 text-xs font-medium uppercase tracking-wider text-[var(--accent-coach)] opacity-0 transition group-hover:opacity-100">
-            Enter →
-          </span>
-        </Link>
+        {showCoach ? (
+          <Link
+            href="/coach"
+            className="home-mode-pane home-mode-pane-coach group relative flex min-h-[40vh] flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-[var(--accent-coach)]/60 bg-[var(--accent-coach-dim)]/40 px-6 py-12 shadow-[0_0_32px_rgba(214,186,72,0.32)] transition sm:min-h-[36vh] sm:max-w-md focus:outline-none focus:ring-2 focus:ring-[var(--accent-coach)] focus:ring-offset-2 focus:ring-offset-[var(--bg-base)] hover:border-[var(--accent-coach)] hover:bg-[var(--accent-coach-dim)]/60"
+          >
+            <span className="text-4xl sm:text-5xl" aria-hidden>
+              👟
+            </span>
+            <span className="font-orbitron text-xl font-semibold uppercase tracking-wider text-[var(--text)] sm:text-2xl">
+              Coach
+            </span>
+            <p className="max-w-[260px] text-center text-sm text-[var(--text-muted)]">
+              Today&apos;s lineup, players, stats, and green lights.
+            </p>
+            <span className="mt-1 text-xs font-medium uppercase tracking-wider text-[var(--accent-coach)] opacity-0 transition group-hover:opacity-100">
+              Enter →
+            </span>
+          </Link>
+        ) : null}
+
+        {showAdmin ? (
+          <Link
+            href="/admin/users"
+            className="home-mode-pane group relative flex min-h-[40vh] flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-violet-500/50 bg-violet-500/10 px-6 py-12 shadow-[0_0_32px_rgba(139,92,246,0.22)] transition sm:min-h-[36vh] sm:max-w-md focus:outline-none focus:ring-2 focus:ring-violet-400 focus:ring-offset-2 focus:ring-offset-[var(--bg-base)] hover:border-violet-400/70 hover:bg-violet-500/15"
+          >
+            <span className="text-4xl sm:text-5xl" aria-hidden>
+              🛡️
+            </span>
+            <span className="font-orbitron text-xl font-semibold uppercase tracking-wider text-[var(--text)] sm:text-2xl">
+              Admin
+            </span>
+            <p className="max-w-[260px] text-center text-sm text-[var(--text-muted)]">
+              Manage user accounts, roles, and access.
+            </p>
+            <span className="mt-1 text-xs font-medium uppercase tracking-wider text-violet-300 opacity-0 transition group-hover:opacity-100">
+              Enter →
+            </span>
+          </Link>
+        ) : null}
       </nav>
     </div>
   );

@@ -1,17 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
-import { ANALYST_NAV_LINKS, isAnalystNavLinkActive } from "@/lib/analystNavLinks";
 import { guardNavUntilSidebarExpanded } from "@/lib/sidebarCollapsedNav";
+import { AnalystNavLinks, AnalystNavLinksFallback } from "./AnalystNavLinks";
 
 const STORAGE_KEY = "analyst-sidebar-collapsed";
 
-export function AnalystNav() {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
+export function AnalystNav({ footer }: { footer?: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [prefsReady, setPrefsReady] = useState(false);
 
   useEffect(() => {
     try {
@@ -20,6 +18,7 @@ export function AnalystNav() {
     } catch {
       // ignore
     }
+    setPrefsReady(true);
   }, []);
 
   const persistCollapsed = (next: boolean) => {
@@ -32,12 +31,14 @@ export function AnalystNav() {
   };
 
   const expandOnly = () => persistCollapsed(false);
+  const showCollapsed = prefsReady && collapsed;
 
   return (
     <aside
       className="sidebar"
       aria-label="Analyst navigation"
-      data-collapsed={collapsed ? "true" : undefined}
+      data-collapsed={showCollapsed ? "true" : undefined}
+      suppressHydrationWarning
     >
       <div className="flex items-center gap-0.5 border-b border-[var(--border)] p-2">
         <button
@@ -50,13 +51,13 @@ export function AnalystNav() {
           title={collapsed ? "Expand navigation" : "Collapse navigation"}
         >
           <span className="text-base leading-none" aria-hidden>
-            {collapsed ? "\u203A" : "\u2039"}
+            {showCollapsed ? "\u203A" : "\u2039"}
           </span>
         </button>
         <Link
           href="/analyst"
-          title={collapsed ? "Open menu — tap again to go to Analyst home" : undefined}
-          onClick={(e) => guardNavUntilSidebarExpanded(e, collapsed, expandOnly)}
+          title={showCollapsed ? "Open menu — tap again to go to Analyst home" : undefined}
+          onClick={(e) => guardNavUntilSidebarExpanded(e, showCollapsed, expandOnly)}
           className="font-orbitron flex min-w-0 flex-1 items-center gap-2 py-2 pl-0.5 text-sm font-semibold tracking-tight text-[var(--text)]"
         >
           <span className="sidebar-label truncate text-[var(--accent)]">Analyst</span>
@@ -64,41 +65,16 @@ export function AnalystNav() {
       </div>
       <nav
         id="analyst-sidebar-nav"
-        className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto py-3"
+        className="flex min-h-0 flex-col gap-0.5 overflow-y-auto py-3"
       >
-        {ANALYST_NAV_LINKS.map(({ href, label, icon }) => {
-          const active = isAnalystNavLinkActive(href, pathname, searchParams);
-          return (
-            <Link
-              key={href}
-              href={href}
-              title={collapsed ? `Open menu — tap again for ${label}` : undefined}
-              onClick={(e) => guardNavUntilSidebarExpanded(e, collapsed, expandOnly)}
-              className={`sidebar-link sidebar-link-analyst ${active ? "[data-active=true]" : ""}`}
-              data-active={active ? "true" : undefined}
-            >
-              <span className="sidebar-icon" aria-hidden>
-                {icon}
-              </span>
-              <span className="sidebar-label">{label}</span>
-            </Link>
-          );
-        })}
-        <div className="mt-2 shrink-0 border-t border-[var(--border)] pt-2">
-          <Link
-            href="/"
-            className="sidebar-link sidebar-link-analyst opacity-70"
-            title={
-              collapsed ? "Open menu — tap again to exit to home" : "Exit to home"
-            }
-            onClick={(e) => guardNavUntilSidebarExpanded(e, collapsed, expandOnly)}
-          >
-            <span className="sidebar-icon" aria-hidden>
-              &larr;
-            </span>
-            <span className="sidebar-label">Exit</span>
-          </Link>
-        </div>
+        <Suspense
+          fallback={
+            <AnalystNavLinksFallback collapsed={showCollapsed} expandOnly={expandOnly} />
+          }
+        >
+          <AnalystNavLinks collapsed={showCollapsed} expandOnly={expandOnly} />
+        </Suspense>
+        {footer}
       </nav>
     </aside>
   );

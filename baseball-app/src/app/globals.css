@@ -528,8 +528,40 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .sidebar-link-analyst { color: #94a3b8; }
 .sidebar-link-analyst:hover { background: rgba(255,255,255,0.06); color: var(--text); }
 .sidebar-link-analyst[data-active="true"] { background: var(--accent-dim); color: var(--accent); }
+.sidebar-link-admin { color: #94a3b8; }
+.sidebar-link-admin:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+.sidebar-link-admin[data-active="true"] { background: rgba(139,92,246,0.18); color: #c4b5fd; }
+
+/* Admin portal — violet accent overrides gold neo tokens within this subtree */
+.admin-portal {
+  --neo-accent-r: 139;
+  --neo-accent-g: 92;
+  --neo-accent-b: 246;
+  --neo-accent: #a78bfa;
+  --neo-accent-dim: rgba(139, 92, 246, 0.16);
+  --neo-border: rgba(139, 92, 246, 0.22);
+  --neo-border-focus: rgba(139, 92, 246, 0.5);
+  --accent: var(--neo-accent);
+  --accent-dim: var(--neo-accent-dim);
+}
 .sidebar-icon { font-size: 1.25rem; line-height: 1; flex-shrink: 0; }
 .sidebar-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar[data-collapsed="true"] .sidebar-auth-badge,
+.sidebar[data-collapsed="true"] .sidebar-auth .sidebar-label {
+  display: none;
+}
+.sidebar-auth [data-signout-label] {
+  display: inline;
+}
+.sidebar[data-collapsed="true"] .sidebar-auth [data-signout-label] {
+  display: none;
+}
+.sidebar-auth [data-signout-icon] {
+  display: none;
+}
+.sidebar[data-collapsed="true"] .sidebar-auth [data-signout-icon] {
+  display: inline;
+}
 
 /* Hide browser number input spinners (use custom +/- buttons instead) */
 .input-no-spinner::-webkit-inner-spin-button,
