@@ -21,7 +21,15 @@ export type RecordFormSnapshotShape = {
 };
 
 /** True when the blob is the empty factory state (not a real in-progress PA draft). */
-export function isFactoryDefaultRecordForm(state: RecordFormSnapshotShape): boolean {
+export function isFactoryDefaultRecordForm(
+  state: RecordFormSnapshotShape & {
+    nextBatterIndexBySide?: { away?: number; home?: number };
+  }
+): boolean {
+  const nextIdx = state.nextBatterIndexBySide;
+  const lineupPointerDefault =
+    !nextIdx || ((nextIdx.away ?? 0) === 0 && (nextIdx.home ?? 0) === 0);
+
   return (
     (state.inning ?? 1) === 1 &&
     (state.inningHalf ?? "top") === "top" &&
@@ -38,6 +46,7 @@ export function isFactoryDefaultRecordForm(state: RecordFormSnapshotShape): bool
     (!state.runsScoredPlayerIds || state.runsScoredPlayerIds.length === 0) &&
     (!state.draftPitchLogRows || state.draftPitchLogRows.length === 0) &&
     !String(state.playNote ?? "").trim() &&
-    !String(state.notes ?? "").trim()
+    !String(state.notes ?? "").trim() &&
+    lineupPointerDefault
   );
 }

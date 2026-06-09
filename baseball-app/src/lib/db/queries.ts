@@ -62,6 +62,7 @@ import type {
   ClubPitchingMatchupPayload,
   PitchEvent,
   PitchEventDraft,
+  PitchTrackerPitch,
 } from "@/lib/types";
 
 export async function linkPitchTrackerGroupToPlateAppearance(
@@ -1859,6 +1860,20 @@ export async function getPitchEventsForGame(gameId: string): Promise<PitchEvent[
     return a.pitch_index - b.pitch_index;
   });
   return rows;
+}
+
+/** All coach pitch-tracker rows linked to PAs in a game (for pitch-type mix on Record). */
+export async function getPitchTrackerPitchesForGame(gameId: string): Promise<PitchTrackerPitch[]> {
+  const supabase = await getSupabase();
+  if (!supabase || isDemoId(gameId)) return [];
+  const { data, error } = await supabase
+    .from("pitches")
+    .select("*")
+    .eq("game_id", gameId)
+    .not("at_bat_id", "is", null)
+    .order("pitch_number", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as PitchTrackerPitch[];
 }
 
 export async function insertPitchEventsForPa(paId: string, rows: PitchEventDraft[]): Promise<void> {

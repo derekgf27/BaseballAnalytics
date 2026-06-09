@@ -40,23 +40,24 @@ export function AuthSessionPanel({
   }
 
   const exitClass = EXIT_LINK_CLASS[portal];
+  /** Coaches only have /coach — home redirects back; no portal picker to exit to. */
+  const showExit = portal !== "coach" && role !== "coach";
 
   return (
     <div className="sidebar-auth mt-2 shrink-0 border-t border-[var(--border)] p-2">
       <div className="flex flex-col gap-2 px-1.5 py-2">
-        <Link
-          href="/"
-          className={`sidebar-link ${exitClass} opacity-70`}
-          title="Exit to home"
-        >
-          <span className="sidebar-icon" aria-hidden>
-            &larr;
-          </span>
-          <span className="sidebar-label">Exit</span>
-        </Link>
+        {showExit ? (
+          <Link
+            href="/"
+            className={`sidebar-link sidebar-auth-exit ${exitClass} opacity-70`}
+            title="Exit to home"
+          >
+            <span className="sidebar-label">Exit</span>
+          </Link>
+        ) : null}
 
         {(role || handle) ? (
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="sidebar-auth-expanded flex min-w-0 items-center gap-2">
             {role ? (
               <span
                 className={`${roleBadgeClassName(role)} sidebar-auth-badge shrink-0 truncate`}
@@ -75,7 +76,10 @@ export function AuthSessionPanel({
           </div>
         ) : null}
         {showSignOut ? (
-          <SignOutButton className="w-full [&_button]:w-full [&_button]:justify-center" />
+          <SignOutButton
+            sidebar
+            className="sidebar-auth-signout w-full [&_button]:w-full [&_button]:justify-center"
+          />
         ) : null}
       </div>
     </div>

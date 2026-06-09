@@ -21,7 +21,7 @@ import { analystGameLogHref, analystGameReviewHref } from "@/lib/analystRoutes";
 import { clearPAsForGameAction } from "@/app/analyst/games/actions";
 import { isDemoId } from "@/lib/db/mockData";
 import { plateAppearancesForPitchingSide } from "@/lib/compute/gamePitchingBox";
-import { inferLiveLinescoreFromPAs, totalRunsBottom, totalRunsTop } from "@/lib/compute/boxScore";
+import { totalRunsBottom, totalRunsTop } from "@/lib/compute/boxScore";
 import { lastPaChronological } from "@/lib/compute/plateAppearanceOrder";
 import { isFactoryDefaultRecordForm } from "@/lib/record/recordFormSnapshot";
 import {
@@ -47,6 +47,11 @@ import {
   readStoredPitchTrackerGroupId,
   writeStoredPitchTrackerGroupId,
 } from "@/lib/pitchTrackerSession";
+import {
+  COACH_LIVE_AB_PA_ID,
+  mergeTrackerPitchesIntoPitchEvents,
+  recordLiveTrackerSyntheticPa,
+} from "@/lib/compute/pitchTrackerCount";
 import {
   pitchOutcomeToTrackerLogResult,
   pitchTrackerAbbrev,
@@ -137,6 +142,10 @@ import { useRecordAtBatForm } from "@/hooks/useRecordAtBatForm";
 import { recordFormStorageKey } from "@/lib/record/recordFormStorage";
 import { isRemoteFormNewer, nextFormRevision } from "@/lib/record/recordFormRevision";
 import { isTypingInFormField, throwsToPitcherHand } from "@/lib/record/recordKeyboard";
+import {
+  freshGameRecordBatterState,
+  inferRecordBatterFromExistingPAs,
+} from "@/lib/record/recordEntryBatter";
 import { batterIdAtLineupSlot, lineupSlotForBatterId } from "@/lib/record/recordLineup";
 import {
   outcomeIndexFromDigitKey,
@@ -193,6 +202,7 @@ interface RecordPageClientProps {
   fetchPAsForGame: (gameId: string) => Promise<{
     pas: PlateAppearance[];
     pitchEvents: PitchEvent[];
+    distributionPitchEvents: PitchEvent[];
   }>;
   fetchGameLineupOrder: (gameId: string) => Promise<{
     away: { order: string[]; positionByPlayerId: Record<string, string> };
@@ -308,7 +318,7 @@ export default function RecordPageClient({
     resetFormEmpty,
     clearNewPaDraftFields: clearAtBatNewPaDraft,
     clearAtBatForm,
-  } = useRecordAtBatForm(players[0]?.id ?? null);
+  } = useRecordAtBatForm(null);
   const [showDetails, setShowDetails] = useState(false);
   const [errorFielderModalMode, setErrorFielderModalMode] = useState<null | "roe" | "hit">(null);
   const prevResultBeforeRoeModalRef = useRef<PAResult | null>(null);
@@ -351,6 +361,8 @@ export default function RecordPageClient({
   const [allPAsForGame, setAllPAsForGame] = useState<PlateAppearance[]>([]);
   /** Pitch log rows for the loaded game (drives Sw% / Whiff% / Foul% on Pitch data card). */
   const [gamePitchEvents, setGamePitchEvents] = useState<PitchEvent[]>([]);
+  /** Pitch types for mix strip (includes coach iPad types before ball/strike is set). */
+  const [gamePitchDistributionEvents, setGamePitchDistributionEvents] = useState<PitchEvent[]>([]);
   const [lineupAway, setLineupAway] = useState<{
     order: string[];
     positionByPlayerId: Record<string, string>;
@@ -922,29 +934,72 @@ export default function RecordPageClient({
     hitDirection,
     battedBallType,
   ]);
-  /** Same PAs as the pitching box (defensive team on the mound), not the batting half. */
-  const pasForPitchMixUnderPitchingTable = useMemo(
+  const coachRowsThisAb = useMemo(
     () =>
-      plateAppearancesForPitchingSide(
-        draftPaForPitchMix ? [...allPAsForGame, draftPaForPitchMix] : allPAsForGame,
-        pitchingSideForBox
+      coachPitchRows.filter(
+        (r) => (!r.batter_id || r.batter_id === batterId) && (!r.pitcher_id || r.pitcher_id === pitcherId)
       ),
-    [allPAsForGame, draftPaForPitchMix, pitchingSideForBox]
+    [coachPitchRows, batterId, pitcherId]
   );
-  const pitchEventsForPitchMixCard = useMemo(() => {
-    const ids = new Set(pasForPitchMixUnderPitchingTable.map((p) => p.id));
-    const fromDb = gamePitchEvents.filter(
-      (e) => ids.has(e.pa_id) && e.pa_id !== "__draft_pitch_mix__"
+  const liveAbPaId =
+    draftPaForPitchMix && draftPaForPitchMix.batter_id === batterId
+      ? "__draft_pitch_mix__"
+      : COACH_LIVE_AB_PA_ID;
+  const hasLiveCoachTrackerActivity = coachRowsThisAb.some(
+    (r) => r.pitch_type != null || r.result != null
+  );
+  const liveCoachSyntheticPa = useMemo(() => {
+    if (!selectedGameId || !batterId || !pitcherId || !hasLiveCoachTrackerActivity) return null;
+    if (draftPaForPitchMix?.batter_id === batterId) return null;
+    return recordLiveTrackerSyntheticPa(
+      selectedGameId,
+      batterId,
+      pitcherId,
+      inning,
+      inningHalf ?? "top",
+      liveAbPaId
     );
-    const synthetic =
-      draftPaForPitchMix &&
-      draftPitchLog.length > 0 &&
-      ids.has("__draft_pitch_mix__")
-        ? pitchEventsFromDraftPitchLogWithTerminal("__draft_pitch_mix__", draftPitchLog, result)
-        : [];
-    return [...fromDb, ...synthetic];
-  }, [gamePitchEvents, pasForPitchMixUnderPitchingTable, draftPaForPitchMix, draftPitchLog, result]);
-
+  }, [
+    selectedGameId,
+    batterId,
+    pitcherId,
+    hasLiveCoachTrackerActivity,
+    draftPaForPitchMix,
+    inning,
+    inningHalf,
+    liveAbPaId,
+  ]);
+  const pitchEventsBaseForMix = useMemo(() => {
+    if (!draftPaForPitchMix || draftPitchLog.length === 0) return gamePitchEvents;
+    const synthetic = pitchEventsFromDraftPitchLogWithTerminal(
+      "__draft_pitch_mix__",
+      draftPitchLog,
+      result
+    );
+    return [
+      ...gamePitchEvents.filter((e) => e.pa_id !== "__draft_pitch_mix__"),
+      ...synthetic,
+    ];
+  }, [gamePitchEvents, draftPaForPitchMix, draftPitchLog, result]);
+  const mergedGamePitchEvents = useMemo(() => {
+    const live =
+      hasLiveCoachTrackerActivity && coachRowsThisAb.length > 0
+        ? { paId: liveAbPaId, rows: coachRowsThisAb }
+        : undefined;
+    return mergeTrackerPitchesIntoPitchEvents(pitchEventsBaseForMix, [], live);
+  }, [pitchEventsBaseForMix, hasLiveCoachTrackerActivity, coachRowsThisAb, liveAbPaId]);
+  const pitchEventsForPitchMixCard = mergedGamePitchEvents.pitchEvents;
+  const distributionPitchEventsForPitchMixCard = mergedGamePitchEvents.distributionPitchEvents;
+  /** Same PAs as the pitching box (defensive team on the mound), not the batting half. */
+  const pasForPitchMixUnderPitchingTable = useMemo(() => {
+    const extraPas: PlateAppearance[] = [];
+    if (draftPaForPitchMix) extraPas.push(draftPaForPitchMix);
+    else if (liveCoachSyntheticPa) extraPas.push(liveCoachSyntheticPa);
+    return plateAppearancesForPitchingSide(
+      extraPas.length > 0 ? [...allPAsForGame, ...extraPas] : allPAsForGame,
+      pitchingSideForBox
+    );
+  }, [allPAsForGame, draftPaForPitchMix, liveCoachSyntheticPa, pitchingSideForBox]);
   /** Current batter's PAs in this game (+ draft PA when it matches selected batter). */
   const pasForCurrentBatterPitchData = useMemo(() => {
     if (!batterId) return [];
@@ -952,32 +1007,20 @@ export default function RecordPageClient({
     if (draftPaForPitchMix && draftPaForPitchMix.batter_id === batterId) {
       return [...fromDb, draftPaForPitchMix];
     }
+    if (liveCoachSyntheticPa && liveCoachSyntheticPa.batter_id === batterId) {
+      return [...fromDb, liveCoachSyntheticPa];
+    }
     return fromDb;
-  }, [allPAsForGame, batterId, draftPaForPitchMix]);
+  }, [allPAsForGame, batterId, draftPaForPitchMix, liveCoachSyntheticPa]);
 
   const pitchEventsForCurrentBatter = useMemo(() => {
-    const ids = new Set(
-      pasForCurrentBatterPitchData.map((p) => p.id).filter((id) => id !== "__draft_pitch_mix__")
-    );
-    const fromDb = gamePitchEvents.filter((e) => ids.has(e.pa_id));
-    const draftInSample =
-      draftPaForPitchMix &&
-      batterId &&
-      draftPaForPitchMix.batter_id === batterId &&
-      pasForCurrentBatterPitchData.some((p) => p.id === "__draft_pitch_mix__");
-    const synthetic =
-      draftInSample && draftPitchLog.length > 0
-        ? pitchEventsFromDraftPitchLogWithTerminal("__draft_pitch_mix__", draftPitchLog, result)
-        : [];
-    return [...fromDb, ...synthetic];
-  }, [
-    gamePitchEvents,
-    pasForCurrentBatterPitchData,
-    draftPaForPitchMix,
-    draftPitchLog,
-    batterId,
-    result,
-  ]);
+    const ids = new Set(pasForCurrentBatterPitchData.map((p) => p.id));
+    return pitchEventsForPitchMixCard.filter((e) => ids.has(e.pa_id));
+  }, [pitchEventsForPitchMixCard, pasForCurrentBatterPitchData]);
+  const distributionPitchEventsForCurrentBatter = useMemo(() => {
+    const ids = new Set(pasForCurrentBatterPitchData.map((p) => p.id));
+    return distributionPitchEventsForPitchMixCard.filter((e) => ids.has(e.pa_id));
+  }, [distributionPitchEventsForPitchMixCard, pasForCurrentBatterPitchData]);
 
   const currentBatterPitchDataName = useMemo(() => {
     if (!selectedBatter) return "Select batter";
@@ -1166,6 +1209,7 @@ export default function RecordPageClient({
     if (!softRefresh) {
       setAllPAsForGame([]);
       setGamePitchEvents([]);
+      setGamePitchDistributionEvents([]);
       setLineupAway({ order: [], positionByPlayerId: {} });
       setLineupHome({ order: [], positionByPlayerId: {} });
     }
@@ -1173,10 +1217,11 @@ export default function RecordPageClient({
       fetchPAsForGame(selectedGameId),
       fetchGameLineupOrder(selectedGameId),
       fetchBaserunningEventsForGame(selectedGameId),
-    ]).then(([{ pas, pitchEvents }, lineups, events]) => {
+    ]).then(([{ pas, pitchEvents, distributionPitchEvents }, lineups, events]) => {
       if (requestId !== loadPasRequestIdRef.current) return;
       setAllPAsForGame(pas);
       setGamePitchEvents(pitchEvents);
+      setGamePitchDistributionEvents(distributionPitchEvents);
       pitchEventsByGameRef.current = pitchEvents;
       setBaserunningEvents(events);
       setLineupAway(lineups.away);
@@ -1192,7 +1237,7 @@ export default function RecordPageClient({
       }
       const factoryDefault = !savedForm || isFactoryDefaultRecordForm(savedForm);
 
-      if (resetBatter && pas.length > 0 && factoryDefault) {
+      if (resetBatter && factoryDefault) {
         const resume = readWorkflowDefaults().resumeSnapshotByGameId?.[selectedGameId];
         const playerOk = (id: string | null) =>
           id == null || players.some((p) => p.id === id);
@@ -1218,30 +1263,26 @@ export default function RecordPageClient({
           setPitcherBySide(resume.pitcherBySide ?? { home: null, away: null });
           const side = battingSideFromHalf(resume.inningHalf);
           const order = side === "away" ? lineups.away.order : lineups.home.order;
-          const firstAway = lineups.away.order[0];
-          const firstHome = lineups.home.order[0];
-          const fallbackFirst = firstAway ?? firstHome ?? players[0]?.id ?? null;
           if (order.length > 0) {
             const slot =
               (resume.nextBatterIndexBySide?.[side] ?? 0) % order.length;
-            const batterFromOrder = order[slot] ?? null;
-            setBatterId(
-              batterFromOrder && players.some((p) => p.id === batterFromOrder)
-                ? batterFromOrder
-                : fallbackFirst
-            );
-          } else {
-            setBatterId(fallbackFirst);
+            const batterFromOrder = batterIdAtLineupSlot(order, players, slot);
+            if (batterFromOrder) setBatterId(batterFromOrder);
           }
+        } else if (pas.length === 0) {
+          const fresh = freshGameRecordBatterState(lineups, players);
+          setInning(fresh.inning);
+          setInningHalf(fresh.inningHalf);
+          setOuts(0);
+          setBaseState("000");
+          setNextBatterIndexBySide(fresh.nextBatterIndexBySide);
+          setBatterId(fresh.batterId);
         } else {
-          const inferred = inferLiveLinescoreFromPAs(pas);
-          setInning(Math.max(1, Math.min(inferred.liveInning, MAX_SELECTABLE_INNING)));
-          setInningHalf(inferred.liveHalf ?? "top");
-        const firstAway = lineups.away.order[0];
-        const firstHome = lineups.home.order[0];
-        const firstBatterId =
-          firstAway ?? firstHome ?? players[0]?.id ?? null;
-        setBatterId(firstBatterId);
+          const inferred = inferRecordBatterFromExistingPAs(pas, lineups, players);
+          setInning(Math.max(1, Math.min(inferred.inning, MAX_SELECTABLE_INNING)));
+          setInningHalf(inferred.inningHalf);
+          setNextBatterIndexBySide(inferred.nextBatterIndexBySide);
+          setBatterId(inferred.batterId);
         }
       }
 
@@ -1888,7 +1929,7 @@ export default function RecordPageClient({
             balls_before: row.balls_before,
             strikes_before: row.strikes_before,
             outcome: row.outcome,
-            pitch_type: null,
+            pitch_type: coachPitchRowByNumber.get(i + 1)?.pitch_type ?? null,
           }))
         : undefined;
     const seqSummary =
@@ -2161,19 +2202,18 @@ export default function RecordPageClient({
       setAllPAsForGame((prev) => [...prev, optimisticPa]);
       if (pitchLogForSave && pitchLogForSave.length > 0 && optimisticPa.id) {
         const created = new Date().toISOString();
-        setGamePitchEvents((prev) => [
-          ...prev,
-          ...pitchLogForSave.map((row) => ({
-            id: `local-pe-${optimisticPa.id}-${row.pitch_index}`,
-            pa_id: optimisticPa.id,
-            pitch_index: row.pitch_index,
-            balls_before: row.balls_before,
-            strikes_before: row.strikes_before,
-            outcome: row.outcome,
-            pitch_type: row.pitch_type ?? null,
-            created_at: created,
-          })),
-        ]);
+        const optimisticEvents = pitchLogForSave.map((row) => ({
+          id: `local-pe-${optimisticPa.id}-${row.pitch_index}`,
+          pa_id: optimisticPa.id,
+          pitch_index: row.pitch_index,
+          balls_before: row.balls_before,
+          strikes_before: row.strikes_before,
+          outcome: row.outcome,
+          pitch_type: row.pitch_type ?? null,
+          created_at: created,
+        }));
+        setGamePitchEvents((prev) => [...prev, ...optimisticEvents]);
+        setGamePitchDistributionEvents((prev) => [...prev, ...optimisticEvents]);
       }
       setDraftPitchLog([]);
       setResult(null);
@@ -3075,12 +3115,14 @@ export default function RecordPageClient({
                 batterName={currentBatterPitchDataName}
                 pas={pasForCurrentBatterPitchData}
                 pitchEvents={pitchEventsForCurrentBatter}
+                distributionPitchEvents={distributionPitchEventsForCurrentBatter}
                 compact
               />
               <BattingPitchMixCard
                 pas={pasForPitchMixUnderPitchingTable}
                 players={players}
                 pitchEvents={pitchEventsForPitchMixCard}
+                distributionPitchEvents={distributionPitchEventsForPitchMixCard}
                 compact
                 currentPitcherId={pitcherId}
                 inning={inning}
@@ -3312,7 +3354,7 @@ export default function RecordPageClient({
                         className="pointer-events-none absolute right-2 top-1/2 z-0 -translate-y-1/2 text-[10px] text-[var(--text-muted)]"
                         aria-hidden
                       >
-                        â–¾
+                        ▾
                       </span>
                     </div>
 
@@ -4343,6 +4385,7 @@ export default function RecordPageClient({
                       pas={pasForPitchMixUnderPitchingTable}
                       players={players}
                       pitchEvents={pitchEventsForPitchMixCard}
+                      distributionPitchEvents={distributionPitchEventsForPitchMixCard}
                       compact
                       currentPitcherId={pitcherId}
                     />
@@ -4396,6 +4439,7 @@ export default function RecordPageClient({
                       pas={pasForPitchMixUnderPitchingTable}
                       players={players}
                       pitchEvents={pitchEventsForPitchMixCard}
+                      distributionPitchEvents={distributionPitchEventsForPitchMixCard}
                       compact
                       currentPitcherId={pitcherId}
                     />

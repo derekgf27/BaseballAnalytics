@@ -15,3 +15,12 @@ export function batterIdAtLineupSlot(order: string[], players: Player[], slot: n
   const p = players.find((pl) => pl.id === id);
   return p != null && !isPitcherPlayer(p) ? id : null;
 }
+
+/** First non-pitcher in batting-order array (skips SP/RP rows if present in `order`). */
+export function firstBatterInLineupOrder(order: string[], players: Player[]): string | null {
+  for (let i = 0; i < order.length; i++) {
+    const id = batterIdAtLineupSlot(order, players, i);
+    if (id) return id;
+  }
+  return null;
+}

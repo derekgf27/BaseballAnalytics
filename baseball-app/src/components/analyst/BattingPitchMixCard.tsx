@@ -1030,6 +1030,7 @@ export function BattingPitchMixCard({
   pas,
   players,
   pitchEvents = [],
+  distributionPitchEvents,
   compact = false,
   currentPitcherId = null,
   pitchPadLayout = false,
@@ -1040,6 +1041,8 @@ export function BattingPitchMixCard({
   players: Player[];
   /** Per-pitch log rows for these games’ PAs; enables Sw%, Whiff%, BIP mix, etc. */
   pitchEvents?: PitchEvent[];
+  /** When set, used only for the “Mix” strip (coach iPad types before Record sets `result`). */
+  distributionPitchEvents?: PitchEvent[];
   compact?: boolean;
   /**
    * When set (e.g. selected pitcher on Record PAs), the card shows only that pitcher’s pitch mix.
@@ -1054,6 +1057,10 @@ export function BattingPitchMixCard({
 }) {
   const pad = pitchPadLayoutFlags(pitchPadLayout);
   const eventsByPaId = useMemo(() => groupPitchEventsByPaId(pitchEvents), [pitchEvents]);
+  const eventsByPaIdForDistribution = useMemo(
+    () => groupPitchEventsByPaId(distributionPitchEvents ?? pitchEvents),
+    [distributionPitchEvents, pitchEvents]
+  );
 
   const rows = useMemo(() => {
     const byId = new Map(players.map((p) => [p.id, p]));
@@ -1063,12 +1070,12 @@ export function BattingPitchMixCard({
       const mix = pitchMixFromPlateAppearancesOrPitchLog(pitcherPas, eventsByPaId);
       const extras = aggregatePitchMixExtrasFromPas(pitcherPas, eventsByPaId);
       const twoStrikeAgg = aggregateTwoStrikePitchAggFromPas(pitcherPas, eventsByPaId);
-      const stripTypeDistribution = pitchTypeDistributionFromPitchLog(pitcherPas, eventsByPaId);
+      const stripTypeDistribution = pitchTypeDistributionFromPitchLog(pitcherPas, eventsByPaIdForDistribution);
       const name = byId.get(pitcherId)?.name?.trim() || "Unknown";
       const lob = lobByPitcher.get(pitcherId) ?? 0;
       return { pitcherId, name, mix, lob, extras, twoStrikeAgg, stripTypeDistribution };
     });
-  }, [pas, players, eventsByPaId]);
+  }, [pas, players, eventsByPaId, eventsByPaIdForDistribution]);
 
   const teamMix = useMemo(
     () => pitchMixFromPlateAppearancesOrPitchLog(pas, eventsByPaId),
@@ -1088,7 +1095,7 @@ export function BattingPitchMixCard({
     return s;
   }, [pas]);
   const teamStripDistribution = useMemo(
-    () => pitchTypeDistributionFromPitchLog(pas, eventsByPaId),
+    () => pitchTypeDistributionFromPitchLog(pas, eventsByPaIdForDistribution),
     [pas, eventsByPaId]
   );
 
@@ -1104,7 +1111,7 @@ export function BattingPitchMixCard({
     const mix = pitchMixFromPlateAppearancesOrPitchLog(pitcherPas, eventsByPaId);
     const extras = aggregatePitchMixExtrasFromPas(pitcherPas, eventsByPaId);
     const twoStrikeAgg = aggregateTwoStrikePitchAggFromPas(pitcherPas, eventsByPaId);
-    const stripTypeDistribution = pitchTypeDistributionFromPitchLog(pitcherPas, eventsByPaId);
+    const stripTypeDistribution = pitchTypeDistributionFromPitchLog(pitcherPas, eventsByPaIdForDistribution);
     const pitcher = byId.get(currentPitcherId);
     const name = pitcher?.name?.trim() || "Unknown";
     const jersey = pitcher?.jersey?.trim() || null;
@@ -1119,7 +1126,7 @@ export function BattingPitchMixCard({
       twoStrikeAgg,
       stripTypeDistribution,
     };
-  }, [highlightCurrent, currentPitcherId, pas, players, eventsByPaId]);
+  }, [highlightCurrent, currentPitcherId, pas, players, eventsByPaId, eventsByPaIdForDistribution]);
 
   const pitchesThisInning =
     highlightCurrent &&
@@ -1272,18 +1279,24 @@ export function PitchingPitchMixSupplement({
   pas,
   players,
   pitchEvents = [],
+  distributionPitchEvents,
   compact = false,
   currentPitcherId,
 }: {
   pas: PlateAppearance[];
   players: Player[];
   pitchEvents?: PitchEvent[];
+  distributionPitchEvents?: PitchEvent[];
   compact?: boolean;
   /** Used only to decide whether to render (Record passes selected pitcher). */
   currentPitcherId: string | null;
 }) {
   const highlight = typeof currentPitcherId === "string" && currentPitcherId.length > 0;
   const eventsByPaId = useMemo(() => groupPitchEventsByPaId(pitchEvents), [pitchEvents]);
+  const eventsByPaIdForDistribution = useMemo(
+    () => groupPitchEventsByPaId(distributionPitchEvents ?? pitchEvents),
+    [distributionPitchEvents, pitchEvents]
+  );
 
   const rows = useMemo(() => {
     const byId = new Map(players.map((p) => [p.id, p]));
@@ -1293,12 +1306,12 @@ export function PitchingPitchMixSupplement({
       const mix = pitchMixFromPlateAppearancesOrPitchLog(pitcherPas, eventsByPaId);
       const extras = aggregatePitchMixExtrasFromPas(pitcherPas, eventsByPaId);
       const twoStrikeAgg = aggregateTwoStrikePitchAggFromPas(pitcherPas, eventsByPaId);
-      const stripTypeDistribution = pitchTypeDistributionFromPitchLog(pitcherPas, eventsByPaId);
+      const stripTypeDistribution = pitchTypeDistributionFromPitchLog(pitcherPas, eventsByPaIdForDistribution);
       const name = byId.get(pitcherId)?.name?.trim() || "Unknown";
       const lob = lobByPitcher.get(pitcherId) ?? 0;
       return { pitcherId, name, mix, lob, extras, twoStrikeAgg, stripTypeDistribution };
     });
-  }, [pas, players, eventsByPaId]);
+  }, [pas, players, eventsByPaId, eventsByPaIdForDistribution]);
 
   const teamMix = useMemo(
     () => pitchMixFromPlateAppearancesOrPitchLog(pas, eventsByPaId),
@@ -1318,7 +1331,7 @@ export function PitchingPitchMixSupplement({
     return s;
   }, [pas]);
   const teamStripDistribution = useMemo(
-    () => pitchTypeDistributionFromPitchLog(pas, eventsByPaId),
+    () => pitchTypeDistributionFromPitchLog(pas, eventsByPaIdForDistribution),
     [pas, eventsByPaId]
   );
 

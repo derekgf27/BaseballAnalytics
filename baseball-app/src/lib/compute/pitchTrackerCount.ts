@@ -3,7 +3,7 @@ import {
   replayCountAtEndOfSequence,
   type PitchSequenceEntry,
 } from "@/lib/compute/pitchSequence";
-import type { PitchEvent, PitchOutcome, PitchTrackerLogResult, PitchTrackerPitch } from "@/lib/types";
+import type { PitchEvent, PitchOutcome, PitchTrackerLogResult, PitchTrackerPitch, PlateAppearance } from "@/lib/types";
 
 /** Synthetic PA id for in-progress coach tracker pitches (merged into matchup cards before Record saves). */
 export const COACH_LIVE_AB_PA_ID = "__coach_live_ab__";
@@ -74,7 +74,7 @@ export function pitchEventsFromCoachTrackerRows(paId: string, rows: PitchTracker
     out.push({
       id: `__coach_pe_${paId}_${row.pitch_number}`,
       pa_id: paId,
-      pitch_index: i + 1,
+      pitch_index: row.pitch_number,
       balls_before: b,
       strikes_before: s,
       outcome: o,
@@ -104,7 +104,7 @@ export function pitchTypeMixEventsFromCoachTrackerRows(paId: string, rows: Pitch
     out.push({
       id: `__coach_mix_pe_${paId}_${row.pitch_number}`,
       pa_id: paId,
-      pitch_index: i + 1,
+      pitch_index: row.pitch_number,
       balls_before: 0,
       strikes_before: 0,
       outcome: o,
@@ -112,4 +112,126 @@ export function pitchTypeMixEventsFromCoachTrackerRows(paId: string, rows: Pitch
     });
   }
   return out;
+}
+
+function enrichPitchTypesFromTrackerRows(
+  events: PitchEvent[],
+  paId: string,
+  rows: PitchTrackerPitch[]
+): PitchEvent[] {
+  if (rows.length === 0) return events;
+  const rowsByNum = new Map(rows.map((r) => [r.pitch_number, r]));
+  return events.map((e) => {
+    if (e.pa_id !== paId || e.pitch_type) return e;
+    const row = rowsByNum.get(e.pitch_index);
+    if (!row?.pitch_type) return e;
+    return { ...e, pitch_type: row.pitch_type };
+  });
+}
+
+function supplementRateEventsFromTrackerRows(
+  events: PitchEvent[],
+  paId: string,
+  rows: PitchTrackerPitch[]
+): PitchEvent[] {
+  if (rows.length === 0) return events;
+  const hasPaEvents = events.some((e) => e.pa_id === paId);
+  if (hasPaEvents) return events;
+  const fromTracker = pitchEventsFromCoachTrackerRows(paId, rows);
+  return fromTracker.length > 0 ? [...events, ...fromTracker] : events;
+}
+
+function buildDistributionEventsForPa(
+  rateEvents: PitchEvent[],
+  paId: string,
+  rows: PitchTrackerPitch[]
+): PitchEvent[] {
+  if (rows.length === 0) return rateEvents.filter((e) => e.pa_id === paId);
+  let dist = enrichPitchTypesFromTrackerRows(rateEvents, paId, rows);
+  for (const mix of pitchTypeMixEventsFromCoachTrackerRows(paId, rows)) {
+    const idx = dist.findIndex((e) => e.pa_id === paId && e.pitch_index === mix.pitch_index);
+    if (idx >= 0) {
+      if (!dist[idx]!.pitch_type && mix.pitch_type) {
+        dist = dist.map((e, i) => (i === idx ? { ...e, pitch_type: mix.pitch_type } : e));
+      }
+    } else if (mix.pitch_type) {
+      dist = [...dist, mix];
+    }
+  }
+  return dist;
+}
+
+/** Merge linked coach `pitches` rows into pitch-log arrays used by Record / box score pitch mix. */
+export function mergeTrackerPitchesIntoPitchEvents(
+  pitchEvents: PitchEvent[],
+  trackerPitches: PitchTrackerPitch[],
+  live?: { paId: string; rows: PitchTrackerPitch[] }
+): { pitchEvents: PitchEvent[]; distributionPitchEvents: PitchEvent[] } {
+  const byPa = new Map<string, PitchTrackerPitch[]>();
+  for (const row of trackerPitches) {
+    if (!row.at_bat_id) continue;
+    const arr = byPa.get(row.at_bat_id) ?? [];
+    arr.push(row);
+    byPa.set(row.at_bat_id, arr);
+  }
+
+  let rateEvents = [...pitchEvents];
+  for (const [paId, rows] of byPa) {
+    rateEvents = enrichPitchTypesFromTrackerRows(rateEvents, paId, rows);
+    rateEvents = supplementRateEventsFromTrackerRows(rateEvents, paId, rows);
+  }
+
+  if (live && live.rows.length > 0) {
+    rateEvents = enrichPitchTypesFromTrackerRows(rateEvents, live.paId, live.rows);
+    rateEvents = supplementRateEventsFromTrackerRows(rateEvents, live.paId, live.rows);
+  }
+
+  const paIds = new Set<string>([...byPa.keys(), ...(live ? [live.paId] : [])]);
+  let distributionPitchEvents = [...rateEvents];
+  for (const paId of paIds) {
+    const linked = byPa.get(paId) ?? [];
+    const rows = paId === live?.paId ? [...linked, ...live.rows] : linked;
+    if (rows.length === 0) continue;
+    const paDist = buildDistributionEventsForPa(rateEvents, paId, rows);
+    const other = distributionPitchEvents.filter((e) => e.pa_id !== paId);
+    distributionPitchEvents = [...other, ...paDist];
+  }
+
+  return { pitchEvents: rateEvents, distributionPitchEvents };
+}
+
+/** Synthetic PA for in-progress coach tracker rows on Record (before PA save). */
+export function recordLiveTrackerSyntheticPa(
+  gameId: string,
+  batterId: string,
+  pitcherId: string | null,
+  inning: number,
+  inningHalf: "top" | "bottom",
+  paId: string
+): PlateAppearance {
+  return {
+    id: paId,
+    game_id: gameId,
+    batter_id: batterId,
+    inning,
+    outs: 0,
+    base_state: "000",
+    score_diff: 0,
+    count_balls: 0,
+    count_strikes: 0,
+    result: "other",
+    contact_quality: null,
+    hit_direction: null,
+    batted_ball_type: null,
+    pitches_seen: null,
+    strikes_thrown: null,
+    first_pitch_strike: null,
+    rbi: 0,
+    runs_scored_player_ids: [],
+    unearned_runs_scored_player_ids: [],
+    pitcher_hand: null,
+    pitcher_id: pitcherId,
+    notes: null,
+    inning_half: inningHalf,
+  };
 }

@@ -14,6 +14,7 @@ import {
   insertPlateAppearance,
   insertPlateAppearanceWithPitchLog,
   getPitchEventsForGame,
+  getPitchTrackerPitchesForGame,
   deletePlateAppearance as deletePlateAppearanceQuery,
   getBaserunningEventsForGame,
   insertBaserunningEvent,
@@ -22,6 +23,7 @@ import {
   updateGame,
   linkPitchTrackerGroupToPlateAppearance,
 } from "@/lib/db/queries";
+import { mergeTrackerPitchesIntoPitchEvents } from "@/lib/compute/pitchTrackerCount";
 import { isDemoId } from "@/lib/db/mockData";
 import { revalidateGamesListCache } from "@/lib/db/revalidateLists";
 import { requireAnalystAccess } from "@/lib/auth/requireRole";
@@ -29,12 +31,15 @@ import { requireAnalystAccess } from "@/lib/auth/requireRole";
 export async function fetchPAsForGame(gameId: string): Promise<{
   pas: PlateAppearance[];
   pitchEvents: PitchEvent[];
+  distributionPitchEvents: PitchEvent[];
 }> {
-  const [pas, pitchEvents] = await Promise.all([
+  const [pas, pitchEvents, trackerPitches] = await Promise.all([
     getPlateAppearancesByGame(gameId),
     getPitchEventsForGame(gameId),
+    getPitchTrackerPitchesForGame(gameId),
   ]);
-  return { pas, pitchEvents };
+  const merged = mergeTrackerPitchesIntoPitchEvents(pitchEvents, trackerPitches);
+  return { pas, ...merged };
 }
 
 function lineupSlotsToOrder(

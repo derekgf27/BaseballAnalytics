@@ -53,6 +53,11 @@ function batsShort(bats: string | null | undefined): string {
   return c === "S" ? "S" : c === "L" ? "L" : c === "R" ? "R" : "—";
 }
 
+function primaryPosShort(player: Player): string {
+  const pos = getPlayerPrimaryPosition(player);
+  return pos?.trim() || "—";
+}
+
 function orderedSlotsToState(
   ordered: { player_id: string; position: string | null }[],
   playerMap: Map<string, Player>
@@ -159,13 +164,21 @@ function DraggablePoolPlayer({ player, onAdd }: { player: Player; onAdd: () => v
       {...listeners}
       {...attributes}
       onClick={onAdd}
-      className={`flex w-full min-w-0 touch-none select-none items-center gap-2 rounded border border-transparent bg-transparent px-0 py-0 text-left transition hover:border-[var(--accent)]/30 active:cursor-grabbing ${
+      className={`grid w-full min-w-0 touch-none select-none grid-cols-[2.5rem_minmax(0,1fr)_2rem] items-center gap-x-2 rounded border border-transparent bg-transparent px-0 py-0 text-left transition hover:border-[var(--accent)]/30 active:cursor-grabbing ${
         isDragging ? "opacity-50" : ""
       }`}
       title={`Add ${player.name} to lineup`}
     >
-      <span className="truncate text-sm font-medium text-[var(--text)]">{player.name}</span>
-      {player.jersey && <span className="shrink-0 text-xs text-[var(--text-muted)]">#{player.jersey}</span>}
+      <span className="text-center text-xs font-semibold text-[var(--text-muted)]">
+        {primaryPosShort(player)}
+      </span>
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="truncate text-sm font-medium text-[var(--text)]">{player.name}</span>
+        {player.jersey ? (
+          <span className="shrink-0 text-xs text-[var(--text-muted)]">#{player.jersey}</span>
+        ) : null}
+      </span>
+      <span className="text-center text-sm font-semibold text-[var(--text)]">{batsShort(player.bats)}</span>
     </button>
   );
 }
@@ -497,11 +510,16 @@ export function OpponentLineupModal({
                     <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                       Available ({availablePlayers.length})
                     </h3>
-                    <div className="mt-2 max-h-[min(50vh,22rem)] space-y-2 overflow-y-auto pr-1">
+                    <div className="mt-2 grid grid-cols-[2.5rem_minmax(0,1fr)_2rem] gap-x-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-faint)]">
+                      <span className="text-center">Pos</span>
+                      <span>Player</span>
+                      <span className="text-center">B</span>
+                    </div>
+                    <div className="mt-1 max-h-[min(50vh,22rem)] space-y-2 overflow-y-auto pr-1">
                       {availablePlayers.map((p) => (
                         <div
                           key={p.id}
-                          className="flex items-center gap-2 rounded border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-2 transition hover:border-[var(--accent)]/40"
+                          className="rounded border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-2 transition hover:border-[var(--accent)]/40"
                         >
                           <DraggablePoolPlayer player={p} onAdd={() => placePlayerInFirstOpenSlot(p)} />
                         </div>
