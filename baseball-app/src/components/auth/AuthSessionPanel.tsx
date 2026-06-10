@@ -10,6 +10,24 @@ const EXIT_LINK_CLASS: Record<SidebarPortal, string> = {
   admin: "sidebar-link-admin",
 };
 
+function ExitIcon() {
+  return (
+    <svg
+      className="sidebar-auth-exit-icon"
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1V9.5z" />
+    </svg>
+  );
+}
+
 type AuthSessionPanelProps = {
   role: AppRole | null;
   handle: string | null;
@@ -40,8 +58,8 @@ export function AuthSessionPanel({
   }
 
   const exitClass = EXIT_LINK_CLASS[portal];
-  /** Coaches only have /coach — home redirects back; no portal picker to exit to. */
-  const showExit = portal !== "coach" && role !== "coach";
+  /** Coach accounts only use /coach; admin/analyst need Exit even inside the coach portal. */
+  const showExit = role !== "coach";
 
   return (
     <div className="sidebar-auth mt-2 shrink-0 border-t border-[var(--border)] p-2">
@@ -51,7 +69,9 @@ export function AuthSessionPanel({
             href="/"
             className={`sidebar-link sidebar-auth-exit ${exitClass} opacity-70`}
             title="Exit to home"
+            aria-label="Exit to home"
           >
+            <ExitIcon />
             <span className="sidebar-label">Exit</span>
           </Link>
         ) : null}

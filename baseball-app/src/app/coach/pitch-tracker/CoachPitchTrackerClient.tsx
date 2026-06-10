@@ -23,8 +23,6 @@ import {
   replayCountAtEndOfSequence,
 } from "@/lib/compute/pitchSequence";
 import type { PitchSequenceEntry } from "@/lib/compute/pitchSequence";
-import { pitchMixFromPlateAppearancesOrPitchLog } from "@/lib/compute/battingStats";
-import { groupPitchEventsByPaId } from "@/lib/compute/contactProfileFromPas";
 import { pitchingStatsFromPAs } from "@/lib/compute/pitchingStats";
 import { isDemoId } from "@/lib/db/mockData";
 import { isGameFinalized } from "@/lib/gameRecord";
@@ -42,6 +40,7 @@ import {
   CurrentBatterPitchDataCard,
   lobByPitcherFromPas,
   MatchupPitchMixStrip,
+  pitchesThisInningForPitcher,
 } from "@/components/analyst/BattingPitchMixCard";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type {
@@ -306,6 +305,7 @@ type CoachPitcherSnapshotUi = {
 };
 
 const COACH_LANDSCAPE_TIP_KEY = "coach_pitch_pad_landscape_tip_v1";
+const COACH_LINEUP_COLLAPSED_KEY = "coach_pitch_pad_lineup_collapsed_v1";
 /** Brief pause after a saved pitch so panic-tapping does not log multiple pitches. */
 const COACH_PITCH_TYPE_COOLDOWN_MS = 400;
 
@@ -344,8 +344,8 @@ function CoachPitchCountTransition({
   const tail = after == null ? "—" : `${after.balls}-${after.strikes}`;
   return (
     <span className="inline-flex shrink-0 items-center gap-x-1.5 rounded-md border border-amber-500/40 bg-zinc-950/80 px-2 py-1 tabular-nums leading-none md:gap-x-2 md:px-2.5 md:py-1.5">
-      <span className="text-xs text-zinc-500 sm:text-sm">{beforeBalls}-{beforeStrikes}</span>
-      <span className="text-xs text-zinc-500 sm:text-sm" aria-hidden>
+      <span className="text-xs text-white sm:text-sm">{beforeBalls}-{beforeStrikes}</span>
+      <span className="text-xs text-white sm:text-sm" aria-hidden>
         →
       </span>
       <span className="text-xs font-bold text-amber-400 sm:text-sm">{tail}</span>
@@ -380,6 +380,7 @@ function CoachPitchPad({
     Record<string, number>
   >({});
   const [opponentLineupLoading, setOpponentLineupLoading] = useState(false);
+  const [lineupCollapsed, setLineupCollapsed] = useState(false);
   /** Player ids on our lineup for this game; `null` while resolving (block pitch types until known). */
   const [ourLineupPlayerIds, setOurLineupPlayerIds] = useState<Set<string> | null>(null);
   /** Completed PAs in this game: this batter vs current mound pitcher (Record). */
@@ -420,6 +421,23 @@ function CoachPitchPad({
       window.removeEventListener("online", sync);
       window.removeEventListener("offline", sync);
     };
+  }, []);
+
+  useEffect(() => {
+    try {
+      setLineupCollapsed(window.localStorage.getItem(COACH_LINEUP_COLLAPSED_KEY) === "1");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const setLineupPanelCollapsed = useCallback((collapsed: boolean) => {
+    setLineupCollapsed(collapsed);
+    try {
+      window.localStorage.setItem(COACH_LINEUP_COLLAPSED_KEY, collapsed ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   useEffect(() => {
@@ -934,13 +952,45 @@ function CoachPitchPad({
     [pitcherGameEvents, livePitchTypeMixEvents]
   );
 
-  const pitcherFullGameMix = useMemo(() => {
+  /**
+   * Pitches this half-inning: saved PAs of the latest half-inning Record has
+   * for this pitcher, plus the live (unsaved) AB from the coach pitch log.
+   * The synthetic live PA hardcodes inning 1, so it is excluded and the live
+   * sequence is added separately.
+   */
+  const pitcherPitchesThisInning = useMemo(() => {
     if (!pitcherId) return null;
-    const pitcherPas = gamePitchMixPasMerged.filter((p) => p.pitcher_id === pitcherId);
-    if (pitcherPas.length === 0) return null;
-    const eventsByPaId = groupPitchEventsByPaId(gamePitchMixEventsMerged);
-    return pitchMixFromPlateAppearancesOrPitchLog(pitcherPas, eventsByPaId);
-  }, [pitcherId, gamePitchMixPasMerged, gamePitchMixEventsMerged]);
+    const savedPas = gamePitchMixPasMerged.filter((p) => p.id !== COACH_LIVE_AB_PA_ID);
+    let latest: PlateAppearance | null = null;
+    for (const pa of savedPas) {
+      if (latest == null) {
+        latest = pa;
+        continue;
+      }
+      const halfRank = (p: PlateAppearance) => (p.inning_half === "bottom" ? 1 : 0);
+      const ts = (p: PlateAppearance) => (p.created_at ? new Date(p.created_at).getTime() : 0);
+      if (
+        pa.inning > latest.inning ||
+        (pa.inning === latest.inning &&
+          (halfRank(pa) > halfRank(latest) ||
+            (halfRank(pa) === halfRank(latest) && ts(pa) >= ts(latest))))
+      ) {
+        latest = pa;
+      }
+    }
+    const liveCount = sequenceRowsThisBatter.length;
+    /* Latest saved PA from our batting half → the pitcher's current half has no saved PAs yet. */
+    if (!latest || latest.pitcher_id !== pitcherId) return liveCount;
+    return (
+      pitchesThisInningForPitcher(
+        savedPas,
+        gamePitchMixEventsMerged,
+        pitcherId,
+        latest.inning,
+        latest.inning_half === "bottom" ? "bottom" : "top"
+      ) + liveCount
+    );
+  }, [pitcherId, gamePitchMixPasMerged, gamePitchMixEventsMerged, sequenceRowsThisBatter]);
 
   const lineupGuardLoading = ourLineupPlayerIds === null;
   const isOurTeamBatting = !!(batterId && ourLineupPlayerIds && ourLineupPlayerIds.has(batterId));
@@ -1363,74 +1413,139 @@ function CoachPitchPad({
         </div>
       ) : null}
 
-      <main className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row md:gap-3 md:p-3">
-        {/* Line-up: first = easy to scan; fixed width on tablet landscape */}
-        <section
-          className="flex max-h-[38vh] min-h-0 shrink-0 flex-col overflow-hidden border-b border-zinc-800 px-2 py-2 md:max-h-none md:w-[min(15.25rem,27vw)] md:shrink-0 md:self-stretch md:rounded-xl md:border md:border-zinc-700/80 md:bg-zinc-900/50 md:px-2 md:py-2"
-          aria-label="Opposing lineup"
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row md:gap-2 md:p-3">
+        {/* Opposing lineup — collapsible side panel on tablet landscape */}
+        <div
+          className={`flex min-h-0 shrink-0 md:self-stretch md:transition-[width] md:duration-200 md:ease-out ${
+            lineupCollapsed
+              ? "max-h-0 overflow-hidden border-b-0 md:max-h-none md:w-11 md:overflow-visible"
+              : "max-h-[38vh] md:max-h-none md:w-[min(15.25rem,27vw)]"
+          }`}
         >
-          <div className="mb-1.5 flex items-baseline justify-between gap-1">
-            <h2 className="text-[10px] font-bold uppercase tracking-wide text-amber-400/90 sm:text-xs">
-              Opposing lineup
-            </h2>
-            <span className="shrink-0 text-[9px] text-zinc-500 sm:text-[10px]">AB / OD</span>
-          </div>
-          {opponentLineupLoading ? (
-            <p className="text-xs text-zinc-500">Loading…</p>
-          ) : opposingLineupBoard.ordered.length === 0 ? (
-            <p className="text-xs text-zinc-500">Set the lineup on Record.</p>
+          {lineupCollapsed ? (
+            <button
+              type="button"
+              className="touch-manipulation hidden h-full min-h-0 w-11 flex-col items-center justify-center gap-2 self-stretch rounded-xl border border-zinc-700/80 bg-zinc-900/50 py-3 active:bg-zinc-800/80 md:flex"
+              onClick={() => setLineupPanelCollapsed(false)}
+              aria-label="Show opposing lineup"
+              title="Show lineup"
+            >
+              <span className="text-lg font-bold leading-none text-amber-400/90" aria-hidden>
+                ›
+              </span>
+              <span
+                className="text-[10px] font-bold uppercase tracking-wide text-amber-400/80 [writing-mode:vertical-rl]"
+                aria-hidden
+              >
+                Lineup
+              </span>
+              {batterId && opposingLineupBoard.ordered.some((r) => r.playerId === batterId) ? (
+                <span
+                  className="mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-500"
+                  title="Batter at plate"
+                  aria-hidden
+                />
+              ) : null}
+            </button>
           ) : (
-            <ul className="grid min-h-0 flex-1 grid-cols-2 gap-x-1 gap-y-1.5 overflow-y-auto overscroll-contain sm:gap-x-1.5 sm:gap-y-2 md:flex md:flex-col md:gap-1.5">
-              {opposingLineupBoard.ordered.map((row) => {
-                const atBat = !!(batterId && row.playerId === batterId);
-                const onDeck =
-                  !atBat &&
-                  opposingLineupBoard.onDeckPlayerId != null &&
-                  row.playerId === opposingLineupBoard.onDeckPlayerId;
-                const jerseyStr = row.jersey != null ? `#${row.jersey}` : "—";
-                return (
-                  <li
-                    key={row.playerId}
-                    className={`flex min-h-0 min-w-0 items-center gap-2 rounded-lg border px-1.5 py-1.5 text-sm md:flex-1 md:gap-2.5 md:px-2.5 md:py-2 md:text-base ${
-                      atBat
-                        ? "border-amber-500/60 bg-amber-950/55 ring-1 ring-amber-500/30"
-                        : onDeck
-                          ? "border-zinc-500/50 bg-zinc-800/90"
-                          : "border-zinc-700/50 bg-zinc-900/70"
-                    }`}
+            <section
+              className="flex min-h-0 flex-1 flex-col overflow-hidden border-b border-zinc-800 px-2 py-2 md:max-h-none md:self-stretch md:rounded-xl md:border md:border-zinc-700/80 md:bg-zinc-900/50 md:px-2 md:py-2"
+              aria-label="Opposing lineup"
+            >
+              <div className="mb-1.5 flex items-center justify-between gap-1">
+                <h2 className="text-[10px] font-bold uppercase tracking-wide text-amber-400/90 sm:text-xs">
+                  Opposing lineup
+                </h2>
+                <div className="flex shrink-0 items-center">
+                  <button
+                    type="button"
+                    className="touch-manipulation inline-flex h-7 w-7 items-center justify-center rounded-md border border-zinc-600/80 bg-zinc-800/90 text-sm font-bold leading-none text-zinc-300 active:bg-zinc-700 md:h-8 md:w-8"
+                    onClick={() => setLineupPanelCollapsed(true)}
+                    aria-label="Hide lineup"
+                    title="Hide lineup"
                   >
-                    <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-amber-400 md:w-8 md:text-base">
-                      {battingOrderOrdinal(row.slot)}
+                    <span className="md:hidden" aria-hidden>
+                      ▲
                     </span>
-                    <div className="min-w-0 flex-1 leading-snug md:leading-normal">
-                      <p className={lineupBatterNameClass(row.name)} title={row.name}>
-                        {row.name}
-                      </p>
-                      <p className="truncate text-xs text-zinc-400 md:text-sm">
-                        {jerseyStr}{" "}
-                        <span className={batsHandChipClass(row.bats, "compact")}>{batsHandLabel(row.bats)}</span>
-                      </p>
-                    </div>
-                    <div className="shrink-0">
-                      {atBat ? (
-                        <span className="rounded-md bg-amber-600/40 px-1 py-0.5 text-[10px] font-bold uppercase leading-none text-amber-100 md:px-1.5 md:py-1 md:text-xs">
-                          AB
+                    <span className="hidden md:inline" aria-hidden>
+                      ‹
+                    </span>
+                  </button>
+                </div>
+              </div>
+              {opponentLineupLoading ? (
+                <p className="text-xs text-zinc-500">Loading…</p>
+              ) : opposingLineupBoard.ordered.length === 0 ? (
+                <p className="text-xs text-zinc-500">Set the lineup on Record.</p>
+              ) : (
+                <ul className="grid min-h-0 flex-1 grid-cols-2 gap-x-1 gap-y-1.5 overflow-y-auto overscroll-contain sm:gap-x-1.5 sm:gap-y-2 md:flex md:flex-col md:gap-1.5">
+                  {opposingLineupBoard.ordered.map((row) => {
+                    const atBat = !!(batterId && row.playerId === batterId);
+                    const onDeck =
+                      !atBat &&
+                      opposingLineupBoard.onDeckPlayerId != null &&
+                      row.playerId === opposingLineupBoard.onDeckPlayerId;
+                    const jerseyStr = row.jersey != null ? `#${row.jersey}` : "—";
+                    return (
+                      <li
+                        key={row.playerId}
+                        className={`flex min-h-0 min-w-0 items-center gap-2 rounded-lg border px-1.5 py-1.5 text-sm md:flex-1 md:gap-2.5 md:px-2.5 md:py-2 md:text-base ${
+                          atBat
+                            ? "border-amber-500/60 bg-amber-950/55 ring-1 ring-amber-500/30"
+                            : onDeck
+                              ? "border-zinc-500/50 bg-zinc-800/90"
+                              : "border-zinc-700/50 bg-zinc-900/70"
+                        }`}
+                      >
+                        <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-amber-400 md:w-8 md:text-base">
+                          {battingOrderOrdinal(row.slot)}
                         </span>
-                      ) : onDeck ? (
-                        <span className="rounded-md bg-zinc-600 px-1 py-0.5 text-[10px] font-bold uppercase leading-none text-zinc-200 md:px-1.5 md:py-1 md:text-xs">
-                          OD
-                        </span>
-                      ) : null}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+                        <div className="min-w-0 flex-1 leading-snug md:leading-normal">
+                          <p className={lineupBatterNameClass(row.name)} title={row.name}>
+                            {row.name}
+                          </p>
+                          <p className="truncate text-xs text-white md:text-sm">
+                            {jerseyStr}{" "}
+                            <span className={batsHandChipClass(row.bats, "compact")}>{batsHandLabel(row.bats)}</span>
+                          </p>
+                        </div>
+                        <div className="shrink-0">
+                          {atBat ? (
+                            <span className="rounded-md bg-amber-600/40 px-1 py-0.5 text-[10px] font-bold uppercase leading-none text-amber-100 md:px-1.5 md:py-1 md:text-xs">
+                              AB
+                            </span>
+                          ) : onDeck ? (
+                            <span className="rounded-md bg-zinc-600 px-1 py-0.5 text-[10px] font-bold uppercase leading-none text-zinc-200 md:px-1.5 md:py-1 md:text-xs">
+                              OD
+                            </span>
+                          ) : null}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
           )}
-        </section>
+        </div>
 
-        {/* Center: primary coaching focus */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden p-2 pb-1 md:p-0 md:pb-0">
+        {lineupCollapsed ? (
+          <button
+            type="button"
+            className="touch-manipulation flex shrink-0 items-center justify-center gap-2 border-b border-zinc-800 bg-zinc-900/80 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-amber-400/90 active:bg-zinc-800 md:hidden"
+            onClick={() => setLineupPanelCollapsed(false)}
+            aria-label="Show opposing lineup"
+          >
+            <span aria-hidden>▼</span>
+            Show lineup
+            {batterId && opposingLineupBoard.ordered.some((r) => r.playerId === batterId) ? (
+              <span className="rounded bg-amber-600/40 px-1.5 py-0.5 text-[10px] font-bold text-amber-100">AB</span>
+            ) : null}
+          </button>
+        ) : null}
+
+        {/* Center: primary coaching focus — fixed row heights on tablet+ so pitch sequence scrolls inside its panel */}
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden p-2 pb-1 md:p-0 md:pb-0">
           {lineupGuardLoading ? (
             <p
               className="shrink-0 rounded-lg border border-sky-700/50 bg-sky-950/30 px-3 py-2 text-center text-sm leading-snug text-sky-100/95"
@@ -1448,9 +1563,10 @@ function CoachPitchPad({
               Record for this PA.
             </p>
           ) : null}
+          {/* Overlay (not in flow): appearing mid-AB must not squeeze the full-game panel below it. */}
           {pitchTypesLocked && !pitchDefenseOnlyBlocked ? (
             <p
-              className="shrink-0 rounded-lg border border-amber-600/50 bg-amber-950/35 px-3 py-2 text-center text-sm leading-snug text-amber-100/95"
+              className="absolute left-1/2 top-1 z-30 w-[min(44rem,calc(100%-1rem))] -translate-x-1/2 rounded-lg border border-amber-600/60 bg-amber-950/95 px-3 py-2 text-center text-sm leading-snug text-amber-100/95 shadow-lg shadow-black/40 md:top-0"
               role="status"
             >
               {pitchTypeBlockReason === "strikes"
@@ -1459,9 +1575,10 @@ function CoachPitchPad({
             </p>
           ) : null}
 
+          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden md:gap-2">
           {pitcherId ? (
             <section
-              className="flex min-h-[min(36dvh,20rem)] min-w-0 flex-[1.35] flex-col overflow-hidden md:min-h-[14rem] lg:min-h-[12.5rem]"
+              className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden max-md:max-h-[min(38dvh,20rem)] max-md:shrink-0"
               aria-label="Full game pitch data for this pitcher"
             >
               <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden md:gap-2">
@@ -1477,19 +1594,16 @@ function CoachPitchPad({
                         <p className="text-base font-bold leading-tight text-zinc-100 sm:text-lg">
                           {pitchSnap.name}
                         </p>
-                        <span className="text-sm font-semibold tabular-nums text-zinc-400 sm:text-base">
+                        <span className="text-sm font-semibold tabular-nums text-white sm:text-base">
                           {pitchSnap.jersey != null ? `#${pitchSnap.jersey}` : "—"}
                         </span>
                         <span
-                          className="text-sm font-semibold tabular-nums text-zinc-300 sm:text-base"
-                          title="Pitches thrown this game"
+                          className="text-sm font-semibold tabular-nums text-amber-200/95 sm:text-base"
+                          title="Pitches thrown in the current half-inning (saved PAs + live AB)"
                         >
                           {pitcherGameIntelLoading
                             ? "…"
-                            : pitcherFullGameMix != null &&
-                                pitcherFullGameMix.plateAppearancesWithPitchCount > 0
-                              ? `${pitcherFullGameMix.pitchesTotal} pitches`
-                              : "— pitches"}
+                            : `${pitcherPitchesThisInning ?? 0} pitches this inning`}
                         </span>
                       </div>
                       {pitchSnap.line1 ? (
@@ -1512,7 +1626,6 @@ function CoachPitchPad({
                       compact
                       coachPad
                       coachPadExpanded
-                      hidePitchesInRates
                       hideLobInRates
                       coachPadFullGame
                     />
@@ -1522,12 +1635,13 @@ function CoachPitchPad({
             </section>
           ) : null}
 
-          <div className="flex min-h-0 min-w-0 flex-col gap-1.5 overflow-hidden pt-1.5 md:max-h-[18dvh] md:flex-row md:gap-2 lg:max-h-[20dvh] xl:max-h-none xl:gap-3 xl:pt-2">
+          {/* Fixed-height row at every breakpoint — long pitch sequences scroll inside, never resize the page */}
+          <div className="flex h-[min(32dvh,17rem)] max-h-[min(32dvh,17rem)] min-h-0 w-full shrink-0 grow-0 flex-col gap-1.5 overflow-hidden pt-1.5 md:h-[min(42dvh,23rem)] md:max-h-[min(42dvh,23rem)] md:flex-row md:gap-2 md:pt-0 lg:h-[min(40dvh,21rem)] lg:max-h-[min(40dvh,21rem)] xl:gap-3">
             <section
-              className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border-2 border-amber-600/35 bg-gradient-to-b from-zinc-900/90 to-zinc-950/95 p-1.5 shadow-[0_0_0_1px_rgba(251,191,36,0.12)] md:min-h-0 md:min-w-0 md:flex-1 md:p-1.5 xl:p-2.5"
+              className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border-2 border-amber-600/35 bg-gradient-to-b from-zinc-900/90 to-zinc-950/95 p-1.5 shadow-[0_0_0_1px_rgba(251,191,36,0.12)] md:min-w-0 md:flex-1 md:p-1.5 xl:p-2.5"
               aria-label="This game: batter vs current pitcher"
             >
-              <div className="shrink-0 border-b border-amber-600/25 pb-1 md:pb-1 xl:pb-2">
+              <div className="shrink-0 border-b border-amber-600/25 pb-1">
                 <h3 className="text-center text-xs font-bold uppercase tracking-wide text-amber-200/95 sm:text-sm">
                   Matchup · vs {pitchSnapLoading ? "…" : (pitchSnap?.name ?? "pitcher")}
                 </h3>
@@ -1547,7 +1661,7 @@ function CoachPitchPad({
               ) : batterIntelLoading ? (
                 <p className="mt-3 text-center text-sm text-zinc-500">Loading matchup…</p>
               ) : (
-                <div className="mt-1 flex min-h-0 flex-1 flex-col overflow-hidden md:mt-1.5 xl:mt-3">
+                <div className="mt-1 flex min-h-0 flex-1 flex-col overflow-hidden md:mt-1.5">
                   <CurrentBatterPitchDataCard
                     batterName={batterIntelDisplayName}
                     pas={matchupPasMerged}
@@ -1562,12 +1676,12 @@ function CoachPitchPad({
             </section>
 
             <aside
-              className="flex max-h-[min(24dvh,13rem)] min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900/70 md:max-h-full md:min-h-0 md:w-[min(22rem,36vw)] md:shrink-0 xl:max-h-none xl:self-stretch"
+              className="flex h-full max-h-full min-h-0 w-full shrink-0 grow-0 flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900/70 md:w-80 md:max-w-[32vw]"
               aria-label="This at-bat pitch sequence"
             >
               <div className="shrink-0 border-b border-zinc-700 px-2 py-1 sm:px-2.5 md:py-1.5 xl:py-2.5">
                 <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-1">
-                  <h2 className="text-xs font-bold uppercase tracking-wide text-zinc-400 sm:text-sm">
+                  <h2 className="text-xs font-bold uppercase tracking-wide text-white sm:text-sm">
                     This AB
                   </h2>
                   <div
@@ -1575,14 +1689,14 @@ function CoachPitchPad({
                     aria-label={`Count ${headerCountBalls} and ${headerCountStrikes}, ${outs} out${outs === 1 ? "" : "s"}`}
                   >
                     <div className="flex items-baseline gap-1.5">
-                      <span className="text-[9px] font-semibold uppercase tracking-wide text-zinc-500 sm:text-[10px]">
+                      <span className="text-[9px] font-semibold uppercase tracking-wide text-white sm:text-[10px]">
                         Count
                       </span>
                       <span className="font-mono text-3xl font-bold tabular-nums leading-none text-white sm:text-4xl">
                         {headerCountBalls}-{headerCountStrikes}
                       </span>
                     </div>
-                    <span className="text-xs font-semibold tabular-nums text-zinc-400 sm:text-sm">
+                    <span className="text-xs font-semibold tabular-nums text-white sm:text-sm">
                       {outs} out{outs === 1 ? "" : "s"}
                     </span>
                   </div>
@@ -1598,9 +1712,10 @@ function CoachPitchPad({
                 </p>
               ) : (
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                  {/* Cap visible list at ~5 pitch rows (row ≈ 2.875rem + gaps + padding); longer ABs scroll. */}
                   <ol
                     ref={sequenceListRef}
-                    className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain px-2 py-1.5 sm:px-2.5 md:gap-2 md:py-2 xl:px-3"
+                    className="flex min-h-0 max-h-[16.75rem] flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain px-2 py-1.5 sm:px-2.5 md:max-h-[17.5rem] md:gap-2 md:py-2 xl:px-3"
                   >
                     {sequenceRowsThisBatter.map((r) => {
                       const fullIdx = sequenceRowsThisBatter.findIndex((x) => x.id === r.id);
@@ -1629,7 +1744,7 @@ function CoachPitchPad({
                           }`}
                         >
                         <div className="flex items-center gap-2 sm:gap-2.5">
-                          <span className="w-6 shrink-0 text-xs font-semibold tabular-nums text-zinc-500 sm:w-7 sm:text-sm">
+                          <span className="w-6 shrink-0 text-xs font-semibold tabular-nums text-white sm:w-7 sm:text-sm">
                             #{r.pitch_number}
                           </span>
                           <span className="w-[3.75rem] shrink-0 whitespace-nowrap text-sm font-semibold text-zinc-100 sm:w-[4.25rem]">
@@ -1657,17 +1772,20 @@ function CoachPitchPad({
               )}
             </aside>
           </div>
+          </div>
         </div>
       </main>
 
       <footer className="relative z-20 shrink-0 border-t-2 border-zinc-700 bg-zinc-900 px-2 py-3 shadow-[0_-14px_48px_rgba(0,0,0,0.55)] sm:px-4 sm:py-3.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-        {pitchLogBusy ? (
-          <p className="mb-2 text-center text-xs font-medium text-amber-200 sm:text-sm" role="status">
-            Saving pitch…
-          </p>
-        ) : pitchTypeCooldown ? (
-          <p className="mb-2 text-center text-xs text-zinc-500 sm:text-sm" role="status">
-            Ready for next pitch
+        {/* Overlay status so the footer never changes height (a growing footer squeezes the full-game panel above). */}
+        {pitchLogBusy || pitchTypeCooldown ? (
+          <p
+            className={`pointer-events-none absolute inset-x-0 -top-6 mx-auto w-fit rounded-t-md px-3 py-1 text-center text-xs font-medium sm:text-sm ${
+              pitchLogBusy ? "bg-zinc-900/95 text-amber-200" : "bg-zinc-900/95 text-zinc-400"
+            }`}
+            role="status"
+          >
+            {pitchLogBusy ? "Saving pitch…" : "Ready for next pitch"}
           </p>
         ) : null}
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">

@@ -13,6 +13,7 @@ export type StatsPageUrlState = {
   po: string;
   pb: string;
   bfc: string | null;
+  bdc: string | null;
   pfc: string | null;
   bbs: string | null;
   pbs: string | null;
@@ -43,6 +44,7 @@ export function buildStatsUrlState(get: (key: string) => string | null): StatsPa
     po: normalizeOpponentFilterParam(get("po")),
     pb: get("pb") ?? "",
     bfc: get("bfc"),
+    bdc: get("bdc"),
     pfc: get("pfc"),
     bbs: get("bbs"),
     pbs: get("pbs"),

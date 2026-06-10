@@ -49,6 +49,21 @@ export function pasMatchFinalCount(pa: PlateAppearance, balls: number, strikes: 
   return cb === balls && cs === strikes;
 }
 
+/** Saved final counts with fewer than two strikes cannot be the count when a PA ends in a strikeout. */
+export function finalCountBucketAllowsStrikeout(bucket: BattingFinalCountBucketKey): boolean {
+  const strikes = Number(bucket.split("-")[1]);
+  return Number.isFinite(strikes) && strikes >= 2;
+}
+
+/** Zero SO / K% on final-count lines where a strikeout ending is impossible. */
+export function battingStatsForFinalCountBucket(
+  stats: BattingStats | null | undefined,
+  bucket: BattingFinalCountBucketKey
+): BattingStats | null | undefined {
+  if (!stats || finalCountBucketAllowsStrikeout(bucket)) return stats;
+  return { ...stats, so: 0, kPct: 0 };
+}
+
 function buildFinalCountMapForPasList(
   list: PlateAppearance[],
   playerId: string,
@@ -77,7 +92,7 @@ function buildFinalCountMapForPasList(
     st.gs = gamesStartedInSplit(startedGames, sub);
     mergeContactProfileIntoBattingStats(st, sub, eventsByPaId);
     st.e = fieldingErrorsByPlayerFromPas(sub)[playerId] ?? 0;
-    out[key] = st;
+    out[key] = battingStatsForFinalCountBucket(st, key) ?? null;
   }
   return out;
 }
@@ -242,13 +257,13 @@ export function computeBattingStatsWithSplitsFromPas(
         ab: 0,
         r: runsByPlayer[playerId] ?? 0,
         gp: 0,
-        gs: startedGames.size,
+        gs: 0,
       };
     }
     overall.r = runsByPlayer[playerId] ?? 0;
     if (br.sb > 0 || br.cs > 0) mergeBaserunningIntoBattingStats(overall, br);
     overall.gp = distinctGameCount(list);
-    overall.gs = startedGames.size;
+    overall.gs = gamesStartedInSplit(startedGames, list);
     mergeContactProfileIntoBattingStats(overall, list, eventsByPaId);
     const eN = eByPlayer[playerId] ?? 0;
     overall.e = eN;

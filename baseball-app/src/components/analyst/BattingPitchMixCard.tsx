@@ -18,7 +18,7 @@ import {
   type PitchTypeDistributionResult,
 } from "@/lib/compute/pitchTypeDistributionFromPitchLog";
 import { formatBatterGameStatLine } from "@/lib/format/batterGameLine";
-import { pitchTrackerAbbrev, pitchTrackerTypeLabel } from "@/lib/pitchTrackerUi";
+import { pitchTrackerAbbrev, pitchTrackerTypeChipClass, pitchTrackerTypeLabel } from "@/lib/pitchTrackerUi";
 import type { PitchEvent, PlateAppearance, Player } from "@/lib/types";
 
 const RESULT_ADDS_ONE_OUT = new Set<PlateAppearance["result"]>([
@@ -109,7 +109,38 @@ function pitchDataCardHeaderStatClass(
   return `min-w-0 flex-1 text-right font-semibold tabular-nums leading-tight text-[var(--text)] ${size}`;
 }
 
-function coachPadStatTypography(coachPadExpanded: boolean) {
+/**
+ * Coach pad stacked-tile scale: "lg" for the full-game strip, "md" for the
+ * (slightly shorter) matchup card so two tile rows always fit without scrolling.
+ */
+type CoachPadTileScale = false | "md" | "lg";
+
+const coachPadTileScale = (
+  coachPadExpanded: boolean,
+  coachPadFullGame: boolean
+): CoachPadTileScale => (coachPadFullGame ? "lg" : coachPadExpanded ? "md" : false);
+
+function coachPadStatTypography(coachPadExpanded: boolean, tiles: CoachPadTileScale = false) {
+  if (tiles === "lg") {
+    return {
+      label:
+        "shrink-0 font-display font-semibold uppercase tracking-wider text-white text-[9px] leading-none md:text-[10px]",
+      val: "tabular-nums font-bold leading-none text-[var(--accent)] text-xl md:text-2xl lg:text-3xl",
+      missing:
+        "tabular-nums font-medium leading-none text-white text-xl md:text-2xl lg:text-3xl",
+      sub: "tabular-nums font-semibold text-[var(--accent)]/85 text-xs leading-none md:text-sm",
+    };
+  }
+  if (tiles === "md") {
+    return {
+      label:
+        "shrink-0 font-display font-semibold uppercase tracking-wider text-white text-[9px] leading-none md:text-[10px]",
+      val: "tabular-nums font-bold leading-none text-[var(--accent)] text-lg md:text-xl",
+      missing:
+        "tabular-nums font-medium leading-none text-white text-lg md:text-xl",
+      sub: "tabular-nums font-semibold text-[var(--accent)]/85 text-[10px] leading-none md:text-[11px]",
+    };
+  }
   return {
     label: coachPadExpanded
       ? "shrink-0 font-semibold text-white text-xs leading-none md:text-sm"
@@ -118,24 +149,41 @@ function coachPadStatTypography(coachPadExpanded: boolean) {
       ? "tabular-nums font-bold leading-none text-[var(--accent)] text-base md:text-lg"
       : "tabular-nums font-semibold text-[var(--accent)]",
     missing: coachPadExpanded
-      ? "tabular-nums font-medium leading-none text-[var(--text-muted)] text-base md:text-lg"
-      : "tabular-nums font-medium text-[var(--text-muted)]",
+      ? "tabular-nums font-medium leading-none text-white text-base md:text-lg"
+      : "tabular-nums font-medium text-white",
     sub: coachPadExpanded
       ? "tabular-nums font-semibold text-[var(--accent)]/85 text-[10px] leading-none md:text-[11px]"
       : "text-[var(--accent)]/85",
   };
 }
 
-/** Inline label:value; expanded uses slightly larger type without stacked tiles (avoids grid overlap). */
+/**
+ * Inline label:value; expanded uses slightly larger type without stacked tiles (avoids grid overlap).
+ * Coach pad tile scales stack the label above a much larger value to fill the fixed-height cards.
+ */
 function coachPadStatWrap(
   coachPadExpanded: boolean,
   label: string,
   title: string,
   compact: boolean,
   value: ReactNode,
-  nowrap = false
+  nowrap = false,
+  tiles: CoachPadTileScale = false
 ) {
-  const stat = coachPadStatTypography(coachPadExpanded);
+  const stat = coachPadStatTypography(coachPadExpanded, tiles);
+  if (tiles) {
+    return (
+      <span
+        className={`flex min-w-0 max-w-full flex-col items-start leading-none ${
+          tiles === "lg" ? "gap-y-1" : "gap-y-0.5"
+        }`}
+        title={title}
+      >
+        <span className={stat.label}>{label.replace(/:$/, "")}</span>
+        {value}
+      </span>
+    );
+  }
   return (
     <span
       className={`inline-flex min-w-0 max-w-full items-baseline gap-x-1 gap-y-0 ${
@@ -288,12 +336,14 @@ function PitchMixDistributionBlock({
   coachPad = false,
   coachPadDense = false,
   coachPadExpanded = false,
+  coachPadFullGame = false,
 }: {
   dist: PitchTypeDistributionResult;
   compact: boolean;
   coachPad?: boolean;
   coachPadDense?: boolean;
   coachPadExpanded?: boolean;
+  coachPadFullGame?: boolean;
 }) {
   const stat = coachPadStatTypography(coachPadExpanded);
   /** Mix lists up to 7 types — values one step smaller than Rates/Contact on coach pad. */
@@ -304,7 +354,7 @@ function PitchMixDistributionBlock({
   if (dist.typedTotal <= 0 || dist.entries.length === 0) {
     return (
       <p
-        className={`leading-snug text-[var(--text-muted)] ${
+        className={`leading-snug text-white ${
           coachPadExpanded
             ? "text-sm leading-snug md:text-base"
             : compact
@@ -318,6 +368,46 @@ function PitchMixDistributionBlock({
       </p>
     );
   }
+  const tiles = coachPadTileScale(coachPadExpanded, coachPadFullGame);
+  if (tiles) {
+    const chipClass =
+      tiles === "lg"
+        ? "h-6 w-9 text-[11px] md:h-7 md:w-10 md:text-xs"
+        : "h-6 w-9 text-[11px]";
+    const pctClass =
+      tiles === "lg"
+        ? "text-lg md:text-xl lg:text-2xl"
+        : "text-base md:text-lg lg:text-xl";
+    const countClass = tiles === "lg" ? "text-xs md:text-sm" : "text-[11px] md:text-xs";
+    return (
+      <div
+        className="grid grid-cols-2 content-start gap-x-2 gap-y-2 md:gap-x-2.5 md:gap-y-2.5"
+        role="group"
+        aria-label="Pitch type mix among logged pitches with a type"
+      >
+        {dist.entries.map((e) => (
+          <span
+            key={e.type}
+            className="inline-flex min-w-0 max-w-full items-center gap-x-1.5 leading-none md:gap-x-2"
+            title={`${pitchTrackerAbbrev(e.type)} — ${pitchTrackerTypeLabel(e.type)}`}
+          >
+            <span
+              className={`inline-flex shrink-0 items-center justify-center rounded-md border font-bold ${chipClass} ${pitchTrackerTypeChipClass(e.type)}`}
+            >
+              {pitchTrackerAbbrev(e.type)}
+            </span>
+            <span className={`tabular-nums font-bold leading-none text-[var(--accent)] ${pctClass}`}>
+              {formatPct(e.pct)}
+            </span>
+            <span className={`tabular-nums font-semibold leading-none text-white ${countClass}`}>
+              ({e.count})
+            </span>
+          </span>
+        ))}
+      </div>
+    );
+  }
+  /* Same chip + value look as the coach pitch pad Mix cards, at the table-card scale. */
   return (
     <div
       className={pitchMixDistributionGridClass(compact, coachPad, coachPadDense, coachPadExpanded)}
@@ -325,27 +415,21 @@ function PitchMixDistributionBlock({
       aria-label="Pitch type mix among logged pitches with a type"
     >
       {dist.entries.map((e) => {
-        const full = pitchTrackerTypeLabel(e.type);
-        const mixTitle = `${pitchTrackerAbbrev(e.type)} — ${full}`;
-        return coachPadExpanded ? (
-          <span key={e.type} className="inline-flex min-w-0 max-w-full flex-wrap items-baseline gap-x-1 leading-none">
-            {coachPadStatWrap(
-              true,
-              `${pitchTrackerAbbrev(e.type)}:`,
-              mixTitle,
-              compact,
-              <span className={valClass}>
-                {formatPct(e.pct)} ({e.count})
-              </span>
-            )}
-          </span>
-        ) : (
-          <span key={e.type} className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1">
-            <span className="min-w-0 font-semibold text-white" title={mixTitle}>
-              {full}:
+        const mixTitle = `${pitchTrackerAbbrev(e.type)} — ${pitchTrackerTypeLabel(e.type)}`;
+        return (
+          <span
+            key={e.type}
+            className="inline-flex min-w-0 max-w-full items-center gap-x-1.5 leading-none"
+            title={mixTitle}
+          >
+            <span
+              className={`inline-flex h-5 w-8 shrink-0 items-center justify-center rounded border text-[10px] font-bold ${pitchTrackerTypeChipClass(e.type)}`}
+            >
+              {pitchTrackerAbbrev(e.type)}
             </span>
-            <span className={valClass}>
-              {formatPct(e.pct)} ({e.count})
+            <span className={`whitespace-nowrap ${valClass}`}>
+              {formatPct(e.pct)}{" "}
+              <span className="font-medium text-white">({e.count})</span>
             </span>
           </span>
         );
@@ -370,7 +454,8 @@ function PitchMixExtrasBlock({
   coachPadFullGame?: boolean;
 }) {
   const eff = agg ?? EMPTY_EXTRAS;
-  const stat = coachPadStatTypography(coachPadExpanded);
+  const tiles = coachPadTileScale(coachPadExpanded, coachPadFullGame);
+  const stat = coachPadStatTypography(coachPadExpanded, tiles);
   const valClass = stat.val;
   const missingClass = stat.missing;
 
@@ -386,7 +471,7 @@ function PitchMixExtrasBlock({
   const iffPct = bip > 0 ? eff.iff / bip : null;
 
   const cell = (label: string, title: string, value: ReactNode) =>
-    coachPadStatWrap(coachPadExpanded, label, title, compact, value);
+    coachPadStatWrap(coachPadExpanded, label, title, compact, value, false, tiles);
 
   const emptyCell = coachPadExpanded ? null : <span className="min-h-[1em]" aria-hidden />;
 
@@ -404,11 +489,11 @@ function PitchMixExtrasBlock({
   const bipIff = cell("IFF%:", "Infield flies ÷ tagged balls in play", <span className={valClass}>{formatPct(iffPct)}</span>);
 
   const fullGameContactGrid =
-    "grid content-start gap-x-2 gap-y-1.5 md:gap-x-2.5 md:gap-y-2";
+    "grid content-start gap-x-2 gap-y-2 md:gap-x-2.5 md:gap-y-2.5";
 
-  if (coachPadFullGame) {
+  if (tiles) {
     return (
-      <div className="flex min-w-0 flex-col gap-1.5 md:gap-2" role="group" aria-label="Pitch log rates and batted ball mix">
+      <div className="flex min-w-0 flex-col gap-2 md:gap-2.5" role="group" aria-label="Pitch log rates and batted ball mix">
         <div className={`${fullGameContactGrid} grid-cols-4`}>
           {bipGb}
           {bipLd}
@@ -448,8 +533,6 @@ function PitchMixMiniCard({
   coachPad = false,
   coachPadDense = false,
   coachPadExpanded = false,
-  coachPadFullGame = false,
-  mixScroll = false,
   children,
 }: {
   title: string;
@@ -457,42 +540,41 @@ function PitchMixMiniCard({
   coachPad?: boolean;
   coachPadDense?: boolean;
   coachPadExpanded?: boolean;
-  coachPadFullGame?: boolean;
-  /** Full-game Mix panel: scroll when pitch types overflow. */
-  mixScroll?: boolean;
   children: ReactNode;
 }) {
   const titleClass = compact
     ? coachPad
       ? coachPadExpanded
-        ? "mb-1 font-display text-xs font-bold uppercase tracking-wider text-white/90 md:text-sm"
+        ? "mb-0.5 font-display text-xs font-bold uppercase tracking-wider text-white md:text-sm"
         : coachPadDense
-        ? "mb-0.5 font-display text-[8px] font-semibold uppercase tracking-wider text-white/75 sm:text-[9px]"
-        : "mb-1 font-display text-[9px] font-semibold uppercase tracking-wider text-white/75 md:text-[11px]"
-      : "mb-0.5 font-display text-[8px] font-semibold uppercase tracking-wider text-white/75"
-    : "mb-1 font-display text-[9px] font-semibold uppercase tracking-wider text-white/80 sm:text-[10px]";
+        ? "mb-0.5 font-display text-[8px] font-semibold uppercase tracking-wider text-white sm:text-[9px]"
+        : "mb-1 font-display text-[9px] font-semibold uppercase tracking-wider text-white md:text-[11px]"
+      : "mb-0.5 font-display text-[8px] font-semibold uppercase tracking-wider text-white"
+    : "mb-1 font-display text-[9px] font-semibold uppercase tracking-wider text-white sm:text-[10px]";
   const shellClass =
     coachPad && coachPadExpanded
-      ? "flex h-full min-h-0 min-w-0 flex-col break-inside-avoid rounded-lg border border-[var(--border)]/60 bg-[var(--bg-elevated)]/40 px-2 py-1.5 md:px-2 md:py-1.5"
+      ? "flex h-full min-h-0 min-w-0 flex-col break-inside-avoid rounded-lg border border-[var(--border)]/60 bg-[var(--bg-elevated)]/40 px-2 py-1 md:px-2 md:py-1"
       : coachPad && coachPadDense
         ? "flex min-w-0 flex-col break-inside-avoid rounded-md border border-[var(--border)]/55 bg-[var(--bg-elevated)]/30 px-1.5 py-1 sm:px-2 sm:py-1.5"
         : coachPad
           ? "flex min-w-0 flex-col break-inside-avoid rounded-md border border-[var(--border)]/55 bg-[var(--bg-elevated)]/30 px-2 py-1.5 sm:px-2.5 sm:py-2 md:px-3 md:py-2.5"
           : "flex min-w-0 flex-col break-inside-avoid rounded-md border border-[var(--border)]/55 bg-[var(--bg-elevated)]/30 px-2 py-1.5 sm:px-2.5 sm:py-2";
-  const contentScroll = coachPadExpanded && (!coachPadFullGame || mixScroll);
+  /** Coach pad tiles: `my-auto` centers when content fits; the wrapper scrolls (no clipped tiles) when squeezed. */
+  if (coachPadExpanded) {
+    return (
+      <div className={shellClass}>
+        <p className={titleClass}>{title}</p>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain touch-pan-y">
+          <div className="my-auto min-w-0">{children}</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={shellClass}>
       <p className={titleClass}>{title}</p>
-      <div
-        className={
-          contentScroll
-            ? "min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y"
-            : "min-h-0 min-w-0 flex-1 overflow-hidden"
-        }
-      >
-        {children}
-      </div>
+      <div className="min-h-0 min-w-0 flex-1 overflow-hidden">{children}</div>
     </div>
   );
 }
@@ -524,7 +606,8 @@ function PitchMixRatesLine({
   /** Coach full-game strip: 3-column Rates grid so P/PA stays visible. */
   coachPadFullGame?: boolean;
 }) {
-  const stat = coachPadStatTypography(coachPadExpanded);
+  const tiles = coachPadTileScale(coachPadExpanded, coachPadFullGame);
+  const stat = coachPadStatTypography(coachPadExpanded, tiles);
   const valClass = stat.val;
   const missingClass = stat.missing;
 
@@ -546,21 +629,26 @@ function PitchMixRatesLine({
         <span className={stat.sub}> ({formatPct(mix.firstPitchStrikePct)})</span>
       ) : null}
     </span>,
-    true
+    true,
+    tiles
   );
   const strikePctBlock = coachPadStatWrap(
     coachPadExpanded,
     "Strike %:",
     "Strike percentage",
     compact,
-    <span className={mix.strikePct != null ? valClass : missingClass}>{formatPct(mix.strikePct)}</span>
+    <span className={mix.strikePct != null ? valClass : missingClass}>{formatPct(mix.strikePct)}</span>,
+    false,
+    tiles
   );
   const ballsBlock = coachPadStatWrap(
     coachPadExpanded,
     "Balls:",
     "Balls thrown (pitch log)",
     compact,
-    <span className={pitchLog ? valClass : missingClass}>{pitchLog ? extras!.balls : "—"}</span>
+    <span className={pitchLog ? valClass : missingClass}>{pitchLog ? extras!.balls : "—"}</span>,
+    false,
+    tiles
   );
   const strikesBlock = coachPadStatWrap(
     coachPadExpanded,
@@ -569,7 +657,9 @@ function PitchMixRatesLine({
     compact,
     <span className={pitchLog ? valClass : missingClass}>
       {pitchLog ? extras!.strikesThrown : "—"}
-    </span>
+    </span>,
+    false,
+    tiles
   );
   const pitchesBlock = coachPadStatWrap(
     coachPadExpanded,
@@ -578,14 +668,18 @@ function PitchMixRatesLine({
     compact,
     <span className={mix.plateAppearancesWithPitchCount > 0 ? valClass : missingClass}>
       {mix.plateAppearancesWithPitchCount > 0 ? mix.pitchesTotal : "—"}
-    </span>
+    </span>,
+    false,
+    tiles
   );
   const ppaBlock = coachPadStatWrap(
     coachPadExpanded,
     "P/PA:",
     "Pitches per plate appearance",
     compact,
-    <span className={valClass}>{formatPpa(mix.pitchesPerPA)}</span>
+    <span className={valClass}>{formatPpa(mix.pitchesPerPA)}</span>,
+    false,
+    tiles
   );
   const lobBlock = showLob
     ? coachPadStatWrap(
@@ -599,12 +693,13 @@ function PitchMixRatesLine({
 
   return (
     <div
-      className={pitchMixMiniGridClass(compact, coachPad, coachPadDense, coachPadExpanded, coachPadFullGame)}
+      className={pitchMixMiniGridClass(compact, coachPad, coachPadDense, coachPadExpanded, tiles !== false)}
       role="group"
       aria-label={ariaLabel}
     >
       {coachPadFullGame ? (
         <>
+          {pitchesBlock}
           {strikesBlock}
           {ballsBlock}
           {fpsBlock}
@@ -646,6 +741,7 @@ function TwoStrikePitchMetricsRow({
   coachPad = false,
   coachPadDense = false,
   coachPadExpanded = false,
+  coachPadFullGame = false,
   perspective,
   embedded = false,
 }: {
@@ -654,11 +750,13 @@ function TwoStrikePitchMetricsRow({
   coachPad?: boolean;
   coachPadDense?: boolean;
   coachPadExpanded?: boolean;
+  coachPadFullGame?: boolean;
   perspective: "batter" | "pitcher";
   /** Inside a titled mini card: no top border or duplicate “2 strikes” label. */
   embedded?: boolean;
 }) {
-  const stat = coachPadStatTypography(coachPadExpanded);
+  const tiles = coachPadTileScale(coachPadExpanded, coachPadFullGame);
+  const stat = coachPadStatTypography(coachPadExpanded, tiles);
   const valClass = stat.val;
   const missingClass = stat.missing;
 
@@ -685,7 +783,7 @@ function TwoStrikePitchMetricsRow({
     <div className={gridClass} role="group" aria-label={aria}>
       {embedded ? null : (
         <span
-          className="col-span-2 shrink-0 font-semibold uppercase tracking-wide text-white/90"
+          className="col-span-2 shrink-0 font-semibold uppercase tracking-wide text-white"
           title={
             perspective === "pitcher"
               ? "Rates on pitches thrown when the hitter already had 2 strikes"
@@ -700,28 +798,36 @@ function TwoStrikePitchMetricsRow({
         "Sw%:",
         "Swings ÷ pitches at 2 strikes",
         compact,
-        <span className={swingPct != null ? valClass : missingClass}>{formatPct(swingPct)}</span>
+        <span className={swingPct != null ? valClass : missingClass}>{formatPct(swingPct)}</span>,
+        false,
+        tiles
       )}
       {coachPadStatWrap(
         coachPadExpanded,
         "Whiff%:",
         "Swinging strikes ÷ swings at 2 strikes",
         compact,
-        <span className={whiffPct != null ? valClass : missingClass}>{formatPct(whiffPct)}</span>
+        <span className={whiffPct != null ? valClass : missingClass}>{formatPct(whiffPct)}</span>,
+        false,
+        tiles
       )}
       {coachPadStatWrap(
         coachPadExpanded,
         "Foul%:",
         "Fouls ÷ pitches at 2 strikes (spoiling / fighting pitches off)",
         compact,
-        <span className={foulPct != null ? valClass : missingClass}>{formatPct(foulPct)}</span>
+        <span className={foulPct != null ? valClass : missingClass}>{formatPct(foulPct)}</span>,
+        false,
+        tiles
       )}
       {coachPadStatWrap(
         coachPadExpanded,
         countLabel,
         countTitle,
         compact,
-        <span className={valClass}>{p}</span>
+        <span className={valClass}>{p}</span>,
+        false,
+        tiles
       )}
     </div>
   );
@@ -865,7 +971,7 @@ function PitchMixRow({
   );
   const mixMini =
     stripTypeDistribution != null ? (
-      <PitchMixMiniCard title="Mix" compact={compact} {...padProps} mixScroll={coachPadFullGame}>
+      <PitchMixMiniCard title="Mix" compact={compact} {...padProps}>
         <PitchMixDistributionBlock dist={stripTypeDistribution} compact={compact} {...padProps} />
       </PitchMixMiniCard>
     ) : null;
@@ -892,7 +998,7 @@ function PitchMixRow({
           }
         >
           {coachPad && coachPadExpanded ? (
-            <div className="grid h-full min-h-0 flex-1 grid-cols-2 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-2 sm:gap-x-2 sm:gap-y-3 md:gap-y-3 lg:gap-2.5">
+            <div className="grid h-full min-h-0 flex-1 grid-cols-2 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-2 sm:gap-x-2 sm:gap-y-2 md:gap-y-2 lg:gap-2">
               {expandedCell(ratesMini)}
               {showExtras ? expandedCell(contactMini) : null}
               {expandedCell(twoStrikeMini)}
@@ -1177,14 +1283,14 @@ export function BattingPitchMixCard({
     >
       {!highlightCurrent && multi ? (
         <div className="mb-1 flex flex-wrap items-baseline justify-end gap-x-2">
-          <span className="text-[9px] font-medium tabular-nums text-[var(--text-muted)]">
+          <span className="text-[9px] font-medium tabular-nums text-white">
             {rows.length} pitchers
           </span>
         </div>
       ) : null}
 
       {rows.length === 0 && !(highlightCurrent && primaryRow) ? (
-        <p className="text-[10px] text-[var(--text-muted)]">—</p>
+        <p className="text-[10px] text-white">—</p>
       ) : highlightCurrent && primaryRow ? (
         <>
           <div className="mb-1.5 flex flex-wrap items-baseline gap-x-4 gap-y-0.5">
@@ -1202,7 +1308,7 @@ export function BattingPitchMixCard({
                 className={`${pitchDataCardHeaderStatClass(compact)} shrink-0 whitespace-nowrap pr-6 sm:pr-10 md:pr-14`}
                 title={`Pitches thrown by ${primaryRow.name} in ${inningHalf === "bottom" ? "bottom" : "top"} ${inning}`}
               >
-                <span className="font-medium text-[var(--text-muted)]">Pitches this inning: </span>
+                <span className="font-medium text-white">Pitches this inning: </span>
                 <span className="font-semibold tabular-nums text-[var(--accent)]">
                   {pitchesThisInning}
                 </span>
@@ -1375,13 +1481,13 @@ export function PitchingPitchMixSupplement({
         <h3 className={titleClass}>Staff & totals</h3>
         {rows.length > 0 ? (
           <p
-            className={`mt-0.5 ${compact ? "text-[9px]" : "text-[10px]"} font-medium uppercase tracking-wide text-[var(--text-muted)]`}
+            className={`mt-0.5 ${compact ? "text-[9px]" : "text-[10px]"} font-medium uppercase tracking-wide text-white`}
           >
             All pitchers
           </p>
         ) : (
           <p
-            className={`mt-0.5 ${compact ? "text-[9px]" : "text-[10px]"} text-[var(--text-muted)]`}
+            className={`mt-0.5 ${compact ? "text-[9px]" : "text-[10px]"} text-white`}
           >
             Team pitch mix (all pitchers)
           </p>
@@ -1487,7 +1593,7 @@ export function CurrentBatterPitchDataCard({
     >
       <div
         className={`flex flex-wrap items-start gap-x-3 ${
-          padExpanded ? "mb-1.5 shrink-0 gap-y-0.5 md:mb-2" : padCoach ? "mb-1.5 gap-y-1 md:mb-2" : "mb-1.5 gap-y-0.5"
+          padExpanded ? "mb-1 shrink-0 gap-y-0.5 md:mb-1.5" : padCoach ? "mb-1.5 gap-y-1 md:mb-2" : "mb-1.5 gap-y-0.5"
         }`}
       >
         <p className={`min-w-0 flex-1 ${nameClass}`} title={batterName}>

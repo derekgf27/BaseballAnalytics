@@ -963,7 +963,7 @@ export async function getBattingStatsForPlayers(
     ab: 0,
     r: runsByPlayer[playerId] ?? 0,
     gp: 0,
-    gs: startedGames.size,
+    gs: 0,
     e: eCounts[playerId] ?? 0,
   });
 
@@ -979,7 +979,7 @@ export async function getBattingStatsForPlayers(
       stats.r = runsByPlayer[playerId] ?? 0;
       if (br.sb > 0 || br.cs > 0) mergeBaserunningIntoBattingStats(stats, br);
       stats.gp = distinctGameCount(pas);
-      stats.gs = startedGames.size;
+      stats.gs = gamesStartedInSplit(startedGames, pas);
       stats.e = eCounts[playerId] ?? 0;
       result[playerId] = stats;
     }
@@ -1702,7 +1702,7 @@ export async function getBattingStatsWithSplitsForPlayers(
         ab: 0,
         r: runsByPlayer[playerId] ?? 0,
         gp: 0,
-        gs: startedGames.size,
+        gs: 0,
         e: eN,
       };
     }
@@ -1711,7 +1711,7 @@ export async function getBattingStatsWithSplitsForPlayers(
     if (br.sb > 0 || br.cs > 0) mergeBaserunningIntoBattingStats(overall, br);
 
     overall.gp = distinctGameCount(pas);
-    overall.gs = startedGames.size;
+    overall.gs = gamesStartedInSplit(startedGames, pas);
     mergeContactProfileIntoBattingStats(overall, pas, eventsByPaId);
     overall.e = eN;
 

@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { BattingStatsSheet } from "@/components/analyst/BattingStatsSheet";
+import type { SplitView } from "@/components/analyst/BattingStatsSheet";
+import { TeamBattingStatsSections } from "@/components/analyst/TeamBattingStatsSections";
 import { FINAL_COUNT_BUCKET_OPTIONS } from "@/components/analyst/battingStatsSheetModel";
 import { PitchingStatsSheet } from "@/components/analyst/PitchingStatsSheet";
 import { computeBattingStatsWithSplitsFromPas } from "@/lib/compute/battingStatsWithSplitsFromPas";
@@ -176,7 +177,15 @@ export function StatsPageClient({
   );
 
   const tab: StatsTab = url.tab === "p" ? "pitching" : "batting";
-  const battingFinalCount = parseFinalCountParam(url.bfc);
+  const battingFinalCountParam = parseFinalCountParam(url.bfc);
+  const battingFinalCount: BattingFinalCountBucketKey = battingFinalCountParam ?? "0-0";
+  const battingDisciplineCountParam = parseFinalCountParam(url.bdc ?? null);
+  const [battingSearch, setBattingSearch] = useState("");
+  const [battingSplit, setBattingSplit] = useState<SplitView>("overall");
+  const [disciplineSplit, setDisciplineSplit] = useState<SplitView>("overall");
+  const [disciplineRunners, setDisciplineRunners] = useState<StatsRunnersFilterKey>("all");
+  const [finalCountSplit, setFinalCountSplit] = useState<SplitView>("overall");
+  const [finalCountRunners, setFinalCountRunners] = useState<StatsRunnersFilterKey>("all");
   const pitchingFinalCount = parseFinalCountParam(url.pfc);
   const battingRunners = parseRunnersParam(url.bbs);
   const pitchingRunners = parseRunnersParam(url.pbs);
@@ -233,19 +242,19 @@ export function StatsPageClient({
     [replaceQuery]
   );
   const setBattingFinalCount = useCallback(
-    (v: BattingFinalCountBucketKey | null) => {
+    (v: BattingFinalCountBucketKey) => {
       replaceQuery((p) => {
-        if (v) p.set("bfc", v);
-        else p.delete("bfc");
+        if (v === "0-0") p.delete("bfc");
+        else p.set("bfc", v);
       });
     },
     [replaceQuery]
   );
-  const setPitchingFinalCount = useCallback(
+  const setBattingDisciplineCount = useCallback(
     (v: BattingFinalCountBucketKey | null) => {
       replaceQuery((p) => {
-        if (v) p.set("pfc", v);
-        else p.delete("pfc");
+        if (v) p.set("bdc", v);
+        else p.delete("bdc");
       });
     },
     [replaceQuery]
@@ -256,6 +265,15 @@ export function StatsPageClient({
         const q = runnersParamForQuery(v);
         if (q) p.set("bbs", q);
         else p.delete("bbs");
+      });
+    },
+    [replaceQuery]
+  );
+  const setPitchingFinalCount = useCallback(
+    (v: BattingFinalCountBucketKey | null) => {
+      replaceQuery((p) => {
+        if (v) p.set("pfc", v);
+        else p.delete("pfc");
       });
     },
     [replaceQuery]
@@ -276,8 +294,14 @@ export function StatsPageClient({
     setOptimisticBatPitcher("");
     setOptimisticPitchOpponent("");
     setOptimisticPitchBatter("");
+    setBattingSearch("");
+    setBattingSplit("overall");
+    setDisciplineSplit("overall");
+    setDisciplineRunners("all");
+    setFinalCountSplit("overall");
+    setFinalCountRunners("all");
     replaceQuery((p) => {
-      for (const k of ["bo", "bp", "bbs", "bfc", "po", "pb", "pbs", "pfc"] as const) {
+      for (const k of ["bo", "bp", "bbs", "bfc", "bdc", "po", "pb", "pbs", "pfc"] as const) {
         p.delete(k);
       }
     });
@@ -543,18 +567,32 @@ export function StatsPageClient({
   const hasResettableFilters = useMemo(
     () =>
       battingRunners !== "all" ||
+      battingSplit !== "overall" ||
+      disciplineSplit !== "overall" ||
+      disciplineRunners !== "all" ||
+      battingDisciplineCountParam != null ||
+      finalCountSplit !== "overall" ||
+      finalCountRunners !== "all" ||
       pitchingRunners !== "all" ||
-      battingFinalCount != null ||
+      battingFinalCountParam != null ||
       pitchingFinalCount != null ||
+      battingSearch.trim().length > 0 ||
       !!batOpponentKey ||
       !!batPitcherId ||
       !!pitchOpponentKey ||
       !!pitchBatterId,
     [
       battingRunners,
+      battingSplit,
+      disciplineSplit,
+      disciplineRunners,
+      battingDisciplineCountParam,
+      finalCountSplit,
+      finalCountRunners,
       pitchingRunners,
-      battingFinalCount,
+      battingFinalCountParam,
       pitchingFinalCount,
+      battingSearch,
       batOpponentKey,
       batPitcherId,
       pitchOpponentKey,
@@ -645,7 +683,7 @@ export function StatsPageClient({
 
       {tab === "batting" ? (
         <div role="tabpanel" id="stats-panel-batting" aria-labelledby="stats-tab-batting">
-          <BattingStatsSheet
+          <TeamBattingStatsSections
             players={batters}
             battingStatsWithSplits={displayBattingStatsWithSplits}
             pas={displayBattingPas}
@@ -653,11 +691,24 @@ export function StatsPageClient({
             startedGameIdsByPlayer={battingMatchupPayload?.startedGameIdsByPlayer}
             subheading={battingSampleSubheading}
             splitDisabled={!!batPitcherId}
-            finalCountBucket={battingFinalCount}
-            onFinalCountBucketChange={setBattingFinalCount}
+            splitView={battingSplit}
+            onSplitViewChange={setBattingSplit}
             runnersFilter={battingRunners}
             onRunnersFilterChange={setBattingRunners}
-            toolbarVariant="grouped"
+            disciplineSplit={disciplineSplit}
+            onDisciplineSplitChange={setDisciplineSplit}
+            disciplineRunners={disciplineRunners}
+            onDisciplineRunnersChange={setDisciplineRunners}
+            disciplineCount={battingDisciplineCountParam}
+            onDisciplineCountChange={setBattingDisciplineCount}
+            finalCountSplit={finalCountSplit}
+            onFinalCountSplitChange={setFinalCountSplit}
+            finalCountRunners={finalCountRunners}
+            onFinalCountRunnersChange={setFinalCountRunners}
+            finalCountBucket={battingFinalCount}
+            onFinalCountBucketChange={setBattingFinalCount}
+            searchQuery={battingSearch}
+            onSearchQueryChange={setBattingSearch}
             sampleToolbarEnd={sampleResetFiltersButton}
             matchupToolbar={
               battingMatchupPayload && matchupOpponents.length > 0

@@ -98,7 +98,7 @@ export const BATTING_SHEET_STAT_GROUP_BORDER_LEFT: Partial<Record<BattingSheetSo
   e: true,
 };
 
-export type BattingSheetColumnMode = "standard" | "contact";
+export type BattingSheetColumnMode = "standard" | "contact" | "finalCount" | "discipline";
 
 /** Dropdown options: one saved final count (balls–strikes) bucket for the full Standard stat line. */
 export const FINAL_COUNT_BUCKET_OPTIONS: { value: BattingFinalCountBucketKey; label: string }[] = [
@@ -116,13 +116,28 @@ export const FINAL_COUNT_BUCKET_OPTIONS: { value: BattingFinalCountBucketKey; la
   { value: "3-2", label: "3-2" },
 ];
 
+/** Stats omitted from final-count / discipline / compact tables. */
+export const BATTING_SHEET_FINAL_COUNT_EXCLUDED_KEYS = new Set<BattingSheetSortKey>([
+  "gp",
+  "gs",
+  "pPa",
+  "sb",
+  "cs",
+  "sbPct",
+  "e",
+  "opsPlus",
+]);
+
 export const BATTING_SHEET_CONTACT_COLUMNS: BattingSheetColumnDef[] = [
   BATTING_SHEET_COLUMNS[0]!,
   BATTING_SHEET_COLUMNS[1]!,
   BATTING_SHEET_COLUMNS[2]!,
   BATTING_SHEET_COLUMNS[3]!,
   BATTING_SHEET_COLUMNS.find((c) => c.key === "pPa")!,
-  BATTING_SHEET_COLUMNS.find((c) => c.key === "kPct")!,
+  {
+    ...BATTING_SHEET_COLUMNS.find((c) => c.key === "kPct")!,
+    tooltip: BATTING_STAT_HEADER_TOOLTIPS.kPctAtCountState,
+  },
   {
     key: "swingPct",
     label: "Sw%",
@@ -175,26 +190,32 @@ export const BATTING_SHEET_CONTACT_COLUMNS: BattingSheetColumnDef[] = [
   BATTING_SHEET_COLUMNS.find((c) => c.key === "e")!,
 ];
 
+/** Season discipline table — contact rates without G/GS, P/PA, or E. */
+export const BATTING_SHEET_DISCIPLINE_COLUMNS: BattingSheetColumnDef[] = BATTING_SHEET_CONTACT_COLUMNS.filter(
+  (c) => !BATTING_SHEET_FINAL_COUNT_EXCLUDED_KEYS.has(c.key)
+).map((c) =>
+  c.key === "kPct" ? BATTING_SHEET_COLUMNS.find((col) => col.key === "kPct")! : c
+);
+
 export function battingSheetColumnsForMode(mode: BattingSheetColumnMode): BattingSheetColumnDef[] {
   if (mode === "contact") return BATTING_SHEET_CONTACT_COLUMNS;
+  if (mode === "discipline") return BATTING_SHEET_DISCIPLINE_COLUMNS;
+  if (mode === "finalCount") return BATTING_SHEET_FINAL_COUNT_COLUMNS;
   return BATTING_SHEET_COLUMNS;
 }
+
+/** Standard stat sheet columns for by-final-count comparison (drops G/GS, P/PA, baserunning, E, OPS+). */
+export const BATTING_SHEET_FINAL_COUNT_COLUMNS: BattingSheetColumnDef[] = BATTING_SHEET_COLUMNS.filter(
+  (c) => !BATTING_SHEET_FINAL_COUNT_EXCLUDED_KEYS.has(c.key)
+);
+
+/** @deprecated Use {@link BATTING_SHEET_FINAL_COUNT_EXCLUDED_KEYS}. */
+const PROFILE_COMPACT_EXCLUDED_KEYS = BATTING_SHEET_FINAL_COUNT_EXCLUDED_KEYS;
 
 /** Data columns only (excludes Player) for profile / compact tables. */
 export function battingSheetDataColumns(mode: BattingSheetColumnMode): BattingSheetColumnDef[] {
   return battingSheetColumnsForMode(mode).slice(1);
 }
-
-/** Stats omitted from profile compact tables (not the full season line). */
-const PROFILE_COMPACT_EXCLUDED_KEYS = new Set<BattingSheetSortKey>([
-  "gp",
-  "gs",
-  "pPa",
-  "sb",
-  "cs",
-  "sbPct",
-  "e",
-]);
 
 /** @deprecated Use {@link battingSheetDataColumnsForProfileCompact}. */
 export function battingSheetDataColumnsForFinalCount(mode: BattingSheetColumnMode): BattingSheetColumnDef[] {
@@ -243,6 +264,9 @@ export function battingSheetProfileCompactStatBorderLeft(
   if (key === "countStatePitches") return true;
   if (mode === "contact") {
     return key === "swingPct" || key === "gbPct";
+  }
+  if (mode === "finalCount" || mode === "discipline") {
+    return key === "kPct" || key === "swingPct" || key === "gbPct";
   }
   return key === "kPct" || key === "avg";
 }

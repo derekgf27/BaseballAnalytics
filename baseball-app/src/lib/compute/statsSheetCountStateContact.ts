@@ -13,6 +13,7 @@ import {
   gamesStartedInSplit,
   pasMatchFinalCount,
 } from "@/lib/compute/battingStatsWithSplitsFromPas";
+import type { BattingSheetColumnMode } from "@/components/analyst/battingStatsSheetModel";
 import {
   paMatchesBattingPlatoonSplit,
   paMatchesPitchingPlatoonSplit,
@@ -430,7 +431,7 @@ export function battingLineWithCountStateContact(
   splitView: BattingSheetSplitView,
   runnersFilter: StatsRunnersFilterKey,
   finalCountBucket: BattingFinalCountBucketKey | null,
-  columnMode: "standard" | "contact"
+  columnMode: BattingSheetColumnMode
 ): BattingStats | undefined {
   if (!line || columnMode !== "contact" || !finalCountBucket || !pas?.length || !pitchEvents?.length) {
     return line;

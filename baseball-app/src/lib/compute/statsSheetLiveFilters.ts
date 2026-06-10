@@ -13,6 +13,7 @@ import {
   isRunnersOn,
 } from "@/lib/compute/battingStats";
 import {
+  battingStatsForFinalCountBucket,
   distinctGameCount,
   gamesStartedInSplit,
   pasMatchFinalCount,
@@ -122,7 +123,7 @@ export function battingStatsForSheetLiveFilters(
     pitchEvents && pitchEvents.length > 0 ? groupPitchEventsByPaId(pitchEvents) : new Map<string, PitchEvent[]>();
   mergeContactProfileIntoBattingStats(st, sub, eventsByPaId);
   st.e = fieldingErrorsByPlayerFromPas(sub)[playerId] ?? 0;
-  return st;
+  return battingStatsForFinalCountBucket(st, finalCountBucket) ?? undefined;
 }
 
 export function pitchingStatsForSheetLiveFilters(

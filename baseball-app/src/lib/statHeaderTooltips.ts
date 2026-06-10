@@ -12,8 +12,8 @@ export const BATTING_STAT_HEADER_TOOLTIPS = {
   player: "Player name",
   pos: "Position",
   bats: "Batting Handedness",
-  gp: "Games played",
-  gs: "Games started",
+  gp: "Games played (distinct games with at least one logged plate appearance)",
+  gs: "Games started (saved lineup games that also have logged plate appearances)",
   pa: "Plate appearances",
   ab: "At-bats",
   h: "Hits",
@@ -34,7 +34,12 @@ export const BATTING_STAT_HEADER_TOOLTIPS = {
   e: "Fielding errors",
   pPa: "Pitches per plate appearance",
   kPct: "Strikeout percentage",
+  /** Discipline-by-count sheet: full-AB K% on PAs that reached this count (Runners = All). */
+  kPctAtCountState:
+    "Strikeout rate on full plate appearances that reached this count — includes ABs that later struck out after passing through this count",
   bbPct: "Walk percentage",
+  bbPctAtCountState:
+    "Walk rate on full plate appearances that reached this count — includes ABs that later walked after passing through this count",
   avg: "Batting average",
   obp: "On-base percentage",
   slg: "Slugging percentage",
