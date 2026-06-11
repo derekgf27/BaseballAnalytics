@@ -34,6 +34,7 @@ import {
 } from "@/lib/record/recordUnavailablePlayers";
 import { pitchEventsFromDraftPitchLogWithTerminal } from "@/lib/compute/contactProfileFromPas";
 import {
+  clampPitchCountBefore,
   hasPutawayStrikeAtTwoStrikes,
   isPitchOutcomeBlockedByFullCount,
   replayCountAtEndOfSequence,
@@ -1977,13 +1978,16 @@ export default function RecordPageClient({
     const coachTypesForSave = mapCoachPitchTypesToSequence(sequenceForSave, coachRowsThisAb);
     const pitchLogForSave: PitchEventDraft[] | undefined =
       sequenceForSave.length > 0
-        ? sequenceForSave.map((row, i) => ({
+        ? sequenceForSave.map((row, i) => {
+            const { balls, strikes } = clampPitchCountBefore(row.balls_before, row.strikes_before);
+            return {
             pitch_index: i + 1,
-            balls_before: row.balls_before,
-            strikes_before: row.strikes_before,
+            balls_before: balls,
+            strikes_before: strikes,
             outcome: row.outcome,
             pitch_type: coachTypesForSave[i] ?? null,
-          }))
+          };
+          })
         : undefined;
     const seqSummary =
       sequenceForSave.length > 0 ? summarizePitchSequence(sequenceForSave) : null;

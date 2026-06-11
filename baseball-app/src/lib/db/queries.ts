@@ -18,6 +18,7 @@ import {
   gamesStartedInSplit,
 } from "@/lib/compute/battingStatsWithSplitsFromPas";
 import { groupPitchEventsByPaId, mergeContactProfileIntoBattingStats } from "@/lib/compute/contactProfileFromPas";
+import { clampPitchCountBefore } from "@/lib/compute/pitchSequence";
 import {
   buildPitchingRunnerSituationsForPitcher,
   buildPitchingStatsByFinalCountForSplits,
@@ -1880,14 +1881,17 @@ export async function insertPitchEventsForPa(paId: string, rows: PitchEventDraft
   if (rows.length === 0) return;
   const supabase = await getSupabase();
   if (!supabase || isDemoId(paId)) return;
-  const payload = rows.map((r) => ({
-    pa_id: paId,
-    pitch_index: r.pitch_index,
-    balls_before: r.balls_before,
-    strikes_before: r.strikes_before,
-    outcome: r.outcome,
-    pitch_type: r.pitch_type ?? null,
-  }));
+  const payload = rows.map((r) => {
+    const { balls, strikes } = clampPitchCountBefore(r.balls_before, r.strikes_before);
+    return {
+      pa_id: paId,
+      pitch_index: r.pitch_index,
+      balls_before: balls,
+      strikes_before: strikes,
+      outcome: r.outcome,
+      pitch_type: r.pitch_type ?? null,
+    };
+  });
   const { error } = await supabase.from("pitch_events").insert(payload);
   if (error) throw new Error(error.message);
 }

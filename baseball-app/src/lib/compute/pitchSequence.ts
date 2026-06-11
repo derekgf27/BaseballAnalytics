@@ -27,6 +27,14 @@ export type PitchSequenceEntry = {
   outcome: PitchOutcome;
 };
 
+/** Count *before* a pitch for DB / analytics: balls 0–3, strikes 0–2 (UI replay may show 3 after putaway). */
+export function clampPitchCountBefore(balls: number, strikes: number): { balls: number; strikes: number } {
+  return {
+    balls: Math.min(3, Math.max(0, balls)),
+    strikes: Math.min(2, Math.max(0, strikes)),
+  };
+}
+
 /** True if the batter swung (incl. foul, BIP). */
 export function pitchOutcomeIsSwing(outcome: PitchOutcome): boolean {
   return (
@@ -250,7 +258,8 @@ export function withInferredInPlayPitch(
   }
   const last = entries[entries.length - 1]!;
   if (last.outcome === "in_play") return entries;
-  const { balls, strikes } = replayCountAtEndOfSequence(entries);
+  const end = replayCountAtEndOfSequence(entries);
+  const { balls, strikes } = clampPitchCountBefore(end.balls, end.strikes);
   return [...entries, { balls_before: balls, strikes_before: strikes, outcome: "in_play" }];
 }
 
@@ -271,8 +280,9 @@ export function withInferredWalkFourthBall(
   if (entries.length === 0 || result === null) return entries;
   if (result !== "bb" && result !== "ibb") return entries;
   if (lastPitchIsFourthBall(entries)) return entries;
-  const { balls, strikes } = replayCountAtEndOfSequence(entries);
-  if (balls < 3) return entries;
+  const end = replayCountAtEndOfSequence(entries);
+  if (end.balls < 3) return entries;
+  const { balls, strikes } = clampPitchCountBefore(end.balls, end.strikes);
   return [...entries, { balls_before: balls, strikes_before: strikes, outcome: "ball" }];
 }
 
@@ -286,7 +296,8 @@ export function withInferredHbpPitch(
   if (entries.length === 0 || result === null || result !== "hbp") return entries;
   const last = entries[entries.length - 1]!;
   if (last.outcome === "hbp") return entries;
-  const { balls, strikes } = replayCountAtEndOfSequence(entries);
+  const end = replayCountAtEndOfSequence(entries);
+  const { balls, strikes } = clampPitchCountBefore(end.balls, end.strikes);
   return [...entries, { balls_before: balls, strikes_before: strikes, outcome: "hbp" }];
 }
 
