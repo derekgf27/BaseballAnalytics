@@ -28,9 +28,20 @@ import {
   countStatePaQualificationForRunnersFilter,
 } from "@/lib/compute/statsSheetCountStateContact";
 import { normalizePitchTypeBucket } from "@/lib/compute/pitchTypeProfileFromPas";
-import { pitchOutcomeIsSwing } from "@/lib/compute/pitchSequence";
+import { pitchOutcomeIsSwing, pitchOutcomeStrikesThrownIncrement } from "@/lib/compute/pitchSequence";
 import { GroupedStatsFiltersPanel } from "@/components/analyst/GroupedStatsFiltersPanel";
-import { PITCH_TYPE_BAA_HELPER_TEXT, PITCH_TYPE_COLUMNS_MODE_LABEL, pitchTypeBaaColumnLabel } from "@/lib/pitchTypeBaaDisplay";
+import {
+  PITCH_TYPE_BAA_HELPER_TEXT,
+  PITCH_TYPE_COLUMNS_MODE_LABEL,
+  PITCH_TYPE_SHEET_RESULT_GROUPS,
+  PITCH_TYPE_SHEET_SUFFIXES,
+  allPitchTypeResultSortKeys,
+  parsePitchTypeResultSortKey,
+  pitchTypeBaaColumnLabel,
+  pitchTypeProfileRate,
+  pitchTypeSheetResultTooltip,
+  type PitchTypeResultSortKey,
+} from "@/lib/pitchTypeBaaDisplay";
 
 import { StatsRunnersFilterSelect } from "@/components/analyst/StatsRunnersFilterSelect";
 import { pitchingStatsForSheetLiveFilters } from "@/lib/compute/statsSheetLiveFilters";
@@ -116,7 +127,8 @@ type PitchSortKey =
   | "plBaaCB"
   | "plBaaCH"
   | "plBaaSP"
-  | "plBaaOT";
+  | "plBaaOT"
+  | PitchTypeResultSortKey;
 
 type ColFormat =
   | "name"
@@ -171,19 +183,77 @@ const COLUMNS: {
   { key: "e", label: "E", align: "right", format: "int", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.e, borderLeft: true },
 ];
 
+export type PitchColumnMode = "standard" | "contact" | "pitchTypes" | "finalCount";
+
+const PITCH_TYPE_COLUMN_KEYS = new Set<PitchSortKey>([
+  "plTyped",
+  "plMixFB",
+  "plMixSI",
+  "plMixFC",
+  "plMixSL",
+  "plMixSW",
+  "plMixCB",
+  "plMixCH",
+  "plMixSP",
+  "plMixOT",
+  "plSwFB",
+  "plSwSI",
+  "plSwFC",
+  "plSwSL",
+  "plSwSW",
+  "plSwCB",
+  "plSwCH",
+  "plSwSP",
+  "plSwOT",
+  "plWhiffFB",
+  "plWhiffSI",
+  "plWhiffFC",
+  "plWhiffSL",
+  "plWhiffSW",
+  "plWhiffCB",
+  "plWhiffCH",
+  "plWhiffSP",
+  "plWhiffOT",
+  "plBaaFB",
+  "plBaaSI",
+  "plBaaFC",
+  "plBaaSL",
+  "plBaaSW",
+  "plBaaCB",
+  "plBaaCH",
+  "plBaaSP",
+  "plBaaOT",
+  ...allPitchTypeResultSortKeys(),
+]);
+
+const PITCH_BF_COLUMN: (typeof COLUMNS)[number] = {
+  key: "bf",
+  label: "Batters faced",
+  align: "right",
+  format: "int",
+  tooltip: PITCHING_STAT_HEADER_TOOLTIPS.paPitchContact,
+};
+
+/** Dropped from discipline, final-count, and pitch-type team tables (not the main standard sheet). */
+const PITCHING_SHEET_SECONDARY_EXCLUDED_KEYS = new Set<PitchSortKey>([
+  "g",
+  "gs",
+  "e",
+  "w",
+  "l",
+  "sv",
+  "ir",
+  "irs",
+  "pPa",
+  "strikePct",
+  "fpsPct",
+  ...PITCH_TYPE_COLUMN_KEYS,
+]);
+
+/** Discipline & contact — PA + pitch-command / BIP rates only. */
 const CONTACT_PITCH_COLUMNS: (typeof COLUMNS)[number][] = [
   COLUMNS[0]!,
-  COLUMNS[1]!,
-  COLUMNS[2]!,
-  COLUMNS[3]!,
-  {
-    key: "bf",
-    label: "PA",
-    align: "right",
-    format: "int",
-    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.paPitchContact,
-  },
-  COLUMNS.find((c) => c.key === "pPa")!,
+  PITCH_BF_COLUMN,
   COLUMNS.find((c) => c.key === "fpsPct")!,
   COLUMNS.find((c) => c.key === "strikePct")!,
   {
@@ -235,28 +305,31 @@ const CONTACT_PITCH_COLUMNS: (typeof COLUMNS)[number][] = [
     format: "pct",
     tooltip: PITCHING_STAT_HEADER_TOOLTIPS.iffPctPitchContact,
   },
-  COLUMNS.find((c) => c.key === "e")!,
 ];
 
-const PITCH_TYPE_PITCH_COLUMNS: (typeof COLUMNS)[number][] = [
+/** By final count — standard outcomes without record, errors, or pitch-log extras. */
+const FINAL_COUNT_PITCH_COLUMNS: (typeof COLUMNS)[number][] = COLUMNS.filter(
+  (c) => !PITCHING_SHEET_SECONDARY_EXCLUDED_KEYS.has(c.key)
+);
+
+type PitchTypeSheetColumn = (typeof COLUMNS)[number];
+
+function buildPitchTypeResultColumnsForGroup(
+  group: (typeof PITCH_TYPE_SHEET_RESULT_GROUPS)[number]
+): PitchTypeSheetColumn[] {
+  return PITCH_TYPE_SHEET_SUFFIXES.map((row, idx) => ({
+    key: `${group.prefix}${row.suffix}` as PitchSortKey,
+    label: `${row.abbrev} ${group.labelSuffix}`,
+    align: "right",
+    format: "pct",
+    tooltip: pitchTypeSheetResultTooltip(group.prefix, row.abbrev),
+    borderLeft: idx === 0,
+  }));
+}
+
+const PITCH_TYPE_PITCH_COLUMNS: PitchTypeSheetColumn[] = [
   COLUMNS[0]!,
-  COLUMNS[1]!,
-  COLUMNS[2]!,
-  COLUMNS[3]!,
-  {
-    key: "bf",
-    label: "PA",
-    align: "right",
-    format: "int",
-    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.paPitchContact,
-  },
-  {
-    key: "plTyped",
-    label: "Typed",
-    align: "right",
-    format: "int",
-    tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plTypedPitch,
-  },
+  PITCH_BF_COLUMN,
   {
     key: "plMixFB",
     label: "FB%",
@@ -266,14 +339,14 @@ const PITCH_TYPE_PITCH_COLUMNS: (typeof COLUMNS)[number][] = [
   },
   {
     key: "plMixSI",
-    label: "SI%",
+    label: "SK%",
     align: "right",
     format: "pct",
     tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plMixSIPitch,
   },
   {
     key: "plMixFC",
-    label: "FC%",
+    label: "CT%",
     align: "right",
     format: "pct",
     tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plMixFCPitch,
@@ -329,14 +402,14 @@ const PITCH_TYPE_PITCH_COLUMNS: (typeof COLUMNS)[number][] = [
   },
   {
     key: "plSwSI",
-    label: "SI Sw%",
+    label: "SK Sw%",
     align: "right",
     format: "pct",
     tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plSwSIPitch,
   },
   {
     key: "plSwFC",
-    label: "FC Sw%",
+    label: "CT Sw%",
     align: "right",
     format: "pct",
     tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plSwFCPitch,
@@ -392,14 +465,14 @@ const PITCH_TYPE_PITCH_COLUMNS: (typeof COLUMNS)[number][] = [
   },
   {
     key: "plWhiffSI",
-    label: "SI Whiff%",
+    label: "SK Whiff%",
     align: "right",
     format: "pct",
     tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plWhiffSIPitch,
   },
   {
     key: "plWhiffFC",
-    label: "FC Whiff%",
+    label: "CT Whiff%",
     align: "right",
     format: "pct",
     tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plWhiffFCPitch,
@@ -446,6 +519,7 @@ const PITCH_TYPE_PITCH_COLUMNS: (typeof COLUMNS)[number][] = [
     format: "pct",
     tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plWhiffOTPitch,
   },
+  ...buildPitchTypeResultColumnsForGroup(PITCH_TYPE_SHEET_RESULT_GROUPS[0]!),
   {
     key: "plBaaFB",
     label: pitchTypeBaaColumnLabel("FB"),
@@ -455,14 +529,14 @@ const PITCH_TYPE_PITCH_COLUMNS: (typeof COLUMNS)[number][] = [
   },
   {
     key: "plBaaSI",
-    label: pitchTypeBaaColumnLabel("SI"),
+    label: pitchTypeBaaColumnLabel("SK"),
     align: "right",
     format: "avgPitchType",
     tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plBaaSIPitch,
   },
   {
     key: "plBaaFC",
-    label: pitchTypeBaaColumnLabel("FC"),
+    label: pitchTypeBaaColumnLabel("CT"),
     align: "right",
     format: "avgPitchType",
     tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plBaaFCPitch,
@@ -509,7 +583,7 @@ const PITCH_TYPE_PITCH_COLUMNS: (typeof COLUMNS)[number][] = [
     format: "avgPitchType",
     tooltip: PITCHING_STAT_HEADER_TOOLTIPS.plBaaOTPitch,
   },
-  COLUMNS.find((c) => c.key === "e")!,
+  ...PITCH_TYPE_SHEET_RESULT_GROUPS.slice(1).flatMap((group) => buildPitchTypeResultColumnsForGroup(group)),
 ];
 
 /** No bold “leader” styling — usage / swing context is ambiguous in a max/min sense. */
@@ -534,7 +608,10 @@ const PITCH_SHEET_PITCH_TYPE_NEUTRAL = new Set<PitchSortKey>([
   "plSwCH",
   "plSwSP",
   "plSwOT",
+  ...allPitchTypeResultSortKeys().filter((k) => !k.startsWith("plK")),
 ]);
+
+const PITCH_TYPE_K_SORT_KEYS = new Set<PitchSortKey>(allPitchTypeResultSortKeys().filter((k) => k.startsWith("plK")));
 
 const LOWER_BETTER = new Set<PitchSortKey>([
   "era",
@@ -582,9 +659,8 @@ const HIGHER_BETTER = new Set<PitchSortKey>([
   "plWhiffCH",
   "plWhiffSP",
   "plWhiffOT",
+  ...PITCH_TYPE_K_SORT_KEYS,
 ]);
-
-type PitchColumnMode = "standard" | "contact" | "pitchTypes";
 
 function contactPitchBorderLeft(key: PitchSortKey): boolean {
   return key === "pPa" || key === "swingPct" || key === "gbPct";
@@ -593,11 +669,12 @@ function contactPitchBorderLeft(key: PitchSortKey): boolean {
 function pitchTypePitchBorderLeft(key: PitchSortKey): boolean {
   return (
     key === "bf" ||
-    key === "plTyped" ||
     key === "plMixFB" ||
     key === "plSwFB" ||
     key === "plWhiffFB" ||
+    key === "plStrikeFB" ||
     key === "plBaaFB" ||
+    key === "plKFB" ||
     key === "e"
   );
 }
@@ -672,6 +749,7 @@ function buildPitchTypeCountStateRatesByPitcher(
     n: Record<string, number>;
     swings: Record<string, number>;
     whiffs: Record<string, number>;
+    strikes: Record<string, number>;
     txAb: Record<string, number>;
     txH: Record<string, number>;
   };
@@ -680,6 +758,7 @@ function buildPitchTypeCountStateRatesByPitcher(
     n: {},
     swings: {},
     whiffs: {},
+    strikes: {},
     txAb: {},
     txH: {},
   });
@@ -694,6 +773,9 @@ function buildPitchTypeCountStateRatesByPitcher(
     const a = aggByPitcher[pa.pitcher_id] ?? mkAgg();
     a.typed += 1;
     a.n[key] = (a.n[key] ?? 0) + 1;
+    if (pitchOutcomeStrikesThrownIncrement(e.outcome) > 0) {
+      a.strikes[key] = (a.strikes[key] ?? 0) + 1;
+    }
     if (pitchOutcomeIsSwing(e.outcome)) a.swings[key] = (a.swings[key] ?? 0) + 1;
     if (e.outcome === "swinging_strike") a.whiffs[key] = (a.whiffs[key] ?? 0) + 1;
     if (e.outcome === "in_play" && paCountsAsAtBatAgainst(pa)) {
@@ -706,8 +788,8 @@ function buildPitchTypeCountStateRatesByPitcher(
   const map: Record<string, Partial<PitchingRateLine>> = {};
   const keyMap = [
     ["fastball", "FB"],
-    ["sinker", "SI"],
-    ["cutter", "FC"],
+    ["sinker", "SK"],
+    ["cutter", "CT"],
     ["slider", "SL"],
     ["sweeper", "SW"],
     ["curveball", "CB"],
@@ -723,8 +805,12 @@ function buildPitchTypeCountStateRatesByPitcher(
       const wh = a.whiffs[bucket] ?? 0;
       const ab = a.txAb[bucket] ?? 0;
       const h = a.txH[bucket] ?? 0;
+      const st = a.strikes[bucket] ?? 0;
       if (a.typed > 0) (r as Record<string, number>)[`plMix${suf}`] = n / a.typed;
-      if (n > 0) (r as Record<string, number>)[`plSw${suf}`] = sw / n;
+      if (n > 0) {
+        (r as Record<string, number>)[`plSw${suf}`] = sw / n;
+        (r as Record<string, number>)[`plStrike${suf}`] = st / n;
+      }
       if (sw > 0) (r as Record<string, number>)[`plWhiff${suf}`] = wh / sw;
       if (ab > 0) {
         (r as Record<string, number>)[`plTxAb${suf}`] = ab;
@@ -976,8 +1062,13 @@ function getPitchingStatValue(stats: PitchingStats | undefined, key: PitchSortKe
       return pitchTypeBaaFromRates(stats.rates, "plTxAbSP", "plTxHSP");
     case "plBaaOT":
       return pitchTypeBaaFromRates(stats.rates, "plTxAbOT", "plTxHOT");
-    default:
-      return undefined;
+    default: {
+      const parsed = parsePitchTypeResultSortKey(key);
+      if (!parsed) return undefined;
+      const flat = (stats.rates as unknown as Record<string, number | undefined>)[key];
+      if (typeof flat === "number" && !Number.isNaN(flat)) return flat;
+      return pitchTypeProfileRate(stats.rates, parsed.bucket, parsed.field);
+    }
   }
 }
 
@@ -1063,7 +1154,21 @@ export interface PitchingStatsSheetProps {
   onFinalCountBucketChange?: (v: BattingFinalCountBucketKey | null) => void;
   runnersFilter?: StatsRunnersFilterKey;
   onRunnersFilterChange?: (v: StatsRunnersFilterKey) => void;
-  toolbarVariant?: "default" | "grouped";
+  /** With `onSplitViewChange`, platoon split is controlled by the parent. */
+  splitView?: PitchingSplitView;
+  onSplitViewChange?: (v: PitchingSplitView) => void;
+  /** `grouped`: filter card. `section`: table only (parent supplies filters / locked slice). */
+  toolbarVariant?: "default" | "grouped" | "section";
+  /** When set, split/runners/count/columns are fixed and hidden from the toolbar. */
+  lockedSplitView?: PitchingSplitView;
+  lockedRunnersFilter?: StatsRunnersFilterKey;
+  lockedFinalCountBucket?: BattingFinalCountBucketKey | null;
+  lockedColumnMode?: PitchColumnMode;
+  /** Shared search from the team stats page (all sections). */
+  searchQuery?: string;
+  onSearchQueryChange?: (q: string) => void;
+  /** Hide the footnote under final-count / discipline filters (section parent may explain once). */
+  hideFilterFootnote?: boolean;
   /** Player name link target (default: analyst roster profile). */
   playerProfileHref?: (playerId: string) => string;
   /** Optional PA/pitch-event scope for count-state pitch-type context. */
@@ -1087,15 +1192,36 @@ export function PitchingStatsSheet({
   onFinalCountBucketChange,
   runnersFilter: runnersFilterProp,
   onRunnersFilterChange,
+  splitView: splitViewProp,
+  onSplitViewChange,
   toolbarVariant = "default",
+  lockedSplitView,
+  lockedRunnersFilter,
+  lockedFinalCountBucket,
+  lockedColumnMode,
+  searchQuery: searchQueryProp,
+  onSearchQueryChange,
+  hideFilterFootnote = false,
   playerProfileHref = analystPlayerProfileHref,
   pas,
   pitchEvents,
   batterBatsById,
   starterGameIdsByPlayer = {},
 }: PitchingStatsSheetProps) {
-  const [search, setSearch] = useState("");
-  const [splitView, setSplitView] = useState<PitchingSplitView>("overall");
+  const [searchInternal, setSearchInternal] = useState("");
+  const searchControlled = onSearchQueryChange != null;
+  const search = searchControlled ? (searchQueryProp ?? "") : searchInternal;
+  const setSearch = (v: string) => {
+    if (searchControlled) onSearchQueryChange(v);
+    else setSearchInternal(v);
+  };
+  const [splitViewInternal, setSplitViewInternal] = useState<PitchingSplitView>("overall");
+  const splitControlled = onSplitViewChange != null;
+  const splitView = splitControlled ? (splitViewProp ?? "overall") : splitViewInternal;
+  const setSplitView = (v: PitchingSplitView) => {
+    if (splitControlled) onSplitViewChange(v);
+    else setSplitViewInternal(v);
+  };
   const [runnersFilterInternal, setRunnersFilterInternal] = useState<StatsRunnersFilterKey>("all");
   const runnersControlled = onRunnersFilterChange != null;
   const runnersFilter = runnersControlled ? (runnersFilterProp ?? "all") : runnersFilterInternal;
@@ -1111,6 +1237,11 @@ export function PitchingStatsSheet({
     if (finalCountControlled) onFinalCountBucketChange(v);
     else setFinalCountBucketInternal(v);
   };
+  const effectiveSplitView = lockedSplitView ?? splitView;
+  const effectiveRunnersFilter = lockedRunnersFilter ?? runnersFilter;
+  const effectiveFinalCountBucket =
+    lockedFinalCountBucket !== undefined ? lockedFinalCountBucket : finalCountBucket;
+  const effectiveColumnMode = lockedColumnMode ?? columnMode;
 
   useEffect(() => {
     if (splitDisabled && splitView !== "overall") setSplitView("overall");
@@ -1129,32 +1260,38 @@ export function PitchingStatsSheet({
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
 
   const displayColumns =
-    columnMode === "contact" ? CONTACT_PITCH_COLUMNS : columnMode === "pitchTypes" ? PITCH_TYPE_PITCH_COLUMNS : COLUMNS;
-  const countStateMode = columnMode === "contact" || columnMode === "pitchTypes";
+    effectiveColumnMode === "contact"
+      ? CONTACT_PITCH_COLUMNS
+      : effectiveColumnMode === "pitchTypes"
+        ? PITCH_TYPE_PITCH_COLUMNS
+        : effectiveColumnMode === "finalCount"
+          ? FINAL_COUNT_PITCH_COLUMNS
+          : COLUMNS;
+  const countStateMode = effectiveColumnMode === "contact" || effectiveColumnMode === "pitchTypes";
   const countFilterLabel = countStateMode ? "Count state" : "Final count";
   const countFilterAria =
-    columnMode === "pitchTypes"
+    effectiveColumnMode === "pitchTypes"
       ? "Filter pitch-type context to pitches thrown at this ball-strike count state"
-      : columnMode === "contact"
+      : effectiveColumnMode === "contact"
         ? "Filter discipline rates to pitches thrown at this ball-strike count state"
         : "Filter stats to plate appearances ending at this ball-strike count";
   const countFilterTitle =
-    columnMode === "pitchTypes"
+    effectiveColumnMode === "pitchTypes"
       ? "In Pitch-type mode, usage/swing/whiff and per-type AVG use pitches thrown at this count state."
-      : columnMode === "contact"
+      : effectiveColumnMode === "contact"
         ? "In Discipline mode, Sw% / Whiff% / Foul% / BIP% use pitches thrown at this count state."
         : "Optional. When set, table uses only PAs whose saved final count matches (combines with Runners when both are set).";
 
   useEffect(() => {
     setSortKey("name");
     setSortDir("asc");
-  }, [columnMode]);
+  }, [effectiveColumnMode]);
 
   const groupedFiltersSummary = useMemo(() => {
     const parts: string[] = [];
-    if (runnersFilter !== "all") parts.push(STATS_RUNNERS_LABEL[runnersFilter]);
-    if (finalCountBucket) {
-      const label = FINAL_COUNT_BUCKET_OPTIONS.find((o) => o.value === finalCountBucket)?.label;
+    if (effectiveRunnersFilter !== "all") parts.push(STATS_RUNNERS_LABEL[effectiveRunnersFilter]);
+    if (effectiveFinalCountBucket) {
+      const label = FINAL_COUNT_BUCKET_OPTIONS.find((o) => o.value === effectiveFinalCountBucket)?.label;
       if (label) parts.push(label);
     }
     if (matchupToolbar?.opponentKey) {
@@ -1164,56 +1301,77 @@ export function PitchingStatsSheet({
     if (matchupToolbar?.batterId) parts.push("Batter");
     if (search.trim()) parts.push("Search");
     return parts.length > 0 ? parts.join(" · ") : null;
-  }, [runnersFilter, finalCountBucket, matchupToolbar, search]);
+  }, [effectiveRunnersFilter, effectiveFinalCountBucket, matchupToolbar, search]);
 
   const countStateContactByPitcher = useMemo(
     () =>
-      columnMode === "contact" && finalCountBucket != null
+      effectiveColumnMode === "contact" && effectiveFinalCountBucket != null
         ? buildCountStateContactByPitcher(
             players,
             pas,
             pitchEvents,
-            splitView,
-            runnersFilter,
-            finalCountBucket,
+            effectiveSplitView,
+            effectiveRunnersFilter,
+            effectiveFinalCountBucket,
             batterBatsById,
-            countStatePaQualificationForRunnersFilter(runnersFilter)
+            countStatePaQualificationForRunnersFilter(effectiveRunnersFilter)
           )
         : {},
-    [columnMode, finalCountBucket, players, pas, pitchEvents, splitView, runnersFilter, batterBatsById]
+    [
+      effectiveColumnMode,
+      effectiveFinalCountBucket,
+      players,
+      pas,
+      pitchEvents,
+      effectiveSplitView,
+      effectiveRunnersFilter,
+      batterBatsById,
+    ]
   );
 
   const pitchTypeCountStateRatesByPitcher = useMemo(
     () =>
-      columnMode === "pitchTypes" && finalCountBucket != null
+      effectiveColumnMode === "pitchTypes" && effectiveFinalCountBucket != null
         ? buildPitchTypeCountStateRatesByPitcher(
             players,
             pas,
             pitchEvents,
-            splitView,
-            runnersFilter,
-            finalCountBucket,
+            effectiveSplitView,
+            effectiveRunnersFilter,
+            effectiveFinalCountBucket,
             batterBatsById
           )
         : {},
-    [columnMode, finalCountBucket, players, pas, pitchEvents, splitView, runnersFilter, batterBatsById]
+    [
+      effectiveColumnMode,
+      effectiveFinalCountBucket,
+      players,
+      pas,
+      pitchEvents,
+      effectiveSplitView,
+      effectiveRunnersFilter,
+      batterBatsById,
+    ]
   );
 
   const initialPitchingStats = useMemo(() => {
     const out: Record<string, PitchingStats> = {};
     const canLiveFilter =
-      pas != null && pas.length > 0 && finalCountBucket != null && runnersFilter !== "all";
+      pas != null &&
+      pas.length > 0 &&
+      effectiveFinalCountBucket != null &&
+      effectiveRunnersFilter !== "all";
     for (const p of players) {
       let s: PitchingStats | undefined;
-      if (finalCountBucket != null) {
+      if (effectiveFinalCountBucket != null) {
         if (canLiveFilter) {
           const starters = new Set(starterGameIdsByPlayer[p.id] ?? []);
           s = pitchingStatsForSheetLiveFilters(
             p.id,
             pas,
-            splitView,
-            runnersFilter,
-            finalCountBucket,
+            effectiveSplitView,
+            effectiveRunnersFilter,
+            effectiveFinalCountBucket,
             starters,
             batterBatsMap,
             pitchEvents
@@ -1222,22 +1380,35 @@ export function PitchingStatsSheet({
           const map = getPitchingFinalCountMapForSplit(
             pitchingStatsWithSplits,
             p.id,
-            splitView,
-            runnersFilter
+            effectiveSplitView,
+            effectiveRunnersFilter
           );
-          s = map?.[finalCountBucket] ?? undefined;
+          s = map?.[effectiveFinalCountBucket] ?? undefined;
         }
-        if (s && columnMode === "pitchTypes") {
+        if (s && effectiveColumnMode === "pitchTypes") {
           const countRates = pitchTypeCountStateRatesByPitcher[p.id];
           if (countRates) {
-            s = { ...s, rates: { ...s.rates, ...countRates } };
+            s = {
+              ...s,
+              rates: {
+                ...s.rates,
+                ...countRates,
+                plBuckets: undefined,
+                plBucketCounts: undefined,
+              },
+            };
           }
         }
-        if (s && columnMode === "contact") {
+        if (s && effectiveColumnMode === "contact") {
           s = applyCountStateContactToPitchingStats(s, countStateContactByPitcher[p.id]);
         }
       } else {
-        s = getPitchingLineForSheet(pitchingStatsWithSplits, p.id, splitView, runnersFilter);
+        s = getPitchingLineForSheet(
+          pitchingStatsWithSplits,
+          p.id,
+          effectiveSplitView,
+          effectiveRunnersFilter
+        );
       }
       if (s) out[p.id] = s;
     }
@@ -1245,10 +1416,10 @@ export function PitchingStatsSheet({
   }, [
     players,
     pitchingStatsWithSplits,
-    splitView,
-    finalCountBucket,
-    runnersFilter,
-    columnMode,
+    effectiveSplitView,
+    effectiveFinalCountBucket,
+    effectiveRunnersFilter,
+    effectiveColumnMode,
     pitchTypeCountStateRatesByPitcher,
     countStateContactByPitcher,
     pas,
@@ -1356,7 +1527,7 @@ export function PitchingStatsSheet({
         </div>
       )}
 
-      {toolbarVariant === "grouped" ? (
+      {toolbarVariant === "section" ? null : toolbarVariant === "grouped" ? (
         <div className="flex flex-col gap-3">
           <GroupedStatsFiltersPanel activeSummary={groupedFiltersSummary}>
             <div
@@ -1660,29 +1831,29 @@ export function PitchingStatsSheet({
         {toolbarEnd ? <div className="flex shrink-0 items-center">{toolbarEnd}</div> : null}
       </div>
       )}
-      {finalCountBucket != null && (
+      {!hideFilterFootnote && effectiveFinalCountBucket != null && (
         <p className="text-xs leading-snug text-[var(--text-muted)]">
-          {columnMode === "contact" ? (
+          {effectiveColumnMode === "contact" ? (
             <>
-              <strong className="font-medium text-[var(--text)]">PA, G, IP, and counting stats</strong> use PAs that match
-              Runners + saved final count <strong className="font-medium text-[var(--text)]">{finalCountBucket}</strong> (same as
+              <strong className="font-medium text-[var(--text)]">Batters faced</strong> uses PAs that match
+              Runners + saved final count <strong className="font-medium text-[var(--text)]">{effectiveFinalCountBucket}</strong> (same as
               Standard). Sw%, Whiff%, Foul%, GB/LD/FB/IFF%, and P/PA use{" "}
               <strong className="font-medium text-[var(--text)]">pitches at that count state</strong> on those PAs only.
             </>
           ) : countStateMode ? (
             <>
               Showing pitch-type context from <strong className="font-medium text-[var(--text)]">pitches thrown at count state</strong>{" "}
-              <strong className="font-medium text-[var(--text)]">{finalCountBucket}</strong> (after Split/Runners). Team row
+              <strong className="font-medium text-[var(--text)]">{effectiveFinalCountBucket}</strong> (after Split/Runners). Team row
               uses the same count-state denominator.
             </>
           ) : (
             <>
               Showing stats for PAs whose <strong className="font-medium text-[var(--text)]">saved final count</strong> is{" "}
-              <strong className="font-medium text-[var(--text)]">{finalCountBucket}</strong>
-              {runnersFilter !== "all" ? (
+              <strong className="font-medium text-[var(--text)]">{effectiveFinalCountBucket}</strong>
+              {effectiveRunnersFilter !== "all" ? (
                 <>
                   {" "}
-                  with <strong className="font-medium text-[var(--text)]">{STATS_RUNNERS_LABEL[runnersFilter]}</strong> (after
+                  with <strong className="font-medium text-[var(--text)]">{STATS_RUNNERS_LABEL[effectiveRunnersFilter]}</strong> (after
                   Split).
                 </>
               ) : (
@@ -1694,7 +1865,7 @@ export function PitchingStatsSheet({
         </p>
       )}
 
-      {columnMode === "pitchTypes" && (
+      {effectiveColumnMode === "pitchTypes" && toolbarVariant !== "section" && (
         <p className="text-xs leading-snug text-[var(--text-muted)]">{PITCH_TYPE_BAA_HELPER_TEXT}</p>
       )}
 
@@ -1730,7 +1901,7 @@ export function PitchingStatsSheet({
                 <th
                   key={`${key}-${idx}`}
                     title={tooltip}
-                  className={`border-b border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[var(--accent)] ${SCROLL_CELL_Z} ${pitchSheetHeaderBorderLeft(columnMode, key, borderLeft, idx) ? "border-l border-[var(--border)]" : ""} ${align === "right" ? "text-right" : "text-left"} cursor-pointer select-none hover:opacity-85 ${sortKey === key ? "font-bold" : ""}`}
+                  className={`border-b border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[var(--accent)] ${SCROLL_CELL_Z} ${pitchSheetHeaderBorderLeft(effectiveColumnMode, key, borderLeft, idx) ? "border-l border-[var(--border)]" : ""} ${align === "right" ? "text-right" : "text-left"} cursor-pointer select-none hover:opacity-85 ${sortKey === key ? "font-bold" : ""}`}
                     onClick={() => handleSort(key)}
                   >
                     {label}
@@ -1795,7 +1966,7 @@ export function PitchingStatsSheet({
                   {displayColumns.slice(1).map((col, idx) => (
                     <td
                       key={`${col.key}-${idx}`}
-                      className={`${SCROLL_CELL_Z} px-3 py-2 text-right tabular-nums text-[var(--text)] ${pitchSheetHeaderBorderLeft(columnMode, col.key, col.borderLeft, idx) ? "border-l border-[var(--border)]" : ""}`}
+                      className={`${SCROLL_CELL_Z} px-3 py-2 text-right tabular-nums text-[var(--text)] ${pitchSheetHeaderBorderLeft(effectiveColumnMode, col.key, col.borderLeft, idx) ? "border-l border-[var(--border)]" : ""}`}
                     >
                       <LeaderStat show={isL(col.key, s)}>{displayCell(s, col.key, col.format)}</LeaderStat>
                     </td>
@@ -1825,7 +1996,7 @@ export function PitchingStatsSheet({
                 {displayColumns.slice(1).map((col, idx) => (
                   <td
                     key={`team-total-${col.key}-${idx}`}
-                    className={`${TEAM_FOOTER_TOP_RULE} ${SCROLL_CELL_Z} bg-[var(--bg-elevated)] px-3 py-2 text-right tabular-nums font-semibold text-[var(--accent)] ${pitchSheetHeaderBorderLeft(columnMode, col.key, col.borderLeft, idx) ? TEAM_FOOTER_GROUP_LEFT : ""}`}
+                    className={`${TEAM_FOOTER_TOP_RULE} ${SCROLL_CELL_Z} bg-[var(--bg-elevated)] px-3 py-2 text-right tabular-nums font-semibold text-[var(--accent)] ${pitchSheetHeaderBorderLeft(effectiveColumnMode, col.key, col.borderLeft, idx) ? TEAM_FOOTER_GROUP_LEFT : ""}`}
                     title={
                       col.key === "g" || col.key === "gs"
                         ? "Team total not shown: summing each pitcher’s games does not equal team games played."

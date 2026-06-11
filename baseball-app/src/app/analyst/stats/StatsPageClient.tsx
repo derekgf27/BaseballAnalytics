@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "r
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { SplitView } from "@/components/analyst/BattingStatsSheet";
 import { TeamBattingStatsSections } from "@/components/analyst/TeamBattingStatsSections";
+import { TeamPitchingStatsSections } from "@/components/analyst/TeamPitchingStatsSections";
 import { FINAL_COUNT_BUCKET_OPTIONS } from "@/components/analyst/battingStatsSheetModel";
-import { PitchingStatsSheet } from "@/components/analyst/PitchingStatsSheet";
+import type { PitchingSplitView } from "@/components/analyst/PitchingStatsSheet";
 import { computeBattingStatsWithSplitsFromPas } from "@/lib/compute/battingStatsWithSplitsFromPas";
 import { computePitchingStatsWithSplitsForRoster } from "@/lib/compute/pitchingStats";
 import { analystPlayerProfileHref } from "@/lib/analystRoutes";
@@ -186,7 +187,18 @@ export function StatsPageClient({
   const [disciplineRunners, setDisciplineRunners] = useState<StatsRunnersFilterKey>("all");
   const [finalCountSplit, setFinalCountSplit] = useState<SplitView>("overall");
   const [finalCountRunners, setFinalCountRunners] = useState<StatsRunnersFilterKey>("all");
-  const pitchingFinalCount = parseFinalCountParam(url.pfc);
+  const pitchingFinalCountParam = parseFinalCountParam(url.pfc);
+  const pitchingFinalCount: BattingFinalCountBucketKey = pitchingFinalCountParam ?? "0-0";
+  const pitchingDisciplineCountParam = parseFinalCountParam(url.pdc ?? null);
+  const pitchingPitchTypesCountParam = parseFinalCountParam(url.ppc ?? null);
+  const [pitchingSearch, setPitchingSearch] = useState("");
+  const [pitchingSplit, setPitchingSplit] = useState<PitchingSplitView>("overall");
+  const [pitchDisciplineSplit, setPitchDisciplineSplit] = useState<PitchingSplitView>("overall");
+  const [pitchDisciplineRunners, setPitchDisciplineRunners] = useState<StatsRunnersFilterKey>("all");
+  const [pitchFinalCountSplit, setPitchFinalCountSplit] = useState<PitchingSplitView>("overall");
+  const [pitchFinalCountRunners, setPitchFinalCountRunners] = useState<StatsRunnersFilterKey>("all");
+  const [pitchTypesSplit, setPitchTypesSplit] = useState<PitchingSplitView>("overall");
+  const [pitchTypesRunners, setPitchTypesRunners] = useState<StatsRunnersFilterKey>("all");
   const battingRunners = parseRunnersParam(url.bbs);
   const pitchingRunners = parseRunnersParam(url.pbs);
 
@@ -270,10 +282,28 @@ export function StatsPageClient({
     [replaceQuery]
   );
   const setPitchingFinalCount = useCallback(
+    (v: BattingFinalCountBucketKey) => {
+      replaceQuery((p) => {
+        if (v === "0-0") p.delete("pfc");
+        else p.set("pfc", v);
+      });
+    },
+    [replaceQuery]
+  );
+  const setPitchingDisciplineCount = useCallback(
     (v: BattingFinalCountBucketKey | null) => {
       replaceQuery((p) => {
-        if (v) p.set("pfc", v);
-        else p.delete("pfc");
+        if (v) p.set("pdc", v);
+        else p.delete("pdc");
+      });
+    },
+    [replaceQuery]
+  );
+  const setPitchingPitchTypesCount = useCallback(
+    (v: BattingFinalCountBucketKey | null) => {
+      replaceQuery((p) => {
+        if (v) p.set("ppc", v);
+        else p.delete("ppc");
       });
     },
     [replaceQuery]
@@ -300,8 +330,16 @@ export function StatsPageClient({
     setDisciplineRunners("all");
     setFinalCountSplit("overall");
     setFinalCountRunners("all");
+    setPitchingSearch("");
+    setPitchingSplit("overall");
+    setPitchDisciplineSplit("overall");
+    setPitchDisciplineRunners("all");
+    setPitchFinalCountSplit("overall");
+    setPitchFinalCountRunners("all");
+    setPitchTypesSplit("overall");
+    setPitchTypesRunners("all");
     replaceQuery((p) => {
-      for (const k of ["bo", "bp", "bbs", "bfc", "bdc", "po", "pb", "pbs", "pfc"] as const) {
+      for (const k of ["bo", "bp", "bbs", "bfc", "bdc", "po", "pb", "pbs", "pfc", "pdc", "ppc"] as const) {
         p.delete(k);
       }
     });
@@ -574,9 +612,19 @@ export function StatsPageClient({
       finalCountSplit !== "overall" ||
       finalCountRunners !== "all" ||
       pitchingRunners !== "all" ||
+      pitchingSplit !== "overall" ||
+      pitchDisciplineSplit !== "overall" ||
+      pitchDisciplineRunners !== "all" ||
+      pitchingDisciplineCountParam != null ||
+      pitchingPitchTypesCountParam != null ||
+      pitchFinalCountSplit !== "overall" ||
+      pitchFinalCountRunners !== "all" ||
+      pitchTypesSplit !== "overall" ||
+      pitchTypesRunners !== "all" ||
       battingFinalCountParam != null ||
-      pitchingFinalCount != null ||
+      pitchingFinalCountParam != null ||
       battingSearch.trim().length > 0 ||
+      pitchingSearch.trim().length > 0 ||
       !!batOpponentKey ||
       !!batPitcherId ||
       !!pitchOpponentKey ||
@@ -590,9 +638,19 @@ export function StatsPageClient({
       finalCountSplit,
       finalCountRunners,
       pitchingRunners,
+      pitchingSplit,
+      pitchDisciplineSplit,
+      pitchDisciplineRunners,
+      pitchingDisciplineCountParam,
+      pitchingPitchTypesCountParam,
+      pitchFinalCountSplit,
+      pitchFinalCountRunners,
+      pitchTypesSplit,
+      pitchTypesRunners,
       battingFinalCountParam,
-      pitchingFinalCount,
+      pitchingFinalCountParam,
       battingSearch,
+      pitchingSearch,
       batOpponentKey,
       batPitcherId,
       pitchOpponentKey,
@@ -727,7 +785,7 @@ export function StatsPageClient({
         </div>
       ) : (
         <div role="tabpanel" id="stats-panel-pitching" aria-labelledby="stats-tab-pitching">
-          <PitchingStatsSheet
+          <TeamPitchingStatsSections
             players={pitchers}
             pitchingStatsWithSplits={displayPitchingStatsWithSplits}
             pas={displayPitchingPas}
@@ -736,11 +794,30 @@ export function StatsPageClient({
             subheading={pitchingSampleSubheading}
             batterBatsById={pitchBatterBatsByIdObj}
             splitDisabled={!!pitchBatterId}
-            finalCountBucket={pitchingFinalCount}
-            onFinalCountBucketChange={setPitchingFinalCount}
+            splitView={pitchingSplit}
+            onSplitViewChange={setPitchingSplit}
             runnersFilter={pitchingRunners}
             onRunnersFilterChange={setPitchingRunners}
-            toolbarVariant="grouped"
+            disciplineSplit={pitchDisciplineSplit}
+            onDisciplineSplitChange={setPitchDisciplineSplit}
+            disciplineRunners={pitchDisciplineRunners}
+            onDisciplineRunnersChange={setPitchDisciplineRunners}
+            disciplineCount={pitchingDisciplineCountParam}
+            onDisciplineCountChange={setPitchingDisciplineCount}
+            finalCountSplit={pitchFinalCountSplit}
+            onFinalCountSplitChange={setPitchFinalCountSplit}
+            finalCountRunners={pitchFinalCountRunners}
+            onFinalCountRunnersChange={setPitchFinalCountRunners}
+            finalCountBucket={pitchingFinalCount}
+            onFinalCountBucketChange={setPitchingFinalCount}
+            pitchTypesSplit={pitchTypesSplit}
+            onPitchTypesSplitChange={setPitchTypesSplit}
+            pitchTypesRunners={pitchTypesRunners}
+            onPitchTypesRunnersChange={setPitchTypesRunners}
+            pitchTypesCount={pitchingPitchTypesCountParam}
+            onPitchTypesCountChange={setPitchingPitchTypesCount}
+            searchQuery={pitchingSearch}
+            onSearchQueryChange={setPitchingSearch}
             sampleToolbarEnd={sampleResetFiltersButton}
             matchupToolbar={
               pitchingMatchupPayload && pitchMatchupOpponents.length > 0

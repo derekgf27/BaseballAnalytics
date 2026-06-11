@@ -125,6 +125,7 @@ function accumulatePitchingNonRunCounts(pas: PlateAppearance[]) {
     }
   }
   const pPa = pitchPaCount > 0 ? pitchSum / pitchPaCount : null;
+  const pitchesThrown = pitchPaCount > 0 ? pitchSum : null;
 
   return {
     totalOuts,
@@ -136,6 +137,7 @@ function accumulatePitchingNonRunCounts(pas: PlateAppearance[]) {
     ip,
     paCount,
     pPa,
+    pitchesThrown,
   };
 }
 
@@ -350,7 +352,7 @@ type RunChargeSlice = {
 
 function buildRateLine(pas: PlateAppearance[]) {
   const c = accumulatePitchingNonRunCounts(pas);
-  const { ip, paCount, so, bb, h, hr, pPa } = c;
+  const { ip, paCount, so, bb, h, hr, pPa, pitchesThrown } = c;
 
   let strikeSum = 0;
   let pitchSumStrike = 0;
@@ -380,6 +382,7 @@ function buildRateLine(pas: PlateAppearance[]) {
     kPct: paCount > 0 ? so / paCount : 0,
     bbPct: paCount > 0 ? bb / paCount : 0,
     pPa,
+    pitchesThrown,
     strikePct: pitchSumStrike > 0 ? strikeSum / pitchSumStrike : null,
     fpsPct: fpsDenom > 0 ? fpsNumer / fpsDenom : null,
   };
@@ -444,6 +447,7 @@ export function buildPitchingStatsLine(
         kPct: 0,
         bbPct: 0,
         pPa: null,
+        pitchesThrown: null,
         strikePct: null,
         fpsPct: null,
       },
@@ -759,6 +763,7 @@ function emptyRateLine(): PitchingRateLine {
     kPct: 0,
     bbPct: 0,
     pPa: null,
+    pitchesThrown: null,
     strikePct: null,
     fpsPct: null,
   };
@@ -928,6 +933,7 @@ export function aggregatePitchingTeamLine(lines: PitchingStats[]): PitchingStats
     kPct: ratesPa > 0 ? so / ratesPa : 0,
     bbPct: ratesPa > 0 ? bb / ratesPa : 0,
     pPa: weightedRateByPa(L, (r) => r.pPa),
+    pitchesThrown: L.reduce((s, l) => s + (l.rates.pitchesThrown ?? 0), 0) || null,
     strikePct: weightedRateByPa(L, (r) => r.strikePct),
     fpsPct: weightedRateByPa(L, (r) => r.fpsPct),
     swingPct: weightedRateByPa(L, (r) => r.swingPct) ?? undefined,

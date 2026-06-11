@@ -106,6 +106,8 @@ export const PITCHING_STAT_HEADER_TOOLTIPS = {
   strikePctPitch: "Strike rate",
   fpsPctPitch: "First-pitch strike rate",
   pPaPitch: "Pitches per plate appearance",
+  pitchesThrownPitch: "Total pitches thrown (sum of pitches seen on PAs with a recorded pitch count)",
+  countStatePitchesPitch: "Pitches thrown at this ball–strike count in the sample",
   vsLHB: "Batters who bat left-handed only",
   vsRHB: "Batters who bat right-handed only",
   swingPctPitchContact: "Swing rate by opposing batters on logged pitches",

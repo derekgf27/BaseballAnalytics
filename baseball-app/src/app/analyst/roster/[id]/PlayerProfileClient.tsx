@@ -764,7 +764,12 @@ export function PlayerProfileClient({
       ) : null}
 
       {pitchingSplits && hasPitchingProfileStats(pitchingSplits) ? (
-        <PlayerPitchingProfileSections pitchingSplits={pitchingSplits} />
+        <PlayerPitchingProfileSections
+          playerId={player.id}
+          pitchingSplits={pitchingSplits}
+          pitchingPas={_pitchingPas}
+          pitchingPitchEvents={_pitchingPitchEvents}
+        />
       ) : null}
 
       <PlayerSprayChartsSection spraySplits={spraySplits} isSwitch={isSwitch} />

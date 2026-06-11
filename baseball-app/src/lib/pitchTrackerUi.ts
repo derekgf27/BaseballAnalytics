@@ -8,9 +8,9 @@ export function pitchOutcomeToTrackerLogResult(outcome: PitchOutcome): PitchTrac
 
 export const PITCH_TRACKER_TYPES: readonly PitchTrackerPitchType[] = [
   "fastball",
+  "slider",
   "sinker",
   "cutter",
-  "slider",
   "curveball",
   "changeup",
   "splitter",
@@ -49,9 +49,9 @@ export function pitchTrackerAbbrev(t: PitchTrackerPitchType | null): string {
     case "fastball":
       return "FB";
     case "sinker":
-      return "SI";
+      return "SK";
     case "cutter":
-      return "FC";
+      return "CT";
     case "slider":
       return "SL";
     case "sweeper":
@@ -76,21 +76,21 @@ export function pitchTrackerTypeChipClass(t: PitchTrackerPitchType | null): stri
   }
   switch (t) {
     case "fastball":
-      return "bg-rose-600/90 text-white border-rose-400/50";
+      return "bg-[#c80815] text-white border-[#a00611]/90";
     case "sinker":
-      return "bg-emerald-700/90 text-white border-emerald-400/50";
+      return "bg-[#004225] text-white border-[#003318]/90";
     case "cutter":
-      return "bg-yellow-500/95 text-zinc-950 border-yellow-400/60";
+      return "bg-[#b8860b] text-white border-[#926b09]/90";
     case "slider":
-      return "bg-indigo-600/90 text-white border-indigo-400/50";
+      return "bg-[#1e3a8a] text-white border-[#172554]/90";
     case "sweeper":
       return "bg-cyan-600/90 text-white border-cyan-400/50";
     case "curveball":
-      return "bg-orange-600/90 text-white border-orange-400/55";
+      return "bg-[#c2410c] text-white border-[#9a3412]/90";
     case "changeup":
-      return "bg-purple-600/90 text-white border-purple-400/50";
+      return "bg-[#5b21b6] text-white border-[#4c1d95]/90";
     case "splitter":
-      return "bg-pink-700/90 text-white border-pink-400/50";
+      return "bg-[#0d5c56] text-white border-[#0a4844]/90";
     default: {
       const _e: never = t;
       return _e;
@@ -125,21 +125,21 @@ export function pitchTrackerLogResultShortLabel(result: PitchTrackerLogResult | 
 export function pitchTrackerCoachButtonClass(t: PitchTrackerPitchType): string {
   switch (t) {
     case "fastball":
-      return "bg-rose-600 text-white hover:bg-rose-500 active:bg-rose-700 border-rose-400/60 shadow-rose-900/40";
+      return "bg-[#c80815] text-white hover:bg-[#b30713] active:bg-[#9a0610] border-[#a00611]/80 shadow-black/40";
     case "sinker":
-      return "bg-emerald-700 text-white hover:bg-emerald-600 active:bg-emerald-800 border-emerald-400/60 shadow-emerald-900/40";
+      return "bg-[#004225] text-white hover:bg-[#003b20] active:bg-[#003318] border-[#003318]/80 shadow-black/40";
     case "cutter":
-      return "bg-yellow-500 text-zinc-950 hover:bg-yellow-400 active:bg-yellow-600 border-yellow-300/70 shadow-yellow-900/30";
+      return "bg-[#b8860b] text-white hover:bg-[#a6780a] active:bg-[#926b09] border-[#926b09]/80 shadow-black/40";
     case "slider":
-      return "bg-indigo-600 text-white hover:bg-indigo-500 active:bg-indigo-700 border-indigo-400/60 shadow-indigo-900/40";
+      return "bg-[#1e3a8a] text-white hover:bg-[#234e99] active:bg-[#172e6b] border-[#172554]/80 shadow-black/40";
     case "sweeper":
       return "bg-cyan-600 text-white hover:bg-cyan-500 active:bg-cyan-700 border-cyan-400/60 shadow-cyan-900/40";
     case "curveball":
-      return "bg-orange-600 text-white hover:bg-orange-500 active:bg-orange-700 border-orange-400/60 shadow-orange-900/40";
+      return "bg-[#c2410c] text-white hover:bg-[#ad3810] active:bg-[#8b2e0f] border-[#9a3412]/80 shadow-black/40";
     case "changeup":
-      return "bg-purple-600 text-white hover:bg-purple-500 active:bg-purple-700 border-purple-400/60 shadow-purple-900/40";
+      return "bg-[#5b21b6] text-white hover:bg-[#5220a0] active:bg-[#3b1778] border-[#4c1d95]/80 shadow-black/40";
     case "splitter":
-      return "bg-pink-700 text-white hover:bg-pink-600 active:bg-pink-800 border-pink-400/60 shadow-pink-900/40";
+      return "bg-[#0d5c56] text-white hover:bg-[#0c524e] active:bg-[#093f3c] border-[#0a4844]/80 shadow-black/40";
     default: {
       const _e: never = t;
       return _e;

@@ -128,7 +128,7 @@ export function CoachPlayerDetailClient({
       ) : null}
 
       {pitchingSplits && hasPitchingProfileStats(pitchingSplits) ? (
-        <PlayerPitchingProfileSections pitchingSplits={pitchingSplits} />
+        <PlayerPitchingProfileSections playerId={player.id} pitchingSplits={pitchingSplits} />
       ) : null}
 
       <Card>

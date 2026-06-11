@@ -21,7 +21,8 @@ import {
   type BattingSheetSplitView,
   type PitchingSheetSplitView,
 } from "@/lib/compute/statsSheetLiveFilters";
-import { pitchOutcomeIsSwing } from "@/lib/compute/pitchSequence";
+import { buildPitchingStatsLine } from "@/lib/compute/pitchingStats";
+import { pitchOutcomeIsSwing, pitchOutcomeStrikesThrownIncrement } from "@/lib/compute/pitchSequence";
 import type { ProfileBattingLine } from "@/lib/profileBattingDisplay";
 import type {
   BattingFinalCountBucketKey,
@@ -45,6 +46,10 @@ export type CountStateContactRates = {
   ldPct?: number;
   fbPct?: number;
   iffPct?: number;
+  /** Strikes ÷ pitches at this count state (pitch log). */
+  strikePct?: number;
+  /** First-pitch strikes ÷ first pitches at 0-0 only. */
+  fpsPct?: number;
   /** Pitches at this count state ÷ qualifying PAs. */
   pPa?: number;
   /** Raw pitch / swing / BIP counts at this count (profile denominators). */
@@ -58,6 +63,9 @@ type ContactAgg = {
   swings: number;
   whiffs: number;
   fouls: number;
+  strikes: number;
+  firstPitches: number;
+  firstPitchStrikes: number;
   bipTyped: number;
   gb: number;
   ld: number;
@@ -66,7 +74,20 @@ type ContactAgg = {
 };
 
 function mkAgg(): ContactAgg {
-  return { pitches: 0, swings: 0, whiffs: 0, fouls: 0, bipTyped: 0, gb: 0, ld: 0, fb: 0, iff: 0 };
+  return {
+    pitches: 0,
+    swings: 0,
+    whiffs: 0,
+    fouls: 0,
+    strikes: 0,
+    firstPitches: 0,
+    firstPitchStrikes: 0,
+    bipTyped: 0,
+    gb: 0,
+    ld: 0,
+    fb: 0,
+    iff: 0,
+  };
 }
 
 function countBipType(t: string | null | undefined, a: ContactAgg): void {
@@ -87,6 +108,8 @@ function aggToRates(a: ContactAgg, paN: number): CountStateContactRates {
     ldPct: a.bipTyped > 0 ? a.ld / a.bipTyped : undefined,
     fbPct: a.bipTyped > 0 ? a.fb / a.bipTyped : undefined,
     iffPct: a.bipTyped > 0 ? a.iff / a.bipTyped : undefined,
+    strikePct: a.pitches > 0 ? a.strikes / a.pitches : undefined,
+    fpsPct: a.firstPitches > 0 ? a.firstPitchStrikes / a.firstPitches : undefined,
     pPa: paN > 0 ? a.pitches / paN : undefined,
     pitches: a.pitches,
     swings: a.swings,
@@ -191,10 +214,15 @@ function aggregateCountStateContact(
     const eid = entityIdFromPa(pa);
     const cur = aggByEntity[eid] ?? mkAgg();
     cur.pitches += 1;
+    if (pitchOutcomeStrikesThrownIncrement(e.outcome) > 0) cur.strikes += 1;
     if (pitchOutcomeIsSwing(e.outcome)) cur.swings += 1;
     if (e.outcome === "swinging_strike") cur.whiffs += 1;
     if (e.outcome === "foul") cur.fouls += 1;
     if (e.outcome === "in_play") countBipType(pa.batted_ball_type, cur);
+    if (ballsNeed === 0 && strikesNeed === 0 && e.pitch_index === 1) {
+      cur.firstPitches += 1;
+      if (pitchOutcomeStrikesThrownIncrement(e.outcome) > 0) cur.firstPitchStrikes += 1;
+    }
     aggByEntity[eid] = cur;
   }
 
@@ -398,6 +426,8 @@ const PITCHING_CONTACT_RATE_KEYS: (keyof PitchingRateLine)[] = [
   "ldPct",
   "fbPct",
   "iffPct",
+  "strikePct",
+  "fpsPct",
   "pPa",
 ];
 
@@ -417,9 +447,66 @@ export function applyCountStateContactToPitchingStats(
     if (contact.ldPct != null) rates.ldPct = contact.ldPct;
     if (contact.fbPct != null) rates.fbPct = contact.fbPct;
     if (contact.iffPct != null) rates.iffPct = contact.iffPct;
+    if (contact.strikePct != null) rates.strikePct = contact.strikePct;
+    if (contact.fpsPct != null) rates.fpsPct = contact.fpsPct;
     if (contact.pPa != null) rates.pPa = contact.pPa;
   }
   return { ...stats, rates };
+}
+
+function eventsByPaIdFromList(pitchEvents: PitchEvent[]): Map<string, PitchEvent[]> {
+  const map = new Map<string, PitchEvent[]>();
+  for (const e of pitchEvents) {
+    const list = map.get(e.pa_id) ?? [];
+    list.push(e);
+    map.set(e.pa_id, list);
+  }
+  return map;
+}
+
+export type ProfilePitchingCountStateLine = PitchingStats & { countStatePitches?: number };
+
+/** Profile + stats sheet: batters faced from reached PAs; command rates from every pitch at that count. */
+export function buildPitchingDisciplineLineAtCountState(
+  pitcherId: string,
+  pas: PlateAppearance[] | undefined,
+  pitchEvents: PitchEvent[] | undefined,
+  splitView: PitchingSheetSplitView = "overall",
+  runnersFilter: StatsRunnersFilterKey = "all",
+  countBucket: BattingFinalCountBucketKey,
+  batterBatsById?: Record<string, Bats | null | undefined>
+): ProfilePitchingCountStateLine | undefined {
+  if (!pas?.length || !pitchEvents?.length) return undefined;
+  const parsed = parseCountBucket(countBucket);
+  if (!parsed) return undefined;
+  const [ballsNeed, strikesNeed] = parsed;
+  const paIdsAtCount = paIdsWithPitchAtCount(pitchEvents, ballsNeed, strikesNeed);
+  const batsMap = new Map(Object.entries(batterBatsById ?? {}));
+  const sub = pas.filter(
+    (pa) =>
+      pa.pitcher_id === pitcherId &&
+      paQualifiesForReachedCountState(pa.id, ballsNeed, strikesNeed, paIdsAtCount) &&
+      paMatchesPitchingPlatoonSplit(pa, splitView, batsMap) &&
+      paMatchesStatsRunnersFilter(pa, runnersFilter)
+  );
+  if (sub.length === 0) return undefined;
+
+  const base = buildPitchingStatsLine(sub, new Set(), eventsByPaIdFromList(pitchEvents), null);
+  if (!base) return undefined;
+
+  const contact = buildCountStateContactByPitcher(
+    [{ id: pitcherId, name: "" } as Player],
+    pas,
+    pitchEvents,
+    splitView,
+    runnersFilter,
+    countBucket,
+    batterBatsById,
+    countStatePaQualificationForRunnersFilter(runnersFilter)
+  )[pitcherId];
+
+  const line = applyCountStateContactToPitchingStats(base, contact);
+  return { ...line, countStatePitches: contact?.pitches };
 }
 
 /** Overlay count-state discipline rates onto an existing batting line (season / split rows). */

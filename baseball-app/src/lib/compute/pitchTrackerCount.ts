@@ -8,6 +8,60 @@ import type { PitchEvent, PitchOutcome, PitchTrackerLogResult, PitchTrackerPitch
 /** Synthetic PA id for in-progress coach tracker pitches (merged into matchup cards before Record saves). */
 export const COACH_LIVE_AB_PA_ID = "__coach_live_ab__";
 
+/** Coach `pitch_number` is global within a tracker group; sort rows for the current AB. */
+export function sortCoachPitchRowsForAb(rows: PitchTrackerPitch[]): PitchTrackerPitch[] {
+  return [...rows].sort((a, b) => a.pitch_number - b.pitch_number);
+}
+
+/** Map 1-based pitch index within the AB → coach tracker row (not raw `pitch_number`). */
+export function coachPitchRowByAbIndex(rows: PitchTrackerPitch[]): Map<number, PitchTrackerPitch> {
+  const sorted = sortCoachPitchRowsForAb(rows);
+  const m = new Map<number, PitchTrackerPitch>();
+  sorted.forEach((row, i) => m.set(i + 1, row));
+  return m;
+}
+
+/** Next pitch # in this tracker session (all rows in the group, not per batter). */
+export function nextOpenPitchNumberInGroup(
+  rows: ReadonlyArray<Pick<PitchTrackerPitch, "pitch_number">>
+): number {
+  const occupied = new Set(rows.map((r) => r.pitch_number));
+  let n = 1;
+  while (occupied.has(n)) n += 1;
+  return n;
+}
+
+/**
+ * Align coach pitch types to a pitch-log sequence by AB-relative index.
+ * Inferred terminal rows (BIP `in_play`, walk 4th ball, HBP) inherit the prior pitch type when
+ * the coach pad has no extra row for them.
+ */
+export function mapCoachPitchTypesToSequence(
+  sequence: PitchSequenceEntry[],
+  coachRows: PitchTrackerPitch[]
+): (PitchTrackerPitch["pitch_type"])[] {
+  const sorted = sortCoachPitchRowsForAb(coachRows);
+  const types: (PitchTrackerPitch["pitch_type"])[] = [];
+  let lastTyped: PitchTrackerPitch["pitch_type"] = null;
+  for (let i = 0; i < sequence.length; i++) {
+    const entry = sequence[i]!;
+    let t = sorted[i]?.pitch_type ?? null;
+    if (t == null && i > 0) {
+      const prev = sequence[i - 1]!;
+      const inferredTerminal =
+        (entry.outcome === "in_play" && prev.outcome !== "in_play") ||
+        (entry.outcome === "ball" && entry.balls_before === 3 && prev.outcome !== "ball") ||
+        (entry.outcome === "hbp" && prev.outcome !== "hbp");
+      if (inferredTerminal) {
+        t = sorted[i - 1]?.pitch_type ?? lastTyped;
+      }
+    }
+    if (t != null) lastTyped = t;
+    types.push(t);
+  }
+  return types;
+}
+
 function mapTrackerResultToOutcome(r: PitchTrackerLogResult): PitchOutcome {
   switch (r) {
     case "ball":
@@ -74,7 +128,7 @@ export function pitchEventsFromCoachTrackerRows(paId: string, rows: PitchTracker
     out.push({
       id: `__coach_pe_${paId}_${row.pitch_number}`,
       pa_id: paId,
-      pitch_index: row.pitch_number,
+      pitch_index: i + 1,
       balls_before: b,
       strikes_before: s,
       outcome: o,
@@ -104,7 +158,7 @@ export function pitchTypeMixEventsFromCoachTrackerRows(paId: string, rows: Pitch
     out.push({
       id: `__coach_mix_pe_${paId}_${row.pitch_number}`,
       pa_id: paId,
-      pitch_index: row.pitch_number,
+      pitch_index: i + 1,
       balls_before: 0,
       strikes_before: 0,
       outcome: o,
@@ -120,12 +174,23 @@ function enrichPitchTypesFromTrackerRows(
   rows: PitchTrackerPitch[]
 ): PitchEvent[] {
   if (rows.length === 0) return events;
-  const rowsByNum = new Map(rows.map((r) => [r.pitch_number, r]));
+  const sorted = sortCoachPitchRowsForAb(rows);
+  const types = mapCoachPitchTypesToSequence(
+    events
+      .filter((e) => e.pa_id === paId)
+      .sort((a, b) => a.pitch_index - b.pitch_index)
+      .map((e) => ({
+        balls_before: e.balls_before,
+        strikes_before: e.strikes_before,
+        outcome: e.outcome,
+      })),
+    rows
+  );
   return events.map((e) => {
     if (e.pa_id !== paId || e.pitch_type) return e;
-    const row = rowsByNum.get(e.pitch_index);
-    if (!row?.pitch_type) return e;
-    return { ...e, pitch_type: row.pitch_type };
+    const t = types[e.pitch_index - 1] ?? sorted[e.pitch_index - 1]?.pitch_type ?? null;
+    if (!t) return e;
+    return { ...e, pitch_type: t };
   });
 }
 

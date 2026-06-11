@@ -39,7 +39,16 @@ export type PitchCompareSortKey =
   | "strikePct"
   | "fpsPct"
   | "pPa"
-  | "e";
+  | "pitchesThrown"
+  | "e"
+  | "bf"
+  | "swingPct"
+  | "whiffPct"
+  | "foulPct"
+  | "gbPct"
+  | "ldPct"
+  | "fbPct"
+  | "iffPct";
 
 type ColFormat = "int" | "era" | "ip" | "rate7" | "pct" | "pPa" | "avgAgainst";
 
@@ -82,6 +91,90 @@ export const PITCHING_COMPARE_STANDARD_COLUMNS: PitchCompareColumnDef[] = [
   { key: "pPa", label: "P/PA", format: "pPa", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.pPaPitch },
 ];
 
+/** Discipline & contact — batters faced + pitch-command / BIP rates (profile / stats secondary table). */
+export type PitchProfileDisciplineColumnDef =
+  | PitchCompareColumnDef
+  | {
+      key: "countStatePitches";
+      label: string;
+      format: "int";
+      tooltip: string;
+    };
+
+const PITCHING_COMPARE_COUNT_STATE_PITCHES_COL: PitchProfileDisciplineColumnDef = {
+  key: "countStatePitches",
+  label: "Pitches",
+  format: "int",
+  tooltip: PITCHING_STAT_HEADER_TOOLTIPS.countStatePitchesPitch,
+};
+
+/** Discipline-by-count profile table: pitch count + command / BIP rates (no separate batters faced). */
+export function pitchingCompareCountStateDisciplineColumns(): PitchProfileDisciplineColumnDef[] {
+  const contact = PITCHING_COMPARE_CONTACT_COLUMNS.filter((c) => c.key !== "bf");
+  return [PITCHING_COMPARE_COUNT_STATE_PITCHES_COL, ...contact];
+}
+
+export function pitchingCompareCountStateDisciplineBorderLeft(
+  key: PitchProfileDisciplineColumnDef["key"]
+): boolean {
+  if (key === "countStatePitches") return false;
+  if (key === "fpsPct") return true;
+  return pitchingCompareContactStatBorderLeft(key as PitchCompareSortKey);
+}
+
+export function formatPitchingCountStateDisciplineCell(
+  col: PitchProfileDisciplineColumnDef,
+  stats: PitchingStats | undefined,
+  countStatePitches?: number
+): string {
+  if (col.key === "countStatePitches") {
+    return countStatePitches != null && countStatePitches > 0 ? String(countStatePitches) : "—";
+  }
+  return formatPitchingCompareCell(col, stats);
+}
+
+export const PITCHING_COMPARE_CONTACT_COLUMNS: PitchCompareColumnDef[] = [
+  { key: "bf", label: "Batters faced", format: "int", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.paPitchContact },
+  { key: "fpsPct", label: "FPS%", format: "pct", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.fpsPctPitch },
+  { key: "strikePct", label: "Strike%", format: "pct", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.strikePctPitch },
+  { key: "swingPct", label: "Sw%", format: "pct", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.swingPctPitchContact },
+  { key: "whiffPct", label: "Whiff%", format: "pct", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.whiffPctPitchContact },
+  { key: "foulPct", label: "Foul%", format: "pct", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.foulPctPitchContact },
+  { key: "gbPct", label: "GB%", format: "pct", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.gbPctPitchContact },
+  { key: "ldPct", label: "LD%", format: "pct", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.ldPctPitchContact },
+  { key: "fbPct", label: "FB%", format: "pct", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.fbPctPitchContact },
+  { key: "iffPct", label: "IFF%", format: "pct", tooltip: PITCHING_STAT_HEADER_TOOLTIPS.iffPctPitchContact },
+];
+
+const PITCHING_COMPARE_FINAL_COUNT_EXCLUDED = new Set<PitchCompareSortKey>([
+  "g",
+  "gs",
+  "w",
+  "l",
+  "sv",
+  "ir",
+  "irs",
+  "pPa",
+  "strikePct",
+  "fpsPct",
+  "e",
+]);
+
+const PITCHING_COMPARE_FINAL_COUNT_PA: PitchCompareColumnDef = {
+  key: "bf",
+  label: "PA",
+  format: "int",
+  tooltip: PITCHING_STAT_HEADER_TOOLTIPS.paPitchContact,
+};
+
+/** Standard pitching outcomes for PAs ending at each final count (IP → PA). */
+export const PITCHING_COMPARE_FINAL_COUNT_COLUMNS: PitchCompareColumnDef[] =
+  PITCHING_COMPARE_STANDARD_COLUMNS.flatMap((col) => {
+    if (col.key === "ip") return [PITCHING_COMPARE_FINAL_COUNT_PA];
+    if (PITCHING_COMPARE_FINAL_COUNT_EXCLUDED.has(col.key)) return [];
+    return [col];
+  });
+
 const LOWER_IS_BETTER = new Set<PitchCompareSortKey>([
   "era",
   "fip",
@@ -103,7 +196,7 @@ const LOWER_IS_BETTER = new Set<PitchCompareSortKey>([
   "l",
 ]);
 
-const HIGHER_IS_BETTER = new Set<PitchCompareSortKey>(["so", "w", "sv", "k7", "kPct"]);
+const HIGHER_IS_BETTER = new Set<PitchCompareSortKey>(["so", "w", "sv", "k7", "kPct", "whiffPct"]);
 
 function formatEraLike(value: number): string {
   return fmtPitchDecimal(value, 2);
@@ -116,6 +209,10 @@ function formatOppBattingAvg(stats: PitchingStats): string {
 
 export function pitchingCompareStatBorderLeft(key: PitchCompareSortKey): boolean {
   return key === "h" || key === "so" || key === "era" || key === "k7" || key === "strikePct";
+}
+
+export function pitchingCompareContactStatBorderLeft(key: PitchCompareSortKey): boolean {
+  return key === "bf" || key === "swingPct" || key === "gbPct";
 }
 
 export function getPitchingCompareNumericValue(
@@ -182,6 +279,24 @@ export function getPitchingCompareNumericValue(
       return stats.rates.fpsPct ?? null;
     case "pPa":
       return stats.rates.pPa ?? null;
+    case "pitchesThrown":
+      return stats.rates.pitchesThrown ?? null;
+    case "bf":
+      return stats.rates.pa;
+    case "swingPct":
+      return stats.rates.swingPct ?? null;
+    case "whiffPct":
+      return stats.rates.whiffPct ?? null;
+    case "foulPct":
+      return stats.rates.foulPct ?? null;
+    case "gbPct":
+      return stats.rates.gbPct ?? null;
+    case "ldPct":
+      return stats.rates.ldPct ?? null;
+    case "fbPct":
+      return stats.rates.fbPct ?? null;
+    case "iffPct":
+      return stats.rates.iffPct ?? null;
     default:
       return null;
   }

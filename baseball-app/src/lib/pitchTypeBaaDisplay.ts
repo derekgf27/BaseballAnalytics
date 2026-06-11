@@ -6,7 +6,7 @@ import { fmtDecimalNoLeadingZero } from "@/lib/format";
 import type { PitchTypeBucketKey, PitchTypeBucketProfile, PitchingRateLine, PitchingStats } from "@/lib/types";
 
 export const PITCH_TYPE_STATS_HELPER_TEXT =
-  "Usage and command stats use every typed pitch. BAA, K%, SLG, and batted-ball splits use plate appearances that ended on that pitch type (final logged pitch). PAs with no pitch log or an untyped final pitch are excluded from results columns.";
+  "Usage, swing, whiff, and strike% use every typed pitch. BAA and K% use plate appearances that ended on that pitch type (final logged pitch). PAs with no pitch log or an untyped final pitch are excluded from results columns.";
 
 /** @deprecated Use PITCH_TYPE_STATS_HELPER_TEXT */
 export const PITCH_TYPE_BAA_HELPER_TEXT = PITCH_TYPE_STATS_HELPER_TEXT;
@@ -15,8 +15,8 @@ export const PITCH_TYPE_COLUMNS_MODE_LABEL = "By pitch type (mix + BAA)";
 
 const PITCH_TYPE_LABELS: readonly { key: PitchTypeBucketKey; label: string; abbrev: string }[] = [
   { key: "fastball", abbrev: "FB", label: "Fastball" },
-  { key: "sinker", abbrev: "SI", label: "Sinker" },
-  { key: "cutter", abbrev: "FC", label: "Cutter" },
+  { key: "sinker", abbrev: "SK", label: "Sinker" },
+  { key: "cutter", abbrev: "CT", label: "Cutter" },
   { key: "slider", abbrev: "SL", label: "Slider" },
   { key: "sweeper", abbrev: "SW", label: "Sweeper" },
   { key: "curveball", abbrev: "CB", label: "Curveball" },
@@ -71,8 +71,8 @@ type PitchTypeFieldSet = {
 
 const PITCH_TYPE_BAA_ROWS: readonly PitchTypeFieldSet[] = [
   { key: "fastball", abbrev: "FB", label: "Fastball", mix: "plMixFB", sw: "plSwFB", wh: "plWhiffFB", ab: "plTxAbFB", h: "plTxHFB" },
-  { key: "sinker", abbrev: "SI", label: "Sinker", mix: "plMixSI", sw: "plSwSI", wh: "plWhiffSI", ab: "plTxAbSI", h: "plTxHSI" },
-  { key: "cutter", abbrev: "FC", label: "Cutter", mix: "plMixFC", sw: "plSwFC", wh: "plWhiffFC", ab: "plTxAbFC", h: "plTxHFC" },
+  { key: "sinker", abbrev: "SK", label: "Sinker", mix: "plMixSI", sw: "plSwSI", wh: "plWhiffSI", ab: "plTxAbSI", h: "plTxHSI" },
+  { key: "cutter", abbrev: "CT", label: "Cutter", mix: "plMixFC", sw: "plSwFC", wh: "plWhiffFC", ab: "plTxAbFC", h: "plTxHFC" },
   { key: "slider", abbrev: "SL", label: "Slider", mix: "plMixSL", sw: "plSwSL", wh: "plWhiffSL", ab: "plTxAbSL", h: "plTxHSL" },
   { key: "sweeper", abbrev: "SW", label: "Sweeper", mix: "plMixSW", sw: "plSwSW", wh: "plWhiffSW", ab: "plTxAbSW", h: "plTxHSW" },
   { key: "curveball", abbrev: "CB", label: "Curveball", mix: "plMixCB", sw: "plSwCB", wh: "plWhiffCB", ab: "plTxAbCB", h: "plTxHCB" },
@@ -189,4 +189,69 @@ export function pitchTypeBaaColumnLabel(abbrev: string): string {
 
 export function pitchingStatsToRateLine(stats: PitchingStats | undefined): PitchingRateLine | undefined {
   return stats?.rates;
+}
+
+/** Coach pitch abbrev + bucket key for team pitch-type sheet columns. */
+export const PITCH_TYPE_SHEET_SUFFIXES = PITCH_TYPE_LABELS.map((row) => ({
+  suffix: row.abbrev,
+  abbrev: row.abbrev,
+  bucket: row.key,
+}));
+
+export type PitchTypeSheetSuffix = (typeof PITCH_TYPE_SHEET_SUFFIXES)[number]["suffix"];
+
+export type PitchTypeProfileFieldKey = keyof Pick<PitchTypeBucketProfile, "strikePct" | "kPct">;
+
+export const PITCH_TYPE_SHEET_RESULT_GROUPS: readonly {
+  prefix: string;
+  field: PitchTypeProfileFieldKey;
+  labelSuffix: string;
+}[] = [
+  { prefix: "plStrike", field: "strikePct", labelSuffix: "Strike%" },
+  { prefix: "plK", field: "kPct", labelSuffix: "K%" },
+];
+
+export type PitchTypeResultSortKey = `${(typeof PITCH_TYPE_SHEET_RESULT_GROUPS)[number]["prefix"]}${PitchTypeSheetSuffix}`;
+
+const PITCH_TYPE_SUFFIX_TO_BUCKET = Object.fromEntries(
+  PITCH_TYPE_SHEET_SUFFIXES.map((row) => [row.suffix, row.bucket])
+) as Record<string, PitchTypeBucketKey>;
+
+export function pitchTypeSheetResultTooltip(prefix: string, abbrev: string): string {
+  switch (prefix) {
+    case "plStrike":
+      return `Strikes ÷ ${abbrev} thrown (called, whiff, foul, in play)`;
+    case "plK":
+      return `Strikeout rate when PA ended on ${abbrev} (SO ÷ AB+SO)`;
+    default:
+      return `${abbrev} pitch-type rate`;
+  }
+}
+
+export function pitchTypeProfileRate(
+  rates: PitchingRateLine | undefined,
+  bucket: PitchTypeBucketKey,
+  field: PitchTypeProfileFieldKey
+): number | undefined {
+  const v = rates?.plBuckets?.[bucket]?.[field];
+  return typeof v === "number" && !Number.isNaN(v) ? v : undefined;
+}
+
+export function parsePitchTypeResultSortKey(
+  key: string
+): { bucket: PitchTypeBucketKey; field: PitchTypeProfileFieldKey } | null {
+  for (const group of PITCH_TYPE_SHEET_RESULT_GROUPS) {
+    if (!key.startsWith(group.prefix)) continue;
+    const suffix = key.slice(group.prefix.length);
+    const bucket = PITCH_TYPE_SUFFIX_TO_BUCKET[suffix];
+    if (!bucket) continue;
+    return { bucket, field: group.field };
+  }
+  return null;
+}
+
+export function allPitchTypeResultSortKeys(): PitchTypeResultSortKey[] {
+  return PITCH_TYPE_SHEET_RESULT_GROUPS.flatMap((group) =>
+    PITCH_TYPE_SHEET_SUFFIXES.map((row) => `${group.prefix}${row.suffix}` as PitchTypeResultSortKey)
+  );
 }

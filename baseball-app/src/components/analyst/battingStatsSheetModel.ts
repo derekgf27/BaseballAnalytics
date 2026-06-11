@@ -126,14 +126,13 @@ export const BATTING_SHEET_FINAL_COUNT_EXCLUDED_KEYS = new Set<BattingSheetSortK
   "sbPct",
   "e",
   "opsPlus",
+  "gidp",
+  "fieldersChoice",
 ]);
 
 export const BATTING_SHEET_CONTACT_COLUMNS: BattingSheetColumnDef[] = [
   BATTING_SHEET_COLUMNS[0]!,
-  BATTING_SHEET_COLUMNS[1]!,
-  BATTING_SHEET_COLUMNS[2]!,
   BATTING_SHEET_COLUMNS[3]!,
-  BATTING_SHEET_COLUMNS.find((c) => c.key === "pPa")!,
   {
     ...BATTING_SHEET_COLUMNS.find((c) => c.key === "kPct")!,
     tooltip: BATTING_STAT_HEADER_TOOLTIPS.kPctAtCountState,
@@ -187,15 +186,21 @@ export const BATTING_SHEET_CONTACT_COLUMNS: BattingSheetColumnDef[] = [
     format: "pct",
     tooltip: BATTING_STAT_HEADER_TOOLTIPS.iffPct,
   },
-  BATTING_SHEET_COLUMNS.find((c) => c.key === "e")!,
 ];
 
-/** Season discipline table — contact rates without G/GS, P/PA, or E. */
-export const BATTING_SHEET_DISCIPLINE_COLUMNS: BattingSheetColumnDef[] = BATTING_SHEET_CONTACT_COLUMNS.filter(
-  (c) => !BATTING_SHEET_FINAL_COUNT_EXCLUDED_KEYS.has(c.key)
-).map((c) =>
-  c.key === "kPct" ? BATTING_SHEET_COLUMNS.find((col) => col.key === "kPct")! : c
-);
+/** Season discipline table — PA + plate-discipline / BIP rates only. */
+export const BATTING_SHEET_DISCIPLINE_COLUMNS: BattingSheetColumnDef[] = [
+  BATTING_SHEET_COLUMNS[0]!,
+  BATTING_SHEET_COLUMNS[3]!,
+  BATTING_SHEET_COLUMNS.find((c) => c.key === "kPct")!,
+  BATTING_SHEET_CONTACT_COLUMNS.find((c) => c.key === "swingPct")!,
+  BATTING_SHEET_CONTACT_COLUMNS.find((c) => c.key === "whiffPct")!,
+  BATTING_SHEET_CONTACT_COLUMNS.find((c) => c.key === "foulPct")!,
+  BATTING_SHEET_CONTACT_COLUMNS.find((c) => c.key === "gbPct")!,
+  BATTING_SHEET_CONTACT_COLUMNS.find((c) => c.key === "ldPct")!,
+  BATTING_SHEET_CONTACT_COLUMNS.find((c) => c.key === "fbPct")!,
+  BATTING_SHEET_CONTACT_COLUMNS.find((c) => c.key === "iffPct")!,
+];
 
 export function battingSheetColumnsForMode(mode: BattingSheetColumnMode): BattingSheetColumnDef[] {
   if (mode === "contact") return BATTING_SHEET_CONTACT_COLUMNS;

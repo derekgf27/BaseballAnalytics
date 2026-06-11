@@ -398,6 +398,8 @@ export interface PitchingRateLine {
   bbPct: number;
   /** Pitches per PA when pitch counts exist; otherwise null. */
   pPa: number | null;
+  /** Sum of `pitches_seen` on PAs where pitch count is recorded; otherwise null. */
+  pitchesThrown?: number | null;
   /** Strikes ÷ pitches when both are recorded on PAs; otherwise null. */
   strikePct: number | null;
   /** First-pitch strikes ÷ PAs with FPS recorded; otherwise null. */
@@ -538,6 +540,7 @@ export interface PitchTypeBucketProfile {
   gbPct?: number;
   ldPct?: number;
   fbPct?: number;
+  iffPct?: number;
 }
 
 /** Pitching stats derived from PAs where this player is `pitcher_id` (not stored). */

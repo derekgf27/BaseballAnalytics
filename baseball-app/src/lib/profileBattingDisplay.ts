@@ -70,6 +70,20 @@ export function countPasWithPitchLog(
   return withLog.size;
 }
 
+export function countPitcherPasWithPitchLog(
+  pitcherId: string,
+  pas: PlateAppearance[] | undefined,
+  pitchEvents: PitchEvent[] | undefined
+): number {
+  if (!pas?.length || !pitchEvents?.length) return 0;
+  const paIds = new Set(pas.filter((pa) => pa.pitcher_id === pitcherId).map((pa) => pa.id));
+  const withLog = new Set<string>();
+  for (const e of pitchEvents) {
+    if (paIds.has(e.pa_id)) withLog.add(e.pa_id);
+  }
+  return withLog.size;
+}
+
 export function profilePitchCoverageNote(
   seasonPa: number,
   pasWithPitchLog: number

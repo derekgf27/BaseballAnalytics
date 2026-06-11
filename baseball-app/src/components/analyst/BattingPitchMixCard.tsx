@@ -19,7 +19,7 @@ import {
 } from "@/lib/compute/pitchTypeDistributionFromPitchLog";
 import { formatBatterGameStatLine } from "@/lib/format/batterGameLine";
 import { pitchTrackerAbbrev, pitchTrackerTypeChipClass, pitchTrackerTypeLabel } from "@/lib/pitchTrackerUi";
-import type { PitchEvent, PlateAppearance, Player } from "@/lib/types";
+import type { PitchEvent, PitchTrackerPitchType, PlateAppearance, Player } from "@/lib/types";
 
 const RESULT_ADDS_ONE_OUT = new Set<PlateAppearance["result"]>([
   "out",
@@ -337,6 +337,7 @@ function PitchMixDistributionBlock({
   coachPadDense = false,
   coachPadExpanded = false,
   coachPadFullGame = false,
+  onPitchTypeClick,
 }: {
   dist: PitchTypeDistributionResult;
   compact: boolean;
@@ -344,6 +345,8 @@ function PitchMixDistributionBlock({
   coachPadDense?: boolean;
   coachPadExpanded?: boolean;
   coachPadFullGame?: boolean;
+  /** When set, the type chips become tap targets (e.g. coach pad per-pitch-type modal). */
+  onPitchTypeClick?: (type: PitchTrackerPitchType) => void;
 }) {
   const stat = coachPadStatTypography(coachPadExpanded);
   /** Mix lists up to 7 types — values one step smaller than Rates/Contact on coach pad. */
@@ -385,25 +388,39 @@ function PitchMixDistributionBlock({
         role="group"
         aria-label="Pitch type mix among logged pitches with a type"
       >
-        {dist.entries.map((e) => (
-          <span
-            key={e.type}
-            className="inline-flex min-w-0 max-w-full items-center gap-x-1.5 leading-none md:gap-x-2"
-            title={`${pitchTrackerAbbrev(e.type)} — ${pitchTrackerTypeLabel(e.type)}`}
-          >
+        {dist.entries.map((e) => {
+          const chip = onPitchTypeClick ? (
+            <button
+              type="button"
+              onClick={() => onPitchTypeClick(e.type)}
+              aria-label={`${pitchTrackerTypeLabel(e.type)} stats`}
+              className={`touch-manipulation inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md border font-bold transition hover:brightness-110 hover:shadow-[0_0_0.6rem_rgba(255,255,255,0.45)] active:scale-95 ${chipClass} ${pitchTrackerTypeChipClass(e.type)}`}
+            >
+              {pitchTrackerAbbrev(e.type)}
+            </button>
+          ) : (
             <span
               className={`inline-flex shrink-0 items-center justify-center rounded-md border font-bold ${chipClass} ${pitchTrackerTypeChipClass(e.type)}`}
             >
               {pitchTrackerAbbrev(e.type)}
             </span>
-            <span className={`tabular-nums font-bold leading-none text-[var(--accent)] ${pctClass}`}>
-              {formatPct(e.pct)}
+          );
+          return (
+            <span
+              key={e.type}
+              className="inline-flex min-w-0 max-w-full items-center gap-x-1.5 leading-none md:gap-x-2"
+              title={`${pitchTrackerAbbrev(e.type)} — ${pitchTrackerTypeLabel(e.type)}`}
+            >
+              {chip}
+              <span className={`tabular-nums font-bold leading-none text-[var(--accent)] ${pctClass}`}>
+                {formatPct(e.pct)}
+              </span>
+              <span className={`tabular-nums font-semibold leading-none text-white ${countClass}`}>
+                ({e.count})
+              </span>
             </span>
-            <span className={`tabular-nums font-semibold leading-none text-white ${countClass}`}>
-              ({e.count})
-            </span>
-          </span>
-        ))}
+          );
+        })}
       </div>
     );
   }
@@ -416,17 +433,29 @@ function PitchMixDistributionBlock({
     >
       {dist.entries.map((e) => {
         const mixTitle = `${pitchTrackerAbbrev(e.type)} — ${pitchTrackerTypeLabel(e.type)}`;
+        const chip = onPitchTypeClick ? (
+          <button
+            type="button"
+            onClick={() => onPitchTypeClick(e.type)}
+            aria-label={`${pitchTrackerTypeLabel(e.type)} stats`}
+            className={`touch-manipulation inline-flex h-5 w-8 shrink-0 cursor-pointer items-center justify-center rounded border text-[10px] font-bold transition hover:brightness-110 hover:shadow-[0_0_0.45rem_rgba(255,255,255,0.35)] active:scale-95 ${pitchTrackerTypeChipClass(e.type)}`}
+          >
+            {pitchTrackerAbbrev(e.type)}
+          </button>
+        ) : (
+          <span
+            className={`inline-flex h-5 w-8 shrink-0 items-center justify-center rounded border text-[10px] font-bold ${pitchTrackerTypeChipClass(e.type)}`}
+          >
+            {pitchTrackerAbbrev(e.type)}
+          </span>
+        );
         return (
           <span
             key={e.type}
             className="inline-flex min-w-0 max-w-full items-center gap-x-1.5 leading-none"
             title={mixTitle}
           >
-            <span
-              className={`inline-flex h-5 w-8 shrink-0 items-center justify-center rounded border text-[10px] font-bold ${pitchTrackerTypeChipClass(e.type)}`}
-            >
-              {pitchTrackerAbbrev(e.type)}
-            </span>
+            {chip}
             <span className={`whitespace-nowrap ${valClass}`}>
               {formatPct(e.pct)}{" "}
               <span className="font-medium text-white">({e.count})</span>
@@ -864,6 +893,8 @@ function PitchMixRow({
   coachPadExpanded = false,
   hidePitchesInRates = false,
   coachPadFullGame = false,
+  onPitchTypeClick,
+  hideTypeMix = false,
 }: {
   name: string;
   mix: PitchMixLine;
@@ -896,6 +927,10 @@ function PitchMixRow({
   stripTypeDistribution?: PitchTypeDistributionResult | null;
   hidePitchesInRates?: boolean;
   coachPadFullGame?: boolean;
+  /** When set, Mix type chips open per-pitch-type stats (coach pad). */
+  onPitchTypeClick?: (type: PitchTrackerPitchType) => void;
+  /** Hide only the pitch-type Mix block (Rates / Contact / 2-strike stay). */
+  hideTypeMix?: boolean;
 }) {
   /** Keep name + stat mini-cards on one printed page (PDF / print dialog). */
   const breakKeepClass = "break-inside-avoid";
@@ -970,9 +1005,14 @@ function PitchMixRow({
     </PitchMixMiniCard>
   );
   const mixMini =
-    stripTypeDistribution != null ? (
+    !hideTypeMix && stripTypeDistribution != null ? (
       <PitchMixMiniCard title="Mix" compact={compact} {...padProps}>
-        <PitchMixDistributionBlock dist={stripTypeDistribution} compact={compact} {...padProps} />
+        <PitchMixDistributionBlock
+          dist={stripTypeDistribution}
+          compact={compact}
+          {...padProps}
+          onPitchTypeClick={onPitchTypeClick}
+        />
       </PitchMixMiniCard>
     ) : null;
 
@@ -1061,6 +1101,7 @@ export function MatchupPitchMixStrip({
   hidePitchesInRates = false,
   hideLobInRates = false,
   coachPadFullGame = false,
+  onPitchTypeClick,
 }: {
   pas: PlateAppearance[];
   pitchEvents?: PitchEvent[];
@@ -1078,6 +1119,8 @@ export function MatchupPitchMixStrip({
   hideLobInRates?: boolean;
   /** Coach full-game strip: 3-column Rates / Contact grids. */
   coachPadFullGame?: boolean;
+  /** When set, Mix type chips open per-pitch-type stats (coach pad). */
+  onPitchTypeClick?: (type: PitchTrackerPitchType) => void;
 }) {
   const eventsByPaId = useMemo(() => groupPitchEventsByPaId(pitchEvents), [pitchEvents]);
   const eventsByPaIdForDistribution = useMemo(
@@ -1127,6 +1170,7 @@ export function MatchupPitchMixStrip({
       hidePitchesInRates={hidePitchesInRates}
       showLob={!hideLobInRates}
       coachPadFullGame={coachPadFullGame}
+      onPitchTypeClick={onPitchTypeClick}
     />
   );
 }
@@ -1142,6 +1186,8 @@ export function BattingPitchMixCard({
   pitchPadLayout = false,
   inning,
   inningHalf,
+  onPitchTypeClick,
+  hideTypeMix = false,
 }: {
   pas: PlateAppearance[];
   players: Player[];
@@ -1160,6 +1206,10 @@ export function BattingPitchMixCard({
   /** With `inningHalf`, shows “Pitches this inning” beside the pitcher name. */
   inning?: number;
   inningHalf?: "top" | "bottom";
+  /** When set, Mix type chips open per-pitch-type stats for the current pitcher. */
+  onPitchTypeClick?: (type: PitchTrackerPitchType) => void;
+  /** Hide only the pitch-type Mix block (Rates / Contact / 2-strike stay). */
+  hideTypeMix?: boolean;
 }) {
   const pad = pitchPadLayoutFlags(pitchPadLayout);
   const eventsByPaId = useMemo(() => groupPitchEventsByPaId(pitchEvents), [pitchEvents]);
@@ -1272,6 +1322,7 @@ export function BattingPitchMixCard({
         variant="team"
         as="div"
         stripTypeDistribution={teamStripDistribution}
+        hideTypeMix={hideTypeMix}
       />
     </div>
   );
@@ -1331,6 +1382,8 @@ export function BattingPitchMixCard({
               omitName
               layout={pitchPadLayout ? "strip" : "grid"}
               stripTypeDistribution={primaryRow.stripTypeDistribution}
+              onPitchTypeClick={onPitchTypeClick}
+              hideTypeMix={hideTypeMix}
               {...pad}
             />
           </div>
@@ -1350,6 +1403,7 @@ export function BattingPitchMixCard({
                 compact={compact}
                 multi
                 stripTypeDistribution={row.stripTypeDistribution}
+                hideTypeMix={hideTypeMix}
               />
             ))}
           </ul>
@@ -1369,6 +1423,7 @@ export function BattingPitchMixCard({
               compact={compact}
               multi={false}
               stripTypeDistribution={row.stripTypeDistribution}
+              hideTypeMix={hideTypeMix}
             />
           ))}
         </ul>
@@ -1388,6 +1443,7 @@ export function PitchingPitchMixSupplement({
   distributionPitchEvents,
   compact = false,
   currentPitcherId,
+  hideTypeMix = false,
 }: {
   pas: PlateAppearance[];
   players: Player[];
@@ -1396,6 +1452,8 @@ export function PitchingPitchMixSupplement({
   compact?: boolean;
   /** Used only to decide whether to render (Record passes selected pitcher). */
   currentPitcherId: string | null;
+  /** Hide only the pitch-type Mix block (Rates / Contact / 2-strike stay). */
+  hideTypeMix?: boolean;
 }) {
   const highlight = typeof currentPitcherId === "string" && currentPitcherId.length > 0;
   const eventsByPaId = useMemo(() => groupPitchEventsByPaId(pitchEvents), [pitchEvents]);
@@ -1471,6 +1529,7 @@ export function PitchingPitchMixSupplement({
         variant="team"
         as="div"
         stripTypeDistribution={teamStripDistribution}
+        hideTypeMix={hideTypeMix}
       />
     </div>
   );
@@ -1508,6 +1567,7 @@ export function PitchingPitchMixSupplement({
                 compact={compact}
                 multi
                 stripTypeDistribution={row.stripTypeDistribution}
+                hideTypeMix={hideTypeMix}
               />
             ))}
           </ul>
@@ -1537,6 +1597,8 @@ export function CurrentBatterPitchDataCard({
   omitPitchMixRow = false,
   /** Record: same stat order as pitch pad without other coach-pad chrome. */
   pitchPadLayout = false,
+  onPitchTypeClick,
+  hideTypeMix = false,
 }: {
   batterName: string;
   pas: PlateAppearance[];
@@ -1548,6 +1610,10 @@ export function CurrentBatterPitchDataCard({
   coachPadExpanded?: boolean;
   omitPitchMixRow?: boolean;
   pitchPadLayout?: boolean;
+  /** When set, Mix type chips open per-pitch-type stats (coach pad). */
+  onPitchTypeClick?: (type: PitchTrackerPitchType) => void;
+  /** Hide only the pitch-type Mix block (Rates / Contact / 2-strike stay). */
+  hideTypeMix?: boolean;
 }) {
   const padFromRecord = pitchPadLayoutFlags(pitchPadLayout);
   const padCoach = coachPad || padFromRecord.coachPad;
@@ -1627,6 +1693,8 @@ export function CurrentBatterPitchDataCard({
             omitName
             layout={padCoach ? "strip" : "grid"}
             stripTypeDistribution={stripTypeDistribution}
+            onPitchTypeClick={onPitchTypeClick}
+            hideTypeMix={hideTypeMix}
           />
         </div>
       )}

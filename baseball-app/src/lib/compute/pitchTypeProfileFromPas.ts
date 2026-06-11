@@ -151,6 +151,7 @@ function bucketRatesFromCounts(
     profile.gbPct = c.terminalGb / c.terminalBip;
     profile.ldPct = c.terminalLd / c.terminalBip;
     profile.fbPct = c.terminalFb / c.terminalBip;
+    profile.iffPct = c.terminalIff / c.terminalBip;
   }
 
   return profile;
@@ -546,6 +547,24 @@ export function mergePitchTypeTeamProfileFromLines<T extends PitchLogTypeFields>
       }
     }
     target[sk] = denom > 0 ? num / denom : undefined;
+  }
+
+  for (let i = 0; i < PL_MIX_KEYS.length; i++) {
+    const strikeKey = PL_MIX_KEYS[i]!.replace("plMix", "plStrike");
+    const mk = PL_MIX_KEYS[i]!;
+    let denom = 0;
+    let num = 0;
+    for (const b of lines) {
+      const typed = b.plTyped ?? 0;
+      const mix = b[mk];
+      const strike = (b as Record<string, number | undefined>)[strikeKey];
+      const nPitch = typed > 0 && typeof mix === "number" && !Number.isNaN(mix) ? mix * typed : 0;
+      if (nPitch > 0 && typeof strike === "number" && !Number.isNaN(strike)) {
+        num += strike * nPitch;
+        denom += nPitch;
+      }
+    }
+    if (denom > 0) (target as Record<string, number>)[strikeKey] = num / denom;
   }
 
   for (let i = 0; i < PL_WH_KEYS.length; i++) {
