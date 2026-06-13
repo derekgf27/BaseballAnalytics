@@ -7,6 +7,7 @@ import { TeamBattingStatsSections } from "@/components/analyst/TeamBattingStatsS
 import { TeamPitchingStatsSections } from "@/components/analyst/TeamPitchingStatsSections";
 import { FINAL_COUNT_BUCKET_OPTIONS } from "@/components/analyst/battingStatsSheetModel";
 import type { PitchingSplitView } from "@/components/analyst/PitchingStatsSheet";
+import type { StatsVenueFilter } from "@/lib/statsVenueFilter";
 import { computeBattingStatsWithSplitsFromPas } from "@/lib/compute/battingStatsWithSplitsFromPas";
 import { computePitchingStatsWithSplitsForRoster } from "@/lib/compute/pitchingStats";
 import { analystPlayerProfileHref } from "@/lib/analystRoutes";
@@ -181,18 +182,23 @@ export function StatsPageClient({
   const battingFinalCountParam = parseFinalCountParam(url.bfc);
   const battingFinalCount: BattingFinalCountBucketKey = battingFinalCountParam ?? "0-0";
   const battingDisciplineCountParam = parseFinalCountParam(url.bdc ?? null);
+  const battingPitchTypesCountParam = parseFinalCountParam(url.bptc ?? null);
   const [battingSearch, setBattingSearch] = useState("");
   const [battingSplit, setBattingSplit] = useState<SplitView>("overall");
+  const [battingVenueFilter, setBattingVenueFilter] = useState<StatsVenueFilter>("all");
   const [disciplineSplit, setDisciplineSplit] = useState<SplitView>("overall");
   const [disciplineRunners, setDisciplineRunners] = useState<StatsRunnersFilterKey>("all");
   const [finalCountSplit, setFinalCountSplit] = useState<SplitView>("overall");
   const [finalCountRunners, setFinalCountRunners] = useState<StatsRunnersFilterKey>("all");
+  const [batPitchTypesSplit, setBatPitchTypesSplit] = useState<SplitView>("overall");
+  const [batPitchTypesRunners, setBatPitchTypesRunners] = useState<StatsRunnersFilterKey>("all");
   const pitchingFinalCountParam = parseFinalCountParam(url.pfc);
   const pitchingFinalCount: BattingFinalCountBucketKey = pitchingFinalCountParam ?? "0-0";
   const pitchingDisciplineCountParam = parseFinalCountParam(url.pdc ?? null);
   const pitchingPitchTypesCountParam = parseFinalCountParam(url.ppc ?? null);
   const [pitchingSearch, setPitchingSearch] = useState("");
   const [pitchingSplit, setPitchingSplit] = useState<PitchingSplitView>("overall");
+  const [pitchingVenueFilter, setPitchingVenueFilter] = useState<StatsVenueFilter>("all");
   const [pitchDisciplineSplit, setPitchDisciplineSplit] = useState<PitchingSplitView>("overall");
   const [pitchDisciplineRunners, setPitchDisciplineRunners] = useState<StatsRunnersFilterKey>("all");
   const [pitchFinalCountSplit, setPitchFinalCountSplit] = useState<PitchingSplitView>("overall");
@@ -271,6 +277,15 @@ export function StatsPageClient({
     },
     [replaceQuery]
   );
+  const setBattingPitchTypesCount = useCallback(
+    (v: BattingFinalCountBucketKey | null) => {
+      replaceQuery((p) => {
+        if (v) p.set("bptc", v);
+        else p.delete("bptc");
+      });
+    },
+    [replaceQuery]
+  );
   const setBattingRunners = useCallback(
     (v: StatsRunnersFilterKey) => {
       replaceQuery((p) => {
@@ -326,12 +341,16 @@ export function StatsPageClient({
     setOptimisticPitchBatter("");
     setBattingSearch("");
     setBattingSplit("overall");
+    setBattingVenueFilter("all");
     setDisciplineSplit("overall");
     setDisciplineRunners("all");
     setFinalCountSplit("overall");
     setFinalCountRunners("all");
+    setBatPitchTypesSplit("overall");
+    setBatPitchTypesRunners("all");
     setPitchingSearch("");
     setPitchingSplit("overall");
+    setPitchingVenueFilter("all");
     setPitchDisciplineSplit("overall");
     setPitchDisciplineRunners("all");
     setPitchFinalCountSplit("overall");
@@ -339,7 +358,7 @@ export function StatsPageClient({
     setPitchTypesSplit("overall");
     setPitchTypesRunners("all");
     replaceQuery((p) => {
-      for (const k of ["bo", "bp", "bbs", "bfc", "bdc", "po", "pb", "pbs", "pfc", "pdc", "ppc"] as const) {
+      for (const k of ["bo", "bp", "bbs", "bfc", "bdc", "bptc", "po", "pb", "pbs", "pfc", "pdc", "ppc"] as const) {
         p.delete(k);
       }
     });
@@ -438,7 +457,8 @@ export function StatsPageClient({
       filteredMatchupPas ?? [],
       battingMatchupPayload.baserunningByPlayerId,
       startedGamesForBattingRecompute,
-      filteredBattingPitchEvents
+      filteredBattingPitchEvents,
+      battingMatchupPayload.games
     );
   }, [
     batOpponentKey,
@@ -605,13 +625,18 @@ export function StatsPageClient({
   const hasResettableFilters = useMemo(
     () =>
       battingRunners !== "all" ||
+      battingVenueFilter !== "all" ||
       battingSplit !== "overall" ||
       disciplineSplit !== "overall" ||
       disciplineRunners !== "all" ||
       battingDisciplineCountParam != null ||
       finalCountSplit !== "overall" ||
       finalCountRunners !== "all" ||
+      batPitchTypesSplit !== "overall" ||
+      batPitchTypesRunners !== "all" ||
+      battingPitchTypesCountParam != null ||
       pitchingRunners !== "all" ||
+      pitchingVenueFilter !== "all" ||
       pitchingSplit !== "overall" ||
       pitchDisciplineSplit !== "overall" ||
       pitchDisciplineRunners !== "all" ||
@@ -631,13 +656,18 @@ export function StatsPageClient({
       !!pitchBatterId,
     [
       battingRunners,
+      battingVenueFilter,
       battingSplit,
       disciplineSplit,
       disciplineRunners,
       battingDisciplineCountParam,
       finalCountSplit,
       finalCountRunners,
+      batPitchTypesSplit,
+      batPitchTypesRunners,
+      battingPitchTypesCountParam,
       pitchingRunners,
+      pitchingVenueFilter,
       pitchingSplit,
       pitchDisciplineSplit,
       pitchDisciplineRunners,
@@ -746,11 +776,14 @@ export function StatsPageClient({
             battingStatsWithSplits={displayBattingStatsWithSplits}
             pas={displayBattingPas}
             pitchEvents={displayBattingPitchEvents}
+            games={battingMatchupPayload?.games}
             startedGameIdsByPlayer={battingMatchupPayload?.startedGameIdsByPlayer}
             subheading={battingSampleSubheading}
             splitDisabled={!!batPitcherId}
             splitView={battingSplit}
             onSplitViewChange={setBattingSplit}
+            venueFilter={battingVenueFilter}
+            onVenueFilterChange={setBattingVenueFilter}
             runnersFilter={battingRunners}
             onRunnersFilterChange={setBattingRunners}
             disciplineSplit={disciplineSplit}
@@ -765,6 +798,12 @@ export function StatsPageClient({
             onFinalCountRunnersChange={setFinalCountRunners}
             finalCountBucket={battingFinalCount}
             onFinalCountBucketChange={setBattingFinalCount}
+            pitchTypesSplit={batPitchTypesSplit}
+            onPitchTypesSplitChange={setBatPitchTypesSplit}
+            pitchTypesRunners={batPitchTypesRunners}
+            onPitchTypesRunnersChange={setBatPitchTypesRunners}
+            pitchTypesCount={battingPitchTypesCountParam}
+            onPitchTypesCountChange={setBattingPitchTypesCount}
             searchQuery={battingSearch}
             onSearchQueryChange={setBattingSearch}
             sampleToolbarEnd={sampleResetFiltersButton}
@@ -790,12 +829,15 @@ export function StatsPageClient({
             pitchingStatsWithSplits={displayPitchingStatsWithSplits}
             pas={displayPitchingPas}
             pitchEvents={displayPitchingPitchEvents}
+            games={displayPitchingGames ?? pitchingMatchupPayload?.games}
             starterGameIdsByPlayer={pitchingMatchupPayload?.starterGameIdsByPlayer}
             subheading={pitchingSampleSubheading}
             batterBatsById={pitchBatterBatsByIdObj}
             splitDisabled={!!pitchBatterId}
             splitView={pitchingSplit}
             onSplitViewChange={setPitchingSplit}
+            venueFilter={pitchingVenueFilter}
+            onVenueFilterChange={setPitchingVenueFilter}
             runnersFilter={pitchingRunners}
             onRunnersFilterChange={setPitchingRunners}
             disciplineSplit={pitchDisciplineSplit}

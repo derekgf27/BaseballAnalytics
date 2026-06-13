@@ -1,14 +1,15 @@
 /**
- * Pitch-type usage and discipline from `pitch_events.pitch_type` (pitcher / mound view).
- * Batting stat lines intentionally omit these fields — use the pitching stat sheet for mix by type.
+ * Pitch-type usage and discipline from `pitch_events.pitch_type`.
+ * Pitchers: merged into {@link PitchingRateLine}; batters: merged into {@link BattingStats}.
  */
 
 import {
   pitchOutcomeIsSwing,
   pitchOutcomeStrikesThrownIncrement,
 } from "@/lib/compute/pitchSequence";
-import { PITCH_TRACKER_TYPES } from "@/lib/pitchTrackerUi";
+import { ALL_PITCH_TRACKER_TYPES, isPitchTrackerPitchType } from "@/lib/pitchTrackerUi";
 import type {
+  BattingStats,
   PAResult,
   PitchEvent,
   PitchingRateLine,
@@ -35,7 +36,7 @@ export function normalizePitchTypeBucket(raw: string | null | undefined): PitchT
   if (raw == null) return null;
   const t = String(raw).trim().toLowerCase();
   if (!t) return null;
-  if ((PITCH_TRACKER_TYPES as readonly string[]).includes(t)) return t as PitchTrackerPitchType;
+  if (isPitchTrackerPitchType(t)) return t;
 
   if (t === "fb" || t.includes("four-seam") || t.includes("four seam")) return "fastball";
   if (t === "si" || t.includes("sinker") || t.includes("two-seam") || t.includes("2-seam")) return "sinker";
@@ -48,6 +49,35 @@ export function normalizePitchTypeBucket(raw: string | null | undefined): PitchT
   if (t === "ch" || t.includes("changeup") || t.includes("circle change")) return "changeup";
   if (t === "spl" || t === "split" || t.includes("splitter")) return "splitter";
   return "other";
+}
+
+/** Batter-facing coarse buckets (matches coach pad offense mode). */
+export const BATTER_PITCH_STAT_BUCKETS = ["fastball", "off_speed", "breaking_ball"] as const;
+export type BatterPitchTypeBucketKey = (typeof BATTER_PITCH_STAT_BUCKETS)[number];
+
+/** Map any logged pitch type to a batter coarse bucket; untyped / unmapped → null. */
+export function normalizeBatterPitchTypeBucket(
+  raw: string | null | undefined
+): BatterPitchTypeBucketKey | null {
+  const detailed = normalizePitchTypeBucket(raw);
+  if (detailed == null) return null;
+  switch (detailed) {
+    case "fastball":
+    case "sinker":
+    case "cutter":
+      return "fastball";
+    case "changeup":
+    case "splitter":
+    case "off_speed":
+      return "off_speed";
+    case "slider":
+    case "sweeper":
+    case "curveball":
+    case "breaking_ball":
+      return "breaking_ball";
+    default:
+      return null;
+  }
 }
 
 type BucketAgg = { n: number; swings: number; whiffs: number };
@@ -147,6 +177,12 @@ function bucketRatesFromCounts(
     profile.iso = (tb - c.terminalAb) / c.terminalAb;
   }
 
+  const obpDenom = c.terminalAb + c.terminalBb + c.terminalIbb + c.terminalHbp;
+  if (obpDenom > 0) {
+    profile.obp = (c.terminalH + c.terminalBb + c.terminalIbb + c.terminalHbp) / obpDenom;
+    if (profile.slg != null) profile.ops = profile.obp + profile.slg;
+  }
+
   if (c.terminalBip > 0) {
     profile.gbPct = c.terminalGb / c.terminalBip;
     profile.ldPct = c.terminalLd / c.terminalBip;
@@ -175,8 +211,51 @@ export function aggregatePitchTypeBucketCounts(
   totalEven: number;
   totalPaEnds: number;
 } {
+  return aggregatePitchTypeBucketCountsWithNormalizer(
+    pas,
+    eventsByPaId,
+    ALL_PITCH_STAT_BUCKETS,
+    normalizePitchTypeBucket
+  );
+}
+
+/** Batter stats: roll detailed pitch tags into fastball / off-speed / breaking ball. */
+export function aggregateBatterPitchTypeBucketCounts(
+  pas: PlateAppearance[],
+  eventsByPaId: Map<string, PitchEvent[]>
+): {
+  typedTotal: number;
+  buckets: Record<PitchTypeBucketKey, PitchTypeBucketCounts>;
+  totalFirstPitch: number;
+  totalAhead: number;
+  totalBehind: number;
+  totalEven: number;
+  totalPaEnds: number;
+} {
+  return aggregatePitchTypeBucketCountsWithNormalizer(
+    pas,
+    eventsByPaId,
+    BATTER_PITCH_STAT_BUCKETS,
+    normalizeBatterPitchTypeBucket
+  );
+}
+
+function aggregatePitchTypeBucketCountsWithNormalizer(
+  pas: PlateAppearance[],
+  eventsByPaId: Map<string, PitchEvent[]>,
+  bucketList: readonly PitchTypeBucketKey[],
+  normalize: (raw: string | null | undefined) => PitchTypeBucketKey | null
+): {
+  typedTotal: number;
+  buckets: Record<PitchTypeBucketKey, PitchTypeBucketCounts>;
+  totalFirstPitch: number;
+  totalAhead: number;
+  totalBehind: number;
+  totalEven: number;
+  totalPaEnds: number;
+} {
   const buckets = {} as Record<PitchTypeBucketKey, PitchTypeBucketCounts>;
-  for (const bucket of ALL_PITCH_STAT_BUCKETS) buckets[bucket] = emptyBucketCounts();
+  for (const bucket of bucketList) buckets[bucket] = emptyBucketCounts();
 
   let typedTotal = 0;
   let totalFirstPitch = 0;
@@ -188,7 +267,7 @@ export function aggregatePitchTypeBucketCounts(
   for (const pa of pas) {
     const evs = eventsByPaId.get(pa.id) ?? [];
     for (const e of evs) {
-      const b = normalizePitchTypeBucket(e.pitch_type);
+      const b = normalize(e.pitch_type);
       if (b == null) continue;
       typedTotal += 1;
       const box = buckets[b] ?? emptyBucketCounts();
@@ -229,7 +308,7 @@ export function aggregatePitchTypeBucketCounts(
 
     if (evs.length === 0) continue;
     const last = evs[evs.length - 1]!;
-    const terminalBucket = normalizePitchTypeBucket(last.pitch_type);
+    const terminalBucket = normalize(last.pitch_type);
     if (terminalBucket == null) continue;
 
     const cell = buckets[terminalBucket] ?? emptyBucketCounts();
@@ -274,11 +353,12 @@ export function pitchTypeProfilesFromCounts(
     totalBehind: number;
     totalEven: number;
     totalPaEnds: number;
-  }
+  },
+  bucketList: readonly PitchTypeBucketKey[] = ALL_PITCH_STAT_BUCKETS
 ): Partial<Record<PitchTypeBucketKey, PitchTypeBucketProfile>> {
   const out: Partial<Record<PitchTypeBucketKey, PitchTypeBucketProfile>> = {};
   if (typedTotal <= 0) return out;
-  for (const bucket of ALL_PITCH_STAT_BUCKETS) {
+  for (const bucket of bucketList) {
     const c = buckets[bucket];
     if (c == null || c.n <= 0) continue;
     out[bucket] = bucketRatesFromCounts(
@@ -377,13 +457,15 @@ const PITCH_BUCKET_TERMINAL_AB_HITS: readonly {
   { bucket: "other", ab: "plTxAbOT", h: "plTxHOT" },
 ];
 
-/** Every bucket stats code may read (includes sweeper for legacy DB pitches; not on coach pad). */
-const ALL_PITCH_STAT_BUCKETS: readonly PitchTypeBucketKey[] = [
+/** Every bucket stats code may read (includes offense coarse types and sweeper). */
+const ALL_PITCH_STAT_BUCKETS = [
   ...new Set([
     ...PITCH_BUCKET_TO_STATS.map((r) => r.bucket),
     ...PITCH_BUCKET_TERMINAL_AB_HITS.map((r) => r.bucket),
+    ...ALL_PITCH_TRACKER_TYPES,
+    "other",
   ]),
-];
+] as readonly PitchTypeBucketKey[];
 
 export function aggregatePitchTypeBuckets(
   pas: PlateAppearance[],
@@ -470,6 +552,28 @@ function fillPitchLogTypeFields(
     if (b.n > 0) target[sw] = b.swings / b.n;
     if (b.swings > 0) target[wh] = b.whiffs / b.swings;
   }
+}
+
+export function mergePitchTypeProfileIntoBattingStats(
+  stats: BattingStats,
+  pas: PlateAppearance[],
+  eventsByPaId: Map<string, PitchEvent[]>
+): void {
+  const full = aggregateBatterPitchTypeBucketCounts(pas, eventsByPaId);
+  stats.batTyped = full.typedTotal;
+  const countSnapshot = {} as Partial<Record<PitchTypeBucketKey, PitchTypeBucketCounts>>;
+  for (const bucket of BATTER_PITCH_STAT_BUCKETS) {
+    const c = full.buckets[bucket];
+    if (c != null && c.n > 0) countSnapshot[bucket] = { ...c };
+  }
+  stats.batBucketCounts = countSnapshot;
+  stats.batBuckets = pitchTypeProfilesFromCounts(full.typedTotal, full.buckets, {
+    totalFirstPitch: full.totalFirstPitch,
+    totalAhead: full.totalAhead,
+    totalBehind: full.totalBehind,
+    totalEven: full.totalEven,
+    totalPaEnds: full.totalPaEnds,
+  }, BATTER_PITCH_STAT_BUCKETS);
 }
 
 export function mergePitchTypeProfileIntoPitchingRates(
@@ -651,5 +755,59 @@ export function mergePitchTypeTeamProfileFromLines<T extends PitchLogTypeFields>
       totalEven,
       totalPaEnds,
     });
+  }
+}
+
+/** Roster / team batting row: pool typed pitch counts, then recompute mix / swing / whiff / results. */
+export function mergePitchTypeTeamProfileFromBattingLines(lines: BattingStats[], target: BattingStats): void {
+  const batT = lines.reduce(
+    (s, b) => s + (typeof b.batTyped === "number" && !Number.isNaN(b.batTyped) ? b.batTyped : 0),
+    0
+  );
+  target.batTyped = batT;
+
+  if (!lines.some((l) => l.batBucketCounts != null)) return;
+
+  const mergedCounts = {} as Record<PitchTypeBucketKey, PitchTypeBucketCounts>;
+  for (const bucket of BATTER_PITCH_STAT_BUCKETS) mergedCounts[bucket] = emptyBucketCounts();
+
+  for (const line of lines) {
+    const counts = line.batBucketCounts;
+    if (!counts) continue;
+    for (const bucket of BATTER_PITCH_STAT_BUCKETS) {
+      const add = counts[bucket];
+      if (!add || add.n <= 0) continue;
+      mergeBucketCounts(mergedCounts[bucket]!, add);
+    }
+  }
+
+  let totalFirstPitch = 0;
+  let totalAhead = 0;
+  let totalBehind = 0;
+  let totalEven = 0;
+  let totalPaEnds = 0;
+  for (const bucket of BATTER_PITCH_STAT_BUCKETS) {
+    const c = mergedCounts[bucket]!;
+    totalFirstPitch += c.firstPitch;
+    totalAhead += c.aheadPitches;
+    totalBehind += c.behindPitches;
+    totalEven += c.evenPitches;
+    totalPaEnds += c.paEnds;
+  }
+
+  if (batT > 0) {
+    const countSnapshot = {} as Partial<Record<PitchTypeBucketKey, PitchTypeBucketCounts>>;
+    for (const bucket of BATTER_PITCH_STAT_BUCKETS) {
+      const c = mergedCounts[bucket]!;
+      if (c.n > 0) countSnapshot[bucket] = { ...c };
+    }
+    target.batBucketCounts = countSnapshot;
+    target.batBuckets = pitchTypeProfilesFromCounts(batT, mergedCounts, {
+      totalFirstPitch,
+      totalAhead,
+      totalBehind,
+      totalEven,
+      totalPaEnds,
+    }, BATTER_PITCH_STAT_BUCKETS);
   }
 }

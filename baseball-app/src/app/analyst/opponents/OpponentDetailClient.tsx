@@ -3,14 +3,18 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { TeamSprayChart } from "@/components/analyst/TeamSprayChart";
-import { BattingStatsSheet } from "@/components/analyst/BattingStatsSheet";
-import { PitchingStatsSheet } from "@/components/analyst/PitchingStatsSheet";
+import { TeamBattingStatsSections } from "@/components/analyst/TeamBattingStatsSections";
+import { TeamPitchingStatsSections } from "@/components/analyst/TeamPitchingStatsSections";
+import type { SplitView } from "@/components/analyst/BattingStatsSheet";
+import type { PitchingSplitView } from "@/components/analyst/PitchingStatsSheet";
+import type { StatsVenueFilter } from "@/lib/statsVenueFilter";
 import { computeBattingStatsWithSplitsFromPas } from "@/lib/compute/battingStatsWithSplitsFromPas";
 import { computePitchingStatsWithSplitsForRoster } from "@/lib/compute/pitchingStats";
 import { formatDateMMDDYYYY } from "@/lib/format";
 import { matchupLabelUsFirst, opponentNameKey } from "@/lib/opponentUtils";
 import { SPRAY_CHART_HIT_RESULTS, SPRAY_CHART_OUT_RESULTS } from "@/lib/sprayChartFilters";
 import type {
+  BattingFinalCountBucketKey,
   BattingStatsWithSplits,
   Bats,
   ClubBattingMatchupPayload,
@@ -19,6 +23,7 @@ import type {
   HitDirection,
   PitchingStatsWithSplits,
   Player,
+  StatsRunnersFilterKey,
 } from "@/lib/types";
 
 export interface OpponentDetailClientProps {
@@ -96,6 +101,34 @@ export function OpponentDetailClient({
   const [sprayResultFilter, setSprayResultFilter] = useState<"hits" | "outs" | "both">("both");
   const [matchupPitcherId, setMatchupPitcherId] = useState("");
   const [pitchMatchupBatterId, setPitchMatchupBatterId] = useState("");
+
+  const [battingSearch, setBattingSearch] = useState("");
+  const [battingSplit, setBattingSplit] = useState<SplitView>("overall");
+  const [battingVenueFilter, setBattingVenueFilter] = useState<StatsVenueFilter>("all");
+  const [battingRunners, setBattingRunners] = useState<StatsRunnersFilterKey>("all");
+  const [disciplineSplit, setDisciplineSplit] = useState<SplitView>("overall");
+  const [disciplineRunners, setDisciplineRunners] = useState<StatsRunnersFilterKey>("all");
+  const [disciplineCount, setDisciplineCount] = useState<BattingFinalCountBucketKey | null>(null);
+  const [finalCountSplit, setFinalCountSplit] = useState<SplitView>("overall");
+  const [finalCountRunners, setFinalCountRunners] = useState<StatsRunnersFilterKey>("all");
+  const [finalCountBucket, setFinalCountBucket] = useState<BattingFinalCountBucketKey>("0-0");
+  const [batPitchTypesSplit, setBatPitchTypesSplit] = useState<SplitView>("overall");
+  const [batPitchTypesRunners, setBatPitchTypesRunners] = useState<StatsRunnersFilterKey>("all");
+  const [batPitchTypesCount, setBatPitchTypesCount] = useState<BattingFinalCountBucketKey | null>(null);
+
+  const [pitchingSearch, setPitchingSearch] = useState("");
+  const [pitchingSplit, setPitchingSplit] = useState<PitchingSplitView>("overall");
+  const [pitchingVenueFilter, setPitchingVenueFilter] = useState<StatsVenueFilter>("all");
+  const [pitchingRunners, setPitchingRunners] = useState<StatsRunnersFilterKey>("all");
+  const [pitchDisciplineSplit, setPitchDisciplineSplit] = useState<PitchingSplitView>("overall");
+  const [pitchDisciplineRunners, setPitchDisciplineRunners] = useState<StatsRunnersFilterKey>("all");
+  const [pitchDisciplineCount, setPitchDisciplineCount] = useState<BattingFinalCountBucketKey | null>(null);
+  const [pitchFinalCountSplit, setPitchFinalCountSplit] = useState<PitchingSplitView>("overall");
+  const [pitchFinalCountRunners, setPitchFinalCountRunners] = useState<StatsRunnersFilterKey>("all");
+  const [pitchingFinalCount, setPitchingFinalCount] = useState<BattingFinalCountBucketKey>("0-0");
+  const [pitchTypesSplit, setPitchTypesSplit] = useState<PitchingSplitView>("overall");
+  const [pitchTypesRunners, setPitchTypesRunners] = useState<StatsRunnersFilterKey>("all");
+  const [pitchTypesCount, setPitchTypesCount] = useState<BattingFinalCountBucketKey | null>(null);
 
   /** Players tagged for this opponent page — everyone else is treated as our club for matchup filters. */
   const opponentTaggedIds = useMemo(() => {
@@ -184,7 +217,8 @@ export function OpponentDetailClient({
       filteredMatchupPas,
       battingMatchupPayload.baserunningByPlayerId,
       startedGamesByPlayerBatting,
-      filteredBattingPitchEvents
+      filteredBattingPitchEvents,
+      battingMatchupPayload.games
     );
   }, [
     filteredMatchupPas,
@@ -425,94 +459,140 @@ export function OpponentDetailClient({
       </div>
 
       {/* Batting stats — section always visible; empty state when no tagged roster or no PAs */}
-      <section className="card-tech rounded-lg border border-[var(--border)] p-5">
-        {!hasTaggedOpponentRoster ? (
-          <div>
-            <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--text)]">Batting stats</h2>
-            <p className="mt-2 text-sm text-[var(--text-muted)]">
-              No opponent players tagged yet. Use Roster → View roster to add players for {opponentName}; stats will show
-              here once they have plate appearances vs you.
-            </p>
-          </div>
-        ) : battingStatsPlayers.length === 0 ? (
-          <div>
-            <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--text)]">Batting stats</h2>
-            <p className="mt-2 text-sm text-[var(--text-muted)]">
-              No plate appearances recorded yet for tagged opponent players. Pitchers and others without PAs vs you appear
-              in View roster only.
-            </p>
-          </div>
-        ) : (
-          <BattingStatsSheet
-            players={battingSheetPlayers}
-            battingStatsWithSplits={displayBattingStatsWithSplits}
-            pas={battingMatchupPayload ? displayBattingPas : undefined}
-            pitchEvents={battingMatchupPayload ? displayBattingPitchEvents : undefined}
-            startedGameIdsByPlayer={battingMatchupPayload?.startedGameIdsByPlayer}
-            heading="Batting stats"
-            subheading={`${opponentName} vs ${ourTeamLabel} — tagged opponent players only; PAs when they batted against you.`}
-            splitDisabled={!!matchupPitcherId}
-            matchupToolbar={
-              battingMatchupPayload?.games?.length && ourTeamPitchersFlat
-                ? {
-                    opponents: [],
-                    pitchersByOpponent: {},
-                    opponentKey: "",
-                    pitcherId: matchupPitcherId,
-                    onOpponentChange: () => {},
-                    onPitcherChange: setMatchupPitcherId,
-                    pitchersFlat: ourTeamPitchersFlat,
-                  }
-                : undefined
-            }
-          />
-        )}
-      </section>
+      {!hasTaggedOpponentRoster ? (
+        <section className="card-tech rounded-lg border border-[var(--border)] p-5">
+          <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--text)]">Batting stats</h2>
+          <p className="mt-2 text-sm text-[var(--text-muted)]">
+            No opponent players tagged yet. Use Roster → View roster to add players for {opponentName}; stats will show
+            here once they have plate appearances vs you.
+          </p>
+        </section>
+      ) : battingStatsPlayers.length === 0 ? (
+        <section className="card-tech rounded-lg border border-[var(--border)] p-5">
+          <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--text)]">Batting stats</h2>
+          <p className="mt-2 text-sm text-[var(--text-muted)]">
+            No plate appearances recorded yet for tagged opponent players. Pitchers and others without PAs vs you appear
+            in View roster only.
+          </p>
+        </section>
+      ) : (
+        <TeamBattingStatsSections
+          players={battingSheetPlayers}
+          battingStatsWithSplits={displayBattingStatsWithSplits}
+          pas={battingMatchupPayload ? displayBattingPas : undefined}
+          pitchEvents={battingMatchupPayload ? displayBattingPitchEvents : undefined}
+          startedGameIdsByPlayer={battingMatchupPayload?.startedGameIdsByPlayer}
+          games={battingMatchupPayload?.games}
+          splitDisabled={!!matchupPitcherId}
+          splitView={battingSplit}
+          onSplitViewChange={setBattingSplit}
+          venueFilter={battingVenueFilter}
+          onVenueFilterChange={setBattingVenueFilter}
+          runnersFilter={battingRunners}
+          onRunnersFilterChange={setBattingRunners}
+          disciplineSplit={disciplineSplit}
+          onDisciplineSplitChange={setDisciplineSplit}
+          disciplineRunners={disciplineRunners}
+          onDisciplineRunnersChange={setDisciplineRunners}
+          disciplineCount={disciplineCount}
+          onDisciplineCountChange={setDisciplineCount}
+          finalCountSplit={finalCountSplit}
+          onFinalCountSplitChange={setFinalCountSplit}
+          finalCountRunners={finalCountRunners}
+          onFinalCountRunnersChange={setFinalCountRunners}
+          finalCountBucket={finalCountBucket}
+          onFinalCountBucketChange={setFinalCountBucket}
+          pitchTypesSplit={batPitchTypesSplit}
+          onPitchTypesSplitChange={setBatPitchTypesSplit}
+          pitchTypesRunners={batPitchTypesRunners}
+          onPitchTypesRunnersChange={setBatPitchTypesRunners}
+          pitchTypesCount={batPitchTypesCount}
+          onPitchTypesCountChange={setBatPitchTypesCount}
+          searchQuery={battingSearch}
+          onSearchQueryChange={setBattingSearch}
+          matchupToolbar={
+            battingMatchupPayload?.games?.length && ourTeamPitchersFlat
+              ? {
+                  opponents: [],
+                  pitchersByOpponent: {},
+                  opponentKey: "",
+                  pitcherId: matchupPitcherId,
+                  onOpponentChange: () => {},
+                  onPitcherChange: setMatchupPitcherId,
+                  pitchersFlat: ourTeamPitchersFlat,
+                }
+              : undefined
+          }
+        />
+      )}
 
       {/* Pitching stats — section always visible; empty state when no tagged roster or no pitching appearances */}
-      <section className="card-tech rounded-lg border border-[var(--border)] p-5">
-        {!hasTaggedOpponentRoster ? (
-          <div>
-            <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--text)]">Pitching stats</h2>
-            <p className="mt-2 text-sm text-[var(--text-muted)]">
-              No opponent players tagged yet. Use Roster → View roster to add players for {opponentName}; pitching
-              stats will show here once tagged pitchers appear against you.
-            </p>
-          </div>
-        ) : pitchingStatsPlayers.length === 0 ? (
-          <div>
-            <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--text)]">Pitching stats</h2>
-            <p className="mt-2 text-sm text-[var(--text-muted)]">
-              No pitching appearances recorded yet for tagged opponent pitchers.
-            </p>
-          </div>
-        ) : (
-          <PitchingStatsSheet
-            players={pitchingSheetPlayers}
-            pitchingStatsWithSplits={displayPitchingStatsWithSplits}
-            pas={pitchingMatchupPayload ? displayPitchingPas : undefined}
-            pitchEvents={pitchingMatchupPayload ? displayPitchingPitchEvents : undefined}
-            starterGameIdsByPlayer={pitchingMatchupPayload?.starterGameIdsByPlayer}
-            batterBatsById={pitchBatterBatsByIdObj}
-            heading="Pitching stats"
-            subheading={`${opponentName} vs ${ourTeamLabel} — tagged opponent pitchers only; PAs when they pitched against you.`}
-            splitDisabled={!!pitchMatchupBatterId}
-            matchupToolbar={
-              pitchingMatchupPayload?.games?.length && ourTeamBattersFlat
-                ? {
-                    opponents: [],
-                    battersByOpponent: {},
-                    opponentKey: "",
-                    batterId: pitchMatchupBatterId,
-                    onOpponentChange: () => {},
-                    onBatterChange: setPitchMatchupBatterId,
-                    battersFlat: ourTeamBattersFlat,
-                  }
-                : undefined
-            }
-          />
-        )}
-      </section>
+      {!hasTaggedOpponentRoster ? (
+        <section className="card-tech rounded-lg border border-[var(--border)] p-5">
+          <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--text)]">Pitching stats</h2>
+          <p className="mt-2 text-sm text-[var(--text-muted)]">
+            No opponent players tagged yet. Use Roster → View roster to add players for {opponentName}; pitching stats
+            will show here once tagged pitchers appear against you.
+          </p>
+        </section>
+      ) : pitchingStatsPlayers.length === 0 ? (
+        <section className="card-tech rounded-lg border border-[var(--border)] p-5">
+          <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--text)]">Pitching stats</h2>
+          <p className="mt-2 text-sm text-[var(--text-muted)]">
+            No pitching appearances recorded yet for tagged opponent pitchers.
+          </p>
+        </section>
+      ) : (
+        <TeamPitchingStatsSections
+          players={pitchingSheetPlayers}
+          pitchingStatsWithSplits={displayPitchingStatsWithSplits}
+          pas={pitchingMatchupPayload ? displayPitchingPas : undefined}
+          pitchEvents={pitchingMatchupPayload ? displayPitchingPitchEvents : undefined}
+          starterGameIdsByPlayer={pitchingMatchupPayload?.starterGameIdsByPlayer}
+          games={pitchingMatchupPayload?.games}
+          batterBatsById={pitchBatterBatsByIdObj}
+          splitDisabled={!!pitchMatchupBatterId}
+          splitView={pitchingSplit}
+          onSplitViewChange={setPitchingSplit}
+          venueFilter={pitchingVenueFilter}
+          onVenueFilterChange={setPitchingVenueFilter}
+          runnersFilter={pitchingRunners}
+          onRunnersFilterChange={setPitchingRunners}
+          disciplineSplit={pitchDisciplineSplit}
+          onDisciplineSplitChange={setPitchDisciplineSplit}
+          disciplineRunners={pitchDisciplineRunners}
+          onDisciplineRunnersChange={setPitchDisciplineRunners}
+          disciplineCount={pitchDisciplineCount}
+          onDisciplineCountChange={setPitchDisciplineCount}
+          finalCountSplit={pitchFinalCountSplit}
+          onFinalCountSplitChange={setPitchFinalCountSplit}
+          finalCountRunners={pitchFinalCountRunners}
+          onFinalCountRunnersChange={setPitchFinalCountRunners}
+          finalCountBucket={pitchingFinalCount}
+          onFinalCountBucketChange={setPitchingFinalCount}
+          pitchTypesSplit={pitchTypesSplit}
+          onPitchTypesSplitChange={setPitchTypesSplit}
+          pitchTypesRunners={pitchTypesRunners}
+          onPitchTypesRunnersChange={setPitchTypesRunners}
+          pitchTypesCount={pitchTypesCount}
+          onPitchTypesCountChange={setPitchTypesCount}
+          searchQuery={pitchingSearch}
+          onSearchQueryChange={setPitchingSearch}
+          matchupToolbar={
+            pitchingMatchupPayload?.games?.length && ourTeamBattersFlat
+              ? {
+                  opponents: [],
+                  battersByOpponent: {},
+                  opponentKey: "",
+                  batterId: pitchMatchupBatterId,
+                  onOpponentChange: () => {},
+                  onBatterChange: setPitchMatchupBatterId,
+                  battersFlat: ourTeamBattersFlat,
+                }
+              : undefined
+          }
+        />
+      )}
 
       {/* Spray charts — hitter (opponent batting) + pitcher (opponent pitching) */}
       <section className="card-tech rounded-lg border border-[var(--border)] p-5">

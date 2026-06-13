@@ -3,6 +3,14 @@
 import { battingStatsFromPAs, isRisp } from "@/lib/compute/battingStats";
 import { buildPostGameSnapshot, pasOurTeamBatting } from "@/lib/reports/postGameSnapshot";
 import { buildTeamTrendSeries } from "@/lib/reports/teamTrendsSnapshot";
+import {
+  buildInsightsContext,
+  runInsightsEngine,
+  postgameInsightSections,
+  pregameInsightLines,
+  teamTrendInsightLines,
+  playerInsightsForReport,
+} from "@/lib/insights";
 import { isGameFinalized, ourTeamOutcomeFromFinalScore } from "@/lib/gameRecord";
 import { isDemoId } from "@/lib/db/mockData";
 import { getCachedGames } from "@/lib/db/cachedQueries";
@@ -17,6 +25,7 @@ import {
   getPlateAppearancesByGame,
   getPlateAppearancesForGames,
   getPlayersByIds,
+  getPlayers,
 } from "@/lib/db/queries";
 import { buildPreGameReport, flatOurTeamBatting, type PreGameReportSections } from "@/lib/reports/preGameReportBuild";
 import type {
@@ -293,6 +302,22 @@ export async function fetchPreGameOverview(
   const pitchEventsOurStarter =
     ourStarterPasIds.length > 0 ? await getPitchEventsForPaIds(ourStarterPasIds) : [];
 
+  const teamWindowPaIds = pasForTeamWindow.map((p) => p.id).filter(Boolean) as string[];
+  const pitchEventsTeamWindow =
+    teamWindowPaIds.length > 0 ? await getPitchEventsForPaIds(teamWindowPaIds) : [];
+
+  const pregameCtx = buildInsightsContext({
+    games: teamMetricsGames,
+    allPas: pasForTeamWindow,
+    pitchEvents: pitchEventsTeamWindow,
+    players: Object.values(playersById),
+    focusGameId: game.id,
+    playerIds: lineupIds,
+  });
+  const pregameInsights = runInsightsEngine(pregameCtx, "pregame");
+  const engineHittingInsights = pregameInsightLines(pregameInsights);
+  const enginePlayerInsights = playerInsightsForReport(pregameCtx);
+
   const oppStarterVsOur =
     oppSpId && !isDemoId(oppSpId) ? await getPitchingStatsForPitcherVsOurClub(oppSpId) : null;
 
@@ -316,6 +341,9 @@ export async function fetchPreGameOverview(
     playersById,
     teamTrendInsights: teamTrendInsightsFromHub,
     ourStarterSeasonPitching,
+    insightsBundle: pregameInsights,
+    engineHittingInsights,
+    enginePlayerInsights,
   });
 
   return {
@@ -367,6 +395,32 @@ export async function fetchReportsGamePayload(
 
   const postGame = buildPostGameSnapshot(game, pas, new Map(players.map((p) => [p.id, p])), pitchEvents);
 
+  const [allGames, allPlayers] = await Promise.all([getCachedGames(), getPlayers()]);
+  const recentGames = allGames.filter((g) => !isDemoId(g.id)).slice(0, 30);
+  const recentIds = recentGames.map((g) => g.id);
+  const bulkPas =
+    recentIds.length > 0 ? await getPlateAppearancesForGames(recentIds) : [];
+  const bulkPaIds = bulkPas.map((p) => p.id).filter(Boolean) as string[];
+  const bulkPitchEvents =
+    bulkPaIds.length > 0 ? await getPitchEventsForPaIds(bulkPaIds) : [];
+
+  const postCtx = buildInsightsContext({
+    games: recentGames,
+    allPas: bulkPas,
+    pitchEvents: bulkPitchEvents,
+    players: allPlayers,
+    focusGameId: gameId,
+  });
+  const postBundle = runInsightsEngine(postCtx, "postgame");
+  const postSections = postgameInsightSections(postBundle);
+  postGame.analystNotes = postSections.analystNotes;
+  postGame.coachingInsights = {
+    insights: postSections.insights,
+    alerts: postSections.alerts,
+    recommendations: postSections.recommendations,
+    trendChanges: postSections.trendChanges,
+  };
+
   return { game, postGame, pas, playersById };
 }
 
@@ -382,21 +436,17 @@ export async function fetchTeamTrendsPayload(maxGames = 10): Promise<{
   const pas = await getPlateAppearancesForGames(ids);
   const points = buildTeamTrendSeries(clean, pas);
 
-  const insights: string[] = [];
-  if (points.length >= 3) {
-    const last3 = points.slice(-3);
-    const kAvg = last3.reduce((s, p) => s + p.kPct, 0) / 3;
-    const prev = points.slice(-6, -3);
-    if (prev.length >= 2) {
-      const kPrev = prev.reduce((s, p) => s + p.kPct, 0) / prev.length;
-      if (kAvg - kPrev > 0.05) insights.push("Strikeout rate up over the last three games vs the prior sample.");
-      if (kPrev - kAvg > 0.05) insights.push("Strikeout rate improving recently.");
-    }
-    const opsSlope = last3[2]!.ops - last3[0]!.ops;
-    if (opsSlope > 0.08) insights.push("OPS trending upward in the last three games.");
-    if (opsSlope < -0.08) insights.push("OPS dipped in the last three games.");
-  }
-  if (insights.length === 0) insights.push("Trend lines below — add more games for stronger narrative cues.");
+  const paIds = pas.map((p) => p.id).filter(Boolean) as string[];
+  const pitchEvents = paIds.length > 0 ? await getPitchEventsForPaIds(paIds) : [];
+  const players = await getPlayers();
+  const ctx = buildInsightsContext({
+    games: clean,
+    allPas: pas,
+    pitchEvents,
+    players,
+  });
+  const bundle = runInsightsEngine(ctx, "team");
+  const insights = teamTrendInsightLines(bundle);
 
   return { points, insights };
 }

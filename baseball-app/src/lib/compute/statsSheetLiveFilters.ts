@@ -18,7 +18,13 @@ import {
   gamesStartedInSplit,
   pasMatchFinalCount,
 } from "@/lib/compute/battingStatsWithSplitsFromPas";
+import {
+  paMatchesOurVenueSplit,
+  starterGameIdsForVenue,
+  type GameVenueSide,
+} from "@/lib/compute/gameVenueSplits";
 import { buildPitchingStatsLine } from "@/lib/compute/pitchingStats";
+import type { StatsVenueFilter } from "@/lib/statsVenueFilter";
 import type {
   BattingFinalCountBucketKey,
   BattingStats,
@@ -33,6 +39,16 @@ export type BattingSheetSplitView = "overall" | "vsL" | "vsR";
 
 export type PitchingSheetSplitView = "overall" | "vsLHB" | "vsRHB";
 
+export function paMatchesStatsVenueFilter(
+  pa: PlateAppearance,
+  venue: StatsVenueFilter,
+  gameOurSideById?: Map<string, GameVenueSide>
+): boolean {
+  if (venue === "all") return true;
+  if (!gameOurSideById?.size) return false;
+  return paMatchesOurVenueSplit(pa, venue, gameOurSideById);
+}
+
 export function paMatchesStatsRunnersFilter(
   pa: PlateAppearance,
   runners: StatsRunnersFilterKey
@@ -44,10 +60,7 @@ export function paMatchesStatsRunnersFilter(
   return isBasesLoaded(pa.base_state);
 }
 
-export function paMatchesBattingPlatoonSplit(
-  pa: PlateAppearance,
-  split: BattingSheetSplitView
-): boolean {
+export function paMatchesBattingPlatoonSplit(pa: PlateAppearance, split: BattingSheetSplitView): boolean {
   if (split === "vsL") return pa.pitcher_hand === "L";
   if (split === "vsR") return pa.pitcher_hand === "R";
   return true;
@@ -99,17 +112,20 @@ export function battingStatsForSheetLiveFilters(
   playerId: string,
   pas: PlateAppearance[],
   splitView: BattingSheetSplitView,
+  venueFilter: StatsVenueFilter,
   runnersFilter: StatsRunnersFilterKey,
-  finalCountBucket: BattingFinalCountBucketKey,
+  finalCountBucket: BattingFinalCountBucketKey | null,
   startedGames: Set<string>,
-  pitchEvents?: PitchEvent[]
+  pitchEvents?: PitchEvent[],
+  gameOurSideById?: Map<string, GameVenueSide>
 ): BattingStats | undefined {
   const sub = pas.filter(
     (pa) =>
       pa.batter_id === playerId &&
       paMatchesBattingPlatoonSplit(pa, splitView) &&
+      paMatchesStatsVenueFilter(pa, venueFilter, gameOurSideById) &&
       paMatchesStatsRunnersFilter(pa, runnersFilter) &&
-      paMatchesFinalCountBucket(pa, finalCountBucket)
+      (finalCountBucket ? paMatchesFinalCountBucket(pa, finalCountBucket) : true)
   );
   if (sub.length === 0) return undefined;
 
@@ -123,35 +139,41 @@ export function battingStatsForSheetLiveFilters(
     pitchEvents && pitchEvents.length > 0 ? groupPitchEventsByPaId(pitchEvents) : new Map<string, PitchEvent[]>();
   mergeContactProfileIntoBattingStats(st, sub, eventsByPaId);
   st.e = fieldingErrorsByPlayerFromPas(sub)[playerId] ?? 0;
-  return battingStatsForFinalCountBucket(st, finalCountBucket) ?? undefined;
+  return finalCountBucket ? battingStatsForFinalCountBucket(st, finalCountBucket) ?? undefined : st;
 }
 
 export function pitchingStatsForSheetLiveFilters(
   pitcherId: string,
   pas: PlateAppearance[],
   splitView: PitchingSheetSplitView,
+  venueFilter: StatsVenueFilter,
   runnersFilter: StatsRunnersFilterKey,
-  finalCountBucket: BattingFinalCountBucketKey,
+  finalCountBucket: BattingFinalCountBucketKey | null,
   starterGameIds: Set<string>,
   batterBatsById: Map<string, Bats | null | undefined>,
-  pitchEvents?: PitchEvent[]
+  pitchEvents?: PitchEvent[],
+  gameOurSideById?: Map<string, GameVenueSide>
 ): PitchingStats | undefined {
   const allPitcherPas = pas.filter((pa) => pa.pitcher_id === pitcherId);
   let sub = allPitcherPas.filter(
     (pa) =>
       paMatchesStatsRunnersFilter(pa, runnersFilter) &&
-      paMatchesFinalCountBucket(pa, finalCountBucket) &&
-      paMatchesPitchingPlatoonSplit(pa, splitView, batterBatsById)
+      (finalCountBucket ? paMatchesFinalCountBucket(pa, finalCountBucket) : true) &&
+      paMatchesPitchingPlatoonSplit(pa, splitView, batterBatsById) &&
+      paMatchesStatsVenueFilter(pa, venueFilter, gameOurSideById)
   );
 
   if (sub.length === 0) {
     return undefined;
   }
 
-  const platoonSubset = splitView !== "overall";
-  const starters = platoonSubset
+  const platoonSubset = splitView === "vsLHB" || splitView === "vsRHB";
+  let starters = platoonSubset
     ? new Set<string>()
     : starterGamesInPasSample(starterGameIds, allPitcherPas);
+  if (venueFilter !== "all" && gameOurSideById?.size) {
+    starters = starterGameIdsForVenue(starters, venueFilter, gameOurSideById);
+  }
 
   const eventsByPaId =
     pitchEvents && pitchEvents.length > 0 ? groupPitchEventsByPaId(pitchEvents) : new Map<string, PitchEvent[]>();
@@ -159,8 +181,9 @@ export function pitchingStatsForSheetLiveFilters(
   const paPredicate = (pa: PlateAppearance) =>
     pa.pitcher_id === pitcherId &&
     paMatchesStatsRunnersFilter(pa, runnersFilter) &&
-    paMatchesFinalCountBucket(pa, finalCountBucket) &&
-    paMatchesPitchingPlatoonSplit(pa, splitView, batterBatsById);
+    (finalCountBucket ? paMatchesFinalCountBucket(pa, finalCountBucket) : true) &&
+    paMatchesPitchingPlatoonSplit(pa, splitView, batterBatsById) &&
+    paMatchesStatsVenueFilter(pa, venueFilter, gameOurSideById);
 
   return (
     buildPitchingStatsLine(sub, starters, eventsByPaId, {

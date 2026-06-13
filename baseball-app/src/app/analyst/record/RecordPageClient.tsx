@@ -7,16 +7,18 @@ import { useRouter } from "next/navigation";
 import { BaseStateSelector } from "@/components/shared/BaseStateSelector";
 import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
 import { BoxScoreLine } from "@/components/analyst/BoxScoreLine";
-import {
-  BattingPitchMixCard,
-  CurrentBatterPitchDataCard,
-  PitchingPitchMixSupplement,
-} from "@/components/analyst/BattingPitchMixCard";
 import { PitchTypeStatsModal } from "@/components/coach/PitchTypeStatsModal";
 import { pitchTypeGameDetailFromPas } from "@/lib/compute/pitchTypeGameDetail";
-import { GameBattingTable } from "@/components/analyst/GameBattingTable";
-import { RecordBaserunningPanel } from "@/components/analyst/RecordBaserunningPanel";
-import { GamePitchingBoxTable } from "@/components/analyst/GamePitchingBoxTable";
+import { RecordBoxScoreSection } from "@/components/record/RecordBoxScoreSection";
+import { RecordLastPaSummary } from "@/components/record/RecordLastPaSummary";
+import { RecordPrimaryActions } from "@/components/record/RecordPrimaryActions";
+import { QuickAddPlayerModal, type QuickAddPlayerCreatedPayload } from "@/components/analyst/QuickAddPlayerModal";
+import {
+  QuickAddPitcherModal,
+  type QuickAddPitcherCreatedPayload,
+} from "@/components/analyst/QuickAddPitcherModal";
+import { insertPlayerAction } from "@/app/analyst/roster/actions";
+import { setGameStartingPitcherIfEmptyAction } from "@/app/analyst/record/actions";
 import { formatDateMMDDYYYY } from "@/lib/format";
 import { isGameFinalized } from "@/lib/gameRecord";
 import { analystGameLogHref, analystGameReviewHref } from "@/lib/analystRoutes";
@@ -65,7 +67,12 @@ import {
   pitchTrackerTypeChipClass,
   pitchTrackerTypeLabel,
 } from "@/lib/pitchTrackerUi";
+import { useMediaQueryLg } from "@/hooks/useMediaQueryLg";
 import { usePitchTrackerRows } from "@/hooks/usePitchTrackerRows";
+import { usePitchTrackerPadPresence } from "@/hooks/usePitchTrackerPadPresence";
+import { resolvePitchTrackerPadHealthAlert } from "@/lib/record/pitchTrackerPadHealth";
+import { RecordPitchPadHealthBanner } from "@/components/record/RecordPitchPadHealthBanner";
+import { useRecordKeyboardShortcuts } from "@/hooks/useRecordKeyboardShortcuts";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 import {
   RESULT_ALLOWS_HIT_DIRECTION,
@@ -131,6 +138,18 @@ const RecordShortcutsHelpModal = dynamic(
     })),
   { ssr: false }
 );
+const CurrentBatterPitchDataCard = dynamic(
+  () =>
+    import("@/components/analyst/BattingPitchMixCard").then((m) => ({
+      default: m.CurrentBatterPitchDataCard,
+    })),
+  { ssr: false, loading: () => <div className="h-28 animate-pulse rounded-lg bg-[var(--bg-elevated)]" /> }
+);
+const BattingPitchMixCard = dynamic(
+  () =>
+    import("@/components/analyst/BattingPitchMixCard").then((m) => ({ default: m.BattingPitchMixCard })),
+  { ssr: false, loading: () => <div className="h-28 animate-pulse rounded-lg bg-[var(--bg-elevated)]" /> }
+);
 import {
   BATTED_BALL_TYPE_OPTIONS,
   PITCH_LOG_BUTTONS,
@@ -149,14 +168,17 @@ import { parsePersistedBattedBallType } from "@/lib/record/recordBattedBall";
 import { useRecordAtBatForm } from "@/hooks/useRecordAtBatForm";
 import { recordFormStorageKey } from "@/lib/record/recordFormStorage";
 import { isRemoteFormNewer, nextFormRevision } from "@/lib/record/recordFormRevision";
-import { isTypingInFormField, throwsToPitcherHand } from "@/lib/record/recordKeyboard";
+import { throwsToPitcherHand } from "@/lib/record/recordKeyboard";
 import {
   freshGameRecordBatterState,
   inferRecordBatterFromExistingPAs,
 } from "@/lib/record/recordEntryBatter";
 import { batterIdAtLineupSlot, lineupSlotForBatterId } from "@/lib/record/recordLineup";
 import {
-  outcomeIndexFromDigitKey,
+  applyPlayerToLineupSlot,
+  lineupSlotsForSave,
+} from "@/lib/record/recordLineupSlots";
+import {
   outcomeShortcutDigit,
   pitchCountBlockHint,
   requiresRunnerOnBaseForResult,
@@ -179,6 +201,7 @@ import {
   persistPitchTrackerBatterToGame,
   persistPitchTrackerCountToGame,
   persistPitchTrackerGroupToGame,
+  persistPitchTrackerMoundPitcherToGame,
   persistPitchTrackerOutsToGame,
   persistPitchTrackerPitcherToGame,
 } from "@/lib/record/recordPitchTrackerSync";
@@ -247,9 +270,24 @@ interface RecordPageClientProps {
   ) => Promise<{ ok: boolean; error?: string }>;
 }
 
+/** While we hit, coach rows may use a different/null `pitcher_id` than Record's mound pitcher. */
+function coachPitchRowMatchesAb(
+  row: { batter_id?: string | null; pitcher_id?: string | null },
+  batterId: string | null,
+  pitcherId: string | null,
+  ourSide: string | null | undefined,
+  inningHalf: "top" | "bottom" | null | undefined
+): boolean {
+  if (batterId && row.batter_id && row.batter_id !== batterId) return false;
+  const offenseAb =
+    (ourSide === "home" || ourSide === "away") &&
+    battingSideFromHalf(inningHalf ?? "top") === ourSide;
+  return offenseAb || !row.pitcher_id || !pitcherId || row.pitcher_id === pitcherId;
+}
+
 export default function RecordPageClient({
   game,
-  players,
+  players: initialPlayers,
   initialGameId,
   fetchPAsForGame,
   fetchGameLineupOrder,
@@ -263,6 +301,10 @@ export default function RecordPageClient({
   linkPitchTrackerGroupToPa,
 }: RecordPageClientProps) {
   const router = useRouter();
+  const [players, setPlayers] = useState(initialPlayers);
+  useEffect(() => {
+    setPlayers(initialPlayers);
+  }, [initialPlayers]);
   /** Fixed for this page load from URL; use Games → Log to change game. */
   const selectedGameId = initialGameId ?? null;
   const {
@@ -347,6 +389,9 @@ export default function RecordPageClient({
   const resumeStackByGameRef = useRef<Map<string, RecordResumeSnapshotV1[]>>(new Map());
   const [saving, setSaving] = useState(false);
   const [substitutionModalOpen, setSubstitutionModalOpen] = useState(false);
+  const [quickAddPlayerOpen, setQuickAddPlayerOpen] = useState(false);
+  const [quickAddPitcherOpen, setQuickAddPitcherOpen] = useState(false);
+  const [networkOnline, setNetworkOnline] = useState(true);
   const [pitcherChangeModalOpen, setPitcherChangeModalOpen] = useState(false);
   const [clearingPAs, setClearingPAs] = useState(false);
   const [destructiveConfirm, setDestructiveConfirm] = useState<null | "undoLastPa" | "clearGamePas">(null);
@@ -385,14 +430,7 @@ export default function RecordPageClient({
     home: [],
   });
   /** Two-column box score: shared heading row only at lg+ (see GameBattingTable / GamePitchingBoxTable hideHeading). */
-  const [isLg, setIsLg] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 1024px)");
-    const apply = () => setIsLg(mq.matches);
-    apply();
-    mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
-  }, []);
+  const isLg = useMediaQueryLg();
   const [lastSavedPaSummary, setLastSavedPaSummary] = useState<LastSavedPaSummary | null>(null);
   /** Mirrors last persist payload for synchronous flush on tab hide / beforeunload. */
   const recordFormSnapshotRef = useRef<PersistedRecordFormState | null>(null);
@@ -440,6 +478,17 @@ export default function RecordPageClient({
     setPitchTrackerGroupId(id);
     void persistPitchTrackerGroupToGame(selectedGameId, id);
   }, [selectedGameId, game]);
+
+  useEffect(() => {
+    const sync = () => setNetworkOnline(typeof navigator !== "undefined" ? navigator.onLine : true);
+    sync();
+    window.addEventListener("online", sync);
+    window.addEventListener("offline", sync);
+    return () => {
+      window.removeEventListener("online", sync);
+      window.removeEventListener("offline", sync);
+    };
+  }, []);
 
   useEffect(() => {
     const sb = getSupabaseBrowserClient();
@@ -490,21 +539,28 @@ export default function RecordPageClient({
     rows: coachPitchRows,
     loading: coachPitchesLoading,
     refresh: refreshCoachPitches,
+    realtimeOk: coachPitchesRealtimeOk,
+    fetchError: coachPitchesFetchError,
   } = usePitchTrackerRows(selectedGameId && pitchTrackerGroupId ? pitchTrackerGroupId : null);
 
-  const coachRowsThisAb = useMemo(
-    () =>
-      coachPitchRows.filter(
-        (r) => (!r.batter_id || r.batter_id === batterId) && (!r.pitcher_id || r.pitcher_id === pitcherId)
-      ),
-    [coachPitchRows, batterId, pitcherId]
+  const { coachPadConnected, everConnected: coachPadEverConnected } = usePitchTrackerPadPresence(
+    pitchTrackerGroupId,
+    "monitor"
   );
+
+  const coachRowsThisAb = useMemo(() => {
+    const ourSide = selectedGameId && game?.id === selectedGameId ? game.our_side : undefined;
+    return coachPitchRows.filter((r) =>
+      coachPitchRowMatchesAb(r, batterId, pitcherId, ourSide, inningHalf)
+    );
+  }, [coachPitchRows, batterId, pitcherId, selectedGameId, game, inningHalf]);
   const coachPitchRowByAbIndex = useMemo(
     () => buildCoachPitchRowByAbIndex(coachRowsThisAb),
     [coachRowsThisAb]
   );
   /** Show coach iPad rows even before the analyst taps the pitch log for that pitch. */
   const mergedSequenceLength = Math.max(draftPitchLog.length, coachRowsThisAb.length);
+  const coachTypesAwaitingLog = Math.max(0, coachRowsThisAb.length - draftPitchLog.length);
 
   useEffect(() => {
     if (draftPitchLog.length > 0) return;
@@ -616,6 +672,30 @@ export default function RecordPageClient({
   draftPitchLogEmptyRef.current = draftPitchLog.length === 0;
   recordLockedRef.current = recordLocked;
 
+  const pitchPadHealthAlert = useMemo(
+    () =>
+      resolvePitchTrackerPadHealthAlert({
+        enabled: Boolean(selectedGameId && pitchTrackerGroupId && !recordLocked),
+        coachPadConnected,
+        everConnected: coachPadEverConnected,
+        realtimeOk: coachPitchesRealtimeOk,
+        fetchError: coachPitchesFetchError,
+        networkOnline,
+        coachTypesAwaitingLog,
+      }),
+    [
+      selectedGameId,
+      pitchTrackerGroupId,
+      recordLocked,
+      coachPadConnected,
+      coachPadEverConnected,
+      coachPitchesRealtimeOk,
+      coachPitchesFetchError,
+      networkOnline,
+      coachTypesAwaitingLog,
+    ]
+  );
+
   const syncCoachPitchResultsSeqRef = useRef(0);
   useEffect(() => {
     const sb = getSupabaseBrowserClient();
@@ -639,11 +719,10 @@ export default function RecordPageClient({
           if (delStubErr) console.warn("[Record] Remove PA-only pitch rows:", delStubErr.message);
         } else {
           if (!batterId) return;
+          const ourSide = selectedGame?.our_side;
           const coachRowsForAb = sortCoachPitchRowsForAb(
-            coachPitchRows.filter(
-              (r) =>
-                (!r.batter_id || r.batter_id === batterId) &&
-                (!r.pitcher_id || r.pitcher_id === pitcherId)
+            coachPitchRows.filter((r) =>
+              coachPitchRowMatchesAb(r, batterId, pitcherId, ourSide, inningHalf)
             )
           );
           const occupiedPitchNumbers = new Set(coachPitchRows.map((r) => r.pitch_number));
@@ -685,7 +764,7 @@ export default function RecordPageClient({
           }
         }
       } finally {
-        if (seq === syncCoachPitchResultsSeqRef.current) void refreshCoachPitches();
+        if (seq === syncCoachPitchResultsSeqRef.current) void refreshCoachPitches({ background: true });
       }
     })();
   }, [
@@ -697,6 +776,8 @@ export default function RecordPageClient({
     batterId,
     pitcherId,
     coachPitchRows,
+    selectedGame?.our_side,
+    inningHalf,
   ]);
 
   useEffect(() => {
@@ -858,6 +939,119 @@ export default function RecordPageClient({
     ourGameSide === "home" || ourGameSide === "away" ? pitchingSide === ourGameSide : false;
   const isOurPitchingSideForBox =
     ourGameSide === "home" || ourGameSide === "away" ? pitchingSideForBox === ourGameSide : false;
+  const battingTeamForQuickAdd = selectedGame
+    ? battingSide === "away"
+      ? selectedGame.away_team.trim()
+      : selectedGame.home_team.trim()
+    : "";
+  const canQuickAddOpponentPlayer = Boolean(
+    selectedGame &&
+      !recordLocked &&
+      (ourGameSide === "home" || ourGameSide === "away") &&
+      battingSide !== ourGameSide &&
+      battingTeamForQuickAdd.length > 0
+  );
+  const pitchingTeamForQuickAdd = selectedGame
+    ? pitchingSide === "away"
+      ? selectedGame.away_team.trim()
+      : selectedGame.home_team.trim()
+    : "";
+  const canQuickAddOpponentPitcher = Boolean(
+    selectedGame &&
+      !recordLocked &&
+      (ourGameSide === "home" || ourGameSide === "away") &&
+      pitchingSide !== ourGameSide &&
+      pitchingTeamForQuickAdd.length > 0
+  );
+  const handleQuickAddPlayerCreated = useCallback(
+    async ({ player, lineupSlot, lineupPosition }: QuickAddPlayerCreatedPayload) => {
+      setPlayers((prev) => {
+        if (prev.some((p) => p.id === player.id)) return prev;
+        return [...prev, player].sort((a, b) =>
+          a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+        );
+      });
+      if (isPitcherPlayer(player)) return;
+
+      const currentLineup = battingSide === "away" ? lineupAway : lineupHome;
+      let mergedOrder = currentLineup.order;
+      let mergedPositions = currentLineup.positionByPlayerId;
+
+      if (selectedGameId && selectedGame && !isDemoId(selectedGameId)) {
+        try {
+          const merged = applyPlayerToLineupSlot(
+            currentLineup.order,
+            currentLineup.positionByPlayerId,
+            lineupSlot,
+            player.id,
+            lineupPosition
+          );
+          mergedOrder = merged.order;
+          mergedPositions = merged.positionByPlayerId;
+          const result = await saveRecordGameLineup(
+            selectedGameId,
+            battingSide,
+            lineupSlotsForSave(mergedOrder, mergedPositions)
+          );
+          if (!result.ok) {
+            showMsg("error", result.error ?? "Player added but lineup could not be saved.");
+          } else {
+            if (battingSide === "away") {
+              setLineupAway({ order: mergedOrder, positionByPlayerId: mergedPositions });
+            } else {
+              setLineupHome({ order: mergedOrder, positionByPlayerId: mergedPositions });
+            }
+          }
+        } catch (e) {
+          showMsg(
+            "error",
+            e instanceof Error ? e.message : "Player added but lineup could not be updated."
+          );
+        }
+      }
+
+      setBatterId(player.id);
+      setNextBatterIndexBySide((prev) => ({
+        ...prev,
+        [battingSide]: lineupSlotForBatterId(mergedOrder, player.id),
+      }));
+      queueMicrotask(() => batterSelectRef.current?.focus());
+    },
+    [
+      battingSide,
+      lineupAway,
+      lineupHome,
+      selectedGameId,
+      selectedGame,
+      saveRecordGameLineup,
+      setBatterId,
+      setNextBatterIndexBySide,
+    ]
+  );
+  const handleQuickAddPitcherCreated = useCallback(
+    async ({ player }: QuickAddPitcherCreatedPayload) => {
+      setPlayers((prev) => {
+        if (prev.some((p) => p.id === player.id)) return prev;
+        return [...prev, player].sort((a, b) =>
+          a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+        );
+      });
+      setPitcherId(player.id);
+      setPitcherBySide((prev) => ({ ...prev, [pitchingSide]: player.id }));
+      if (selectedGameId && selectedGame && !isDemoId(selectedGameId)) {
+        const spResult = await setGameStartingPitcherIfEmptyAction(
+          selectedGameId,
+          pitchingSide,
+          player.id
+        );
+        if (!spResult.ok) {
+          showMsg("error", spResult.error ?? "Pitcher added but starter could not be saved on the game.");
+        }
+      }
+      showMsg("success", `${player.name.trim()} is on the mound.`);
+    },
+    [pitchingSide, selectedGameId, selectedGame, setPitcherId, setPitcherBySide]
+  );
   const lineupForBattingTable =
     displayBattingSide === "away" ? lineupAway : lineupHome;
   const pasForBattingTable = useMemo(
@@ -1625,6 +1819,7 @@ export default function RecordPageClient({
       isOurTeamBatting && ourSide ? pitcherBySide[ourSide] : pitcherId;
     if (coachPadPitcherId == null && pitchersForDropdown.length > 0) return;
     void persistPitchTrackerPitcherToGame(selectedGameId, coachPadPitcherId);
+    void persistPitchTrackerMoundPitcherToGame(selectedGameId, pitcherId);
   }, [
     selectedGameId,
     pitcherId,
@@ -2951,94 +3146,8 @@ export default function RecordPageClient({
   advanceToNextLineupBatterRef.current = advanceToNextLineupBatter;
   const repeatLastSavedOutcomeRef = useRef(repeatLastSavedOutcome);
   repeatLastSavedOutcomeRef.current = repeatLastSavedOutcome;
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!selectedGameId || recordLocked) return;
-      const blockNavShortcuts =
-        substitutionModalOpen ||
-        pitcherChangeModalOpen ||
-        finalizeModalOpen ||
-        destructiveConfirm != null ||
-        errorFielderModalMode != null;
-      if (blockNavShortcuts) return;
-      if (shortcutsHelpOpen) {
-        if (e.key === "Escape") {
-          setShortcutsHelpOpen(false);
-          e.preventDefault();
-        }
-        return;
-      }
-      if (isTypingInFormField(e.target)) return;
 
-      if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
-        e.preventDefault();
-        setShortcutsHelpOpen(true);
-        return;
-      }
-      if (e.key === "b" || e.key === "B") {
-        e.preventDefault();
-        batterSelectRef.current?.focus();
-        return;
-      }
-      if (e.key === "j" || e.key === "J") {
-        if (!batterId) return;
-        e.preventDefault();
-        advanceToNextLineupBatterRef.current();
-        return;
-      }
-      if (e.key === "s" || e.key === "S") {
-        if (e.ctrlKey || e.altKey || e.metaKey) return;
-        e.preventDefault();
-        setSubstitutionModalOpen(true);
-        return;
-      }
-      if (e.key === "p" || e.key === "P") {
-        if (e.ctrlKey || e.altKey || e.metaKey) return;
-        e.preventDefault();
-        setPitcherChangeModalOpen(true);
-        return;
-      }
-      if (e.key === "r" || e.key === "R") {
-        if (e.ctrlKey || e.altKey || e.metaKey) return;
-        e.preventDefault();
-        repeatLastSavedOutcomeRef.current();
-        return;
-      }
-
-      if (!batterId) return;
-      if (e.key === "Enter") {
-        if (!savePaDisabled) handleSaveRef.current();
-        return;
-      }
-      if (e.key >= "0" && e.key <= "9") {
-        const idx = outcomeIndexFromDigitKey(e.key);
-        if (idx == null) return;
-        const opt = RESULT_OPTIONS[idx];
-        if (!opt) return;
-        const { balls, strikes } = outcomeCountGateRef.current;
-        if (result === opt.value) {
-          setResult(null);
-          setErrorFielderId(null);
-          setHitDirection(null);
-          setBattedBallType(null);
-          e.preventDefault();
-          return;
-        }
-        if (resultBlockedByPitchCount(opt.value, balls, strikes)) return;
-        if (opt.value === "reached_on_error") {
-          prevResultBeforeRoeModalRef.current = result;
-          prevErrorFielderIdBeforeRoeModalRef.current = errorFielderId;
-          setResult("reached_on_error");
-          setErrorFielderModalMode("roe");
-        } else {
-          setResult(opt.value);
-        }
-        e.preventDefault();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [
+  useRecordKeyboardShortcuts({
     selectedGameId,
     recordLocked,
     batterId,
@@ -3050,7 +3159,23 @@ export default function RecordPageClient({
     destructiveConfirm,
     errorFielderModalMode,
     shortcutsHelpOpen,
-  ]);
+    savePaDisabled,
+    batterSelectRef,
+    outcomeCountGateRef,
+    prevResultBeforeRoeModalRef,
+    prevErrorFielderIdBeforeRoeModalRef,
+    handleSaveRef,
+    advanceToNextLineupBatterRef,
+    repeatLastSavedOutcomeRef,
+    setShortcutsHelpOpen,
+    setSubstitutionModalOpen,
+    setPitcherChangeModalOpen,
+    setResult,
+    setErrorFielderId,
+    setHitDirection,
+    setBattedBallType,
+    setErrorFielderModalMode,
+  });
 
   return (
     <div className="space-y-2 pb-24 sm:space-y-3 sm:pb-28">
@@ -3140,7 +3265,7 @@ export default function RecordPageClient({
             <p className="text-sm font-medium text-[var(--text)]">
               {formatDateMMDDYYYY(selectedGame.date)} — {matchupLabelUsFirst(selectedGame, true)}
             </p>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
               {finalizedScoreText ? (
                 <span
                   className="inline-flex min-h-[44px] min-w-[12.5rem] items-center justify-center rounded-lg border-2 border-[var(--accent)]/60 bg-[var(--accent)]/12 px-5 py-2 text-base font-semibold tabular-nums tracking-wide text-[var(--accent)]"
@@ -3149,6 +3274,11 @@ export default function RecordPageClient({
                   Final: {finalizedScoreText}
                   {finalizedOutcomeText ? <span className="ml-3">({finalizedOutcomeText})</span> : null}
                 </span>
+              ) : null}
+              {pitchPadHealthAlert ? (
+                <div className="max-w-[14rem] min-w-0 shrink">
+                  <RecordPitchPadHealthBanner alert={pitchPadHealthAlert} />
+                </div>
               ) : null}
               {!isDemoId(selectedGameId) && (
                 <button
@@ -3283,10 +3413,21 @@ export default function RecordPageClient({
             </div>
             </div>
             <div className="mt-2 block">
-              <span className="font-heading text-xs font-semibold text-[var(--text)]">
-                Pitcher (
-                {pitchingSide === "home" ? selectedGame.home_team : selectedGame.away_team})
-              </span>
+              <div className="mb-0.5 flex flex-wrap items-baseline justify-between gap-2">
+                <span className="font-heading text-xs font-semibold text-[var(--text)]">
+                  Pitcher (
+                  {pitchingSide === "home" ? selectedGame.home_team : selectedGame.away_team})
+                </span>
+                {canQuickAddOpponentPitcher ? (
+                  <button
+                    type="button"
+                    onClick={() => setQuickAddPitcherOpen(true)}
+                    className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--accent)] underline decoration-dotted underline-offset-2 hover:opacity-90"
+                  >
+                    + Add pitcher
+                  </button>
+                ) : null}
+              </div>
               <div className="mt-0.5 flex max-w-md flex-col gap-2 sm:flex-row sm:items-stretch">
                 <div
                   className="input-tech flex min-h-[44px] flex-1 items-center px-3 py-2 text-sm text-[var(--text)]"
@@ -3313,13 +3454,32 @@ export default function RecordPageClient({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setPitcherChangeModalOpen(true)}
-                  disabled={pitchersForDropdown.length === 0}
+                  onClick={() =>
+                    pitchersForDropdown.length === 0 && canQuickAddOpponentPitcher
+                      ? setQuickAddPitcherOpen(true)
+                      : setPitcherChangeModalOpen(true)
+                  }
+                  disabled={pitchersForDropdown.length === 0 && !canQuickAddOpponentPitcher}
                   className="font-display min-h-[44px] shrink-0 rounded-lg border-2 border-[var(--accent)] bg-[var(--accent)]/12 px-4 py-2 text-center text-sm font-semibold tracking-wide text-[var(--accent)] transition hover:bg-[var(--accent)]/22 disabled:cursor-not-allowed disabled:opacity-45 touch-manipulation"
                 >
-                  Change pitcher
+                  {pitchersForDropdown.length === 0 && canQuickAddOpponentPitcher
+                    ? "Add pitcher"
+                    : "Change pitcher"}
                 </button>
               </div>
+              {canQuickAddOpponentPitcher && pitchersForDropdown.length === 0 ? (
+                <p className="mt-1.5 max-w-md text-[10px] leading-snug text-[var(--text-muted)]">
+                  No pitchers tagged for {pitchingTeamForQuickAdd} yet. Use{" "}
+                  <button
+                    type="button"
+                    onClick={() => setQuickAddPitcherOpen(true)}
+                    className="font-medium text-[var(--accent)] underline decoration-dotted underline-offset-2 hover:opacity-90"
+                  >
+                    Add pitcher
+                  </button>{" "}
+                  to log this half-inning.
+                </p>
+              ) : null}
               {showPitcherWarning && (
                 <p className="mt-1 text-[11px] leading-snug text-[var(--warning)]">
                   {pitchersForDropdown.length === 0
@@ -3345,8 +3505,17 @@ export default function RecordPageClient({
               </h4>
               <div className="mt-1 grid grid-cols-1 gap-2 sm:grid-cols-2 sm:items-start sm:gap-3 lg:grid-cols-[minmax(0,1.12fr)_minmax(0,1fr)] lg:items-start">
                 <div className="min-w-0 space-y-1.5 sm:order-2 sm:self-start lg:sticky lg:top-2 lg:z-20 lg:max-h-[min(calc(100dvh-9rem),42rem)] lg:overflow-y-auto lg:overflow-x-hidden lg:rounded-md lg:bg-[var(--bg-elevated)] lg:px-1.5">
-                  <div className="mb-1 flex min-h-5 shrink-0 items-baseline">
+                  <div className="mb-1 flex min-h-5 shrink-0 items-baseline justify-between gap-2">
                     <span className="font-heading text-xs font-semibold text-[var(--text)]">Batter</span>
+                    {canQuickAddOpponentPlayer ? (
+                      <button
+                        type="button"
+                        onClick={() => setQuickAddPlayerOpen(true)}
+                        className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--accent)] underline decoration-dotted underline-offset-2 hover:opacity-90"
+                      >
+                        + Add player
+                      </button>
+                    ) : null}
                   </div>
                     <div className="relative h-10 w-full max-w-[min(100%,18rem)] overflow-hidden rounded-lg border border-[var(--border)] bg-black transition-[border-color,box-shadow] focus-within:border-[var(--accent)] focus-within:shadow-[0_0_0_3px_var(--accent-dim)]">
                       <div
@@ -3417,6 +3586,20 @@ export default function RecordPageClient({
                         ▾
                       </span>
                     </div>
+
+                    {canQuickAddOpponentPlayer && batterSelectEntries.length === 0 ? (
+                      <p className="mt-1.5 text-[10px] leading-snug text-[var(--text-muted)]">
+                        No batters tagged for {battingTeamForQuickAdd} yet.{" "}
+                        <button
+                          type="button"
+                          onClick={() => setQuickAddPlayerOpen(true)}
+                          className="font-medium text-[var(--accent)] underline decoration-dotted underline-offset-2 hover:opacity-90"
+                        >
+                          Add a player
+                        </button>{" "}
+                        to log this at-bat.
+                      </p>
+                    ) : null}
 
                 <details className="mt-2">
                   <summary className="mb-0.5 cursor-pointer list-none text-[9px] text-[var(--text-muted)] underline decoration-dotted underline-offset-2 marker:content-none [&::-webkit-details-marker]:hidden">
@@ -4232,51 +4415,18 @@ export default function RecordPageClient({
               )}
             </div>
 
-            <nav
-              id="record-pa-primary-actions"
-              className="scroll-mt-4 flex flex-wrap items-center gap-2 max-lg:sticky max-lg:bottom-0 max-lg:z-40 max-lg:-mx-2 max-lg:mt-2 max-lg:border-t max-lg:border-[var(--border)] max-lg:bg-[var(--bg-base)]/92 max-lg:px-2 max-lg:pb-[max(0.75rem,env(safe-area-inset-bottom))] max-lg:pt-3 max-lg:backdrop-blur-md max-lg:shadow-[0_-12px_40px_rgba(0,0,0,0.5)]"
-              aria-label="Primary recording actions"
-            >
-                <button
-                  type="button"
-                onClick={requestUndoLastPA}
-                disabled={!lastPA || destructivePending}
-                title={
-                  lastPA
-                    ? "Remove the most recently saved plate appearance for this game."
-                    : "Save a plate appearance first — then you can undo the last one if you mis-entered it."
-                }
-                className="min-h-[48px] shrink-0 rounded-lg border-2 border-[var(--border)] bg-transparent px-4 py-2 text-sm font-medium text-[var(--text-muted)] transition hover:border-[var(--danger)] hover:text-[var(--danger)] touch-manipulation disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Undo last PA
-              </button>
-              <button
-                type="button"
-                onClick={() => setSubstitutionModalOpen(true)}
-                disabled={isDemoId(selectedGameId)}
-                className="min-h-[48px] shrink-0 cursor-pointer rounded-lg border-2 border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-2 text-sm font-semibold text-[var(--text)] transition hover:border-[var(--accent)]/60 hover:bg-[var(--accent-dim)]/20 disabled:cursor-not-allowed disabled:opacity-50 touch-manipulation"
-              >
-                Substitution
-              </button>
-              {!isDemoId(selectedGameId) && (
-                <button
-                  type="button"
-                  disabled={clearingPAs || destructivePending}
-                  onClick={() => setDestructiveConfirm("clearGamePas")}
-                  className="min-h-[48px] shrink-0 rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-xs font-medium text-[var(--text-muted)] transition hover:border-[var(--danger)] hover:bg-[var(--danger-dim)]/25 hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {clearingPAs ? "Clearing…" : "Clear PAs"}
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={savePaDisabled}
-                className="min-h-[48px] min-w-[8rem] flex-1 cursor-pointer rounded-lg bg-[var(--accent)] py-3 text-base font-semibold text-[var(--bg-base)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none touch-manipulation"
-              >
-                {saving ? "Saving…" : "Save PA"}
-              </button>
-            </nav>
+            <RecordPrimaryActions
+              hasLastPa={Boolean(lastPA)}
+              destructivePending={destructivePending}
+              saving={saving}
+              savePaDisabled={savePaDisabled}
+              clearingPAs={clearingPAs}
+              isDemoGame={isDemoId(selectedGameId)}
+              onUndoLastPa={requestUndoLastPA}
+              onSubstitution={() => setSubstitutionModalOpen(true)}
+              onClearPas={() => setDestructiveConfirm("clearGamePas")}
+              onSave={handleSave}
+            />
             </div>
               <div className="order-2 w-full max-w-[300px] shrink-0 self-start lg:order-1 lg:min-w-[260px]">
                 <section className="rounded border border-[var(--border)] bg-[var(--bg-elevated)] p-1.5">
@@ -4316,200 +4466,36 @@ export default function RecordPageClient({
             />
           </div>
 
-          {lastSavedPaSummary && (
-            <section
-              className="rounded-lg border border-[var(--accent)]/35 bg-[var(--accent-dim)]/25 px-3 py-2.5"
-              aria-label="Last saved plate appearance — who scored"
-            >
-              <p className="font-display text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                Last PA saved — verify
-              </p>
-              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                <span className="text-[var(--text)]">
-                  <span className="font-semibold">Batter:</span>{" "}
-                  <span className="text-[var(--accent)]">{lastSavedPaSummary.batterName}</span>
-                </span>
-                <span className="text-[var(--text)]">
-                  <span className="font-semibold">Result:</span>{" "}
-                  <span className="text-[var(--accent)]">{lastSavedPaSummary.resultLabel}</span>
-                </span>
-                {lastSavedPaSummary.errorFielderName != null && (
-                  <span className="text-[var(--text)]">
-                    <span className="font-semibold">Error charged to:</span>{" "}
-                    <span className="text-[var(--accent)]">{lastSavedPaSummary.errorFielderName}</span>
-                  </span>
-                )}
-                <span className="text-[var(--text)]">
-                  <span className="font-semibold">Hit direction:</span>{" "}
-                  <span className="text-[var(--accent)]">
-                    {lastSavedPaSummary.hitDirectionLabel ?? "—"}
-                  </span>
-                </span>
-                {lastSavedPaSummary.rbi > 0 && (
-                  <span className="text-[var(--text)]">
-                    <span className="font-semibold">RBI:</span>{" "}
-                    <span className="text-[var(--accent)]">{lastSavedPaSummary.rbi}</span>
-                  </span>
-                )}
-                  <span className="text-[var(--text)]">
-                  <span className="font-semibold">Pitcher:</span>{" "}
-                  <span className="text-[var(--accent)]">{lastSavedPaSummary.pitcherName}</span>
-                  </span>
-                <span className="text-[var(--text)]">
-                  <span className="font-semibold">Count:</span>{" "}
-                  <span className="text-[var(--accent)]">{lastSavedPaSummary.countLabel}</span>
-                </span>
-                <span className="text-[var(--text)]">
-                  <span className="font-semibold">Pitches:</span>{" "}
-                  <span className="text-[var(--accent)]">{lastSavedPaSummary.pitchLine}</span>
-                </span>
-                <span className="text-[var(--text)]">
-                  <span className="font-semibold">Scored:</span>{" "}
-                  <span className="text-[var(--accent)]">
-                    {lastSavedPaSummary.runsScoredNames.length > 0
-                      ? lastSavedPaSummary.runsScoredNames.join(", ")
-                      : "None"}
-                  </span>
-                </span>
-                {lastSavedPaSummary.unearnedRunsScoredNames.length > 0 && (
-                  <span className="text-[var(--text)]">
-                    <span className="font-semibold">Unearned (vs ERA):</span>{" "}
-                    <span className="text-amber-200/95">
-                      {lastSavedPaSummary.unearnedRunsScoredNames.join(", ")}
-                    </span>
-                  </span>
-                )}
-                {lastSavedPaSummary.notes && (
-                  <span className="min-w-0 text-[var(--text-muted)]">
-                    <span className="font-semibold">Play/Notes:</span>{" "}
-                    <span className="text-[var(--accent)]">{lastSavedPaSummary.notes}</span>
-                  </span>
-                )}
-              </div>
-            </section>
-          )}
+          {lastSavedPaSummary ? <RecordLastPaSummary summary={lastSavedPaSummary} /> : null}
 
           <div className="space-y-3">
-            {isLg ? (
-              <>
-                <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-x-4 gap-y-2">
-                  <h2 className="font-display min-w-0 text-sm font-semibold uppercase tracking-wider text-white">
-                    Batters – {battingTableTeamName}
-                  </h2>
-                  <button
-                    type="button"
-                    onClick={() => setBattingTablePeekOther((v) => !v)}
-                    className="mb-px shrink-0 rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1 text-xs font-medium text-[var(--text)] transition hover:border-[var(--accent)] hover:bg-[var(--accent-dim)]/30"
-                  >
-                    {recordBoxScoreToggleLabel}
-                  </button>
-                  <h2 className="font-display min-w-0 text-right text-sm font-semibold uppercase tracking-wider text-white">
-                    Pitchers – {pitchingTableTeamName}
-                  </h2>
-                </div>
-                <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2 lg:gap-5">
-                  <div className="flex min-w-0 flex-col gap-3">
-                    <GameBattingTable
-                      game={selectedGame}
-                      teamName={battingTableTeamName}
-                      pas={pasForBattingTable}
-                      players={players}
-                      lineupOrder={
-                        lineupForBattingTable.order.length > 0
-                          ? lineupForBattingTable.order
-                          : undefined
-                      }
-                      lineupPositionByPlayerId={lineupForBattingTable.positionByPlayerId}
-                      highlightedBatterId={battingTablePeekOther ? null : batterId}
-                      baserunningByPlayerId={baserunningByPlayerId}
-                      hideHeading
-                      showPitchData={false}
-                    />
-                    <RecordBaserunningPanel
-                      players={players}
-                      baserunningEvents={baserunningEvents}
-                      disabled={recordLocked || isDemoId(selectedGameId)}
-                      onDeleteEvent={handleDeleteBaserunningEvent}
-                    />
-                  </div>
-                  <div className="flex min-w-0 flex-col gap-3">
-                    <GamePitchingBoxTable
-                      game={selectedGame}
-                      side={pitchingSideForBox}
-                      pas={allPAsForGame}
-                      players={players}
-                      compact
-                      hideHeading
-                    />
-                    <PitchingPitchMixSupplement
-                      pas={pasForPitchMixUnderPitchingTable}
-                      players={players}
-                      pitchEvents={pitchEventsForPitchMixCard}
-                      distributionPitchEvents={distributionPitchEventsForPitchMixCard}
-                      compact
-                      currentPitcherId={pitcherId}
-                      hideTypeMix={!isOurPitchingSideForBox}
-                    />
-                  </div>
-                </div>
-                  </>
-                ) : (
-                  <>
-                <div className="flex flex-wrap justify-end">
-              <button
-                type="button"
-                onClick={() => setBattingTablePeekOther((v) => !v)}
-                className="rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1 text-xs font-medium text-[var(--text)] transition hover:border-[var(--accent)] hover:bg-[var(--accent-dim)]/30"
-              >
-                    {recordBoxScoreToggleLabel}
-              </button>
-            </div>
-                <div className="grid grid-cols-1 items-start gap-4">
-                  <div className="flex min-w-0 flex-col gap-3">
-            <GameBattingTable
-              game={selectedGame}
-              teamName={battingTableTeamName}
-              pas={pasForBattingTable}
+            <RecordBoxScoreSection
+              isLg={isLg}
+              toggleLabel={recordBoxScoreToggleLabel}
+              onTogglePeekOther={() => setBattingTablePeekOther((v) => !v)}
+              battingTeamName={battingTableTeamName}
+              pitchingTeamName={pitchingTableTeamName}
+              selectedGame={selectedGame}
+              pasForBattingTable={pasForBattingTable}
+              allPAsForGame={allPAsForGame}
               players={players}
-              lineupOrder={
-                        lineupForBattingTable.order.length > 0
-                          ? lineupForBattingTable.order
-                          : undefined
-              }
+              lineupOrder={lineupForBattingTable.order}
               lineupPositionByPlayerId={lineupForBattingTable.positionByPlayerId}
-              highlightedBatterId={battingTablePeekOther ? null : batterId}
+              highlightedBatterId={batterId}
+              battingTablePeekOther={battingTablePeekOther}
               baserunningByPlayerId={baserunningByPlayerId}
-                      showPitchData={false}
-                    />
-                    <RecordBaserunningPanel
-                      players={players}
-                      baserunningEvents={baserunningEvents}
-                      disabled={recordLocked || isDemoId(selectedGameId)}
-                      onDeleteEvent={handleDeleteBaserunningEvent}
-                    />
-                  </div>
-                  <div className="flex min-w-0 flex-col gap-3">
-                    <GamePitchingBoxTable
-                      game={selectedGame}
-                      side={pitchingSideForBox}
-                      pas={allPAsForGame}
-                      players={players}
-                      compact
-                    />
-                    <PitchingPitchMixSupplement
-                      pas={pasForPitchMixUnderPitchingTable}
-                      players={players}
-                      pitchEvents={pitchEventsForPitchMixCard}
-                      distributionPitchEvents={distributionPitchEventsForPitchMixCard}
-                      compact
-                      currentPitcherId={pitcherId}
-                      hideTypeMix={!isOurPitchingSideForBox}
-                    />
-                  </div>
+              baserunningEvents={baserunningEvents}
+              recordLocked={recordLocked}
+              isDemoGame={isDemoId(selectedGameId)}
+              onDeleteBaserunningEvent={handleDeleteBaserunningEvent}
+              pitchingSideForBox={pitchingSideForBox}
+              pasForPitchMix={pasForPitchMixUnderPitchingTable}
+              pitchEventsForMix={pitchEventsForPitchMixCard}
+              distributionPitchEventsForMix={distributionPitchEventsForPitchMixCard}
+              currentPitcherId={pitcherId}
+              hidePitchTypeMix={!isOurPitchingSideForBox}
+            />
           </div>
-        </>
-      )}
-    </div>
         </main>
       )}
 
@@ -4584,6 +4570,11 @@ export default function RecordPageClient({
           teamName={pitchingSide === "home" ? selectedGame.home_team : selectedGame.away_team}
           currentPitcherId={pitcherId}
           pitchers={pitchersForDropdown}
+          onQuickAddPitcher={
+            canQuickAddOpponentPitcher
+              ? () => setQuickAddPitcherOpen(true)
+              : undefined
+          }
           onApply={(playerId) => {
             setPitcherId(playerId);
             setPitcherBySide((prev) => ({ ...prev, [pitchingSide]: playerId }));
@@ -4671,6 +4662,28 @@ export default function RecordPageClient({
           }}
         />
       )}
+
+      {quickAddPitcherOpen && canQuickAddOpponentPitcher ? (
+        <QuickAddPitcherModal
+          open
+          opponentTeam={pitchingTeamForQuickAdd}
+          onClose={() => setQuickAddPitcherOpen(false)}
+          onSave={insertPlayerAction}
+          onCreated={handleQuickAddPitcherCreated}
+        />
+      ) : null}
+
+      {quickAddPlayerOpen && canQuickAddOpponentPlayer ? (
+        <QuickAddPlayerModal
+          open
+          opponentTeam={battingTeamForQuickAdd}
+          lineupOrder={lineupForBatting.order}
+          players={players}
+          onClose={() => setQuickAddPlayerOpen(false)}
+          onSave={insertPlayerAction}
+          onCreated={handleQuickAddPlayerCreated}
+        />
+      ) : null}
 
       {shortcutsHelpOpen ? (
         <RecordShortcutsHelpModal open onClose={() => setShortcutsHelpOpen(false)} />

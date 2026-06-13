@@ -1,4 +1,4 @@
-import { PITCH_TRACKER_TYPES } from "@/lib/pitchTrackerUi";
+import { ALL_PITCH_TRACKER_TYPES, isPitchTrackerPitchType } from "@/lib/pitchTrackerUi";
 import type { PitchEvent, PitchTrackerPitchType, PlateAppearance } from "@/lib/types";
 
 export type PitchTypeDistributionEntry = {
@@ -18,7 +18,7 @@ export type PitchTypeDistributionResult = {
 function normalizeCoachPitchType(raw: string | null | undefined): PitchTrackerPitchType | null {
   if (raw == null || typeof raw !== "string") return null;
   const t = raw.trim().toLowerCase();
-  return (PITCH_TRACKER_TYPES as readonly string[]).includes(t) ? (t as PitchTrackerPitchType) : null;
+  return isPitchTrackerPitchType(t) ? t : null;
 }
 
 /**
@@ -30,7 +30,7 @@ export function pitchTypeDistributionFromPitchLog(
   eventsByPaId: Map<string, PitchEvent[]>
 ): PitchTypeDistributionResult {
   const counts = new Map<PitchTrackerPitchType, number>();
-  for (const ty of PITCH_TRACKER_TYPES) counts.set(ty, 0);
+  for (const ty of ALL_PITCH_TRACKER_TYPES) counts.set(ty, 0);
 
   let typedTotal = 0;
   for (const pa of pas) {
@@ -44,7 +44,7 @@ export function pitchTypeDistributionFromPitchLog(
   }
 
   const entries: PitchTypeDistributionEntry[] = [];
-  for (const ty of PITCH_TRACKER_TYPES) {
+  for (const ty of ALL_PITCH_TRACKER_TYPES) {
     const count = counts.get(ty) ?? 0;
     if (count <= 0) continue;
     entries.push({

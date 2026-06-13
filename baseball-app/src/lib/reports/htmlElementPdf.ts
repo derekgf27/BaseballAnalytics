@@ -40,7 +40,9 @@ function mountCaptureStyles(captureClass: string): void {
       display: none !important;
     }
     .${captureClass}.pregame-report-root,
-    .${captureClass}.pregame-report-root * {
+    .${captureClass}.pregame-report-root *,
+    .${captureClass}.game-review-detailed-report-root,
+    .${captureClass}.game-review-detailed-report-root * {
       box-shadow: none !important;
       text-shadow: none !important;
       filter: none !important;
@@ -107,7 +109,10 @@ function prepareDomForPdfCapture(root: HTMLElement): void {
 
   root.querySelectorAll<HTMLTableElement>("table").forEach((table) => {
     table.style.borderCollapse = "collapse";
-    if (table.classList.contains("postgame-linescore-table")) {
+    if (
+      table.classList.contains("postgame-linescore-table") ||
+      table.classList.contains("box-score-linescore-table")
+    ) {
       table.style.width = "auto";
       table.style.maxWidth = "100%";
       table.style.tableLayout = "auto";
@@ -123,11 +128,22 @@ function prepareDomForPdfCapture(root: HTMLElement): void {
   });
 
   root.querySelectorAll<HTMLElement>("th, td").forEach((cell) => {
-    if (cell.closest(".pregame-pitching-ext-table") || cell.closest(".postgame-linescore-table")) return;
+    if (
+      cell.closest(".pregame-pitching-ext-table") ||
+      cell.closest(".postgame-linescore-table") ||
+      cell.closest(".box-score-linescore-table")
+    ) {
+      return;
+    }
     cell.style.whiteSpace = "normal";
     cell.style.wordBreak = "break-word";
     cell.style.overflow = "visible";
     cell.style.maxWidth = "none";
+  });
+
+  root.querySelectorAll<HTMLElement>(".game-review-pdf-player-block, .game-review-pdf-subsection-unit").forEach((el) => {
+    el.style.overflow = "visible";
+    el.style.maxHeight = "none";
   });
 }
 
@@ -216,6 +232,9 @@ async function captureAtBestRatio(element: HTMLElement): Promise<HTMLCanvasEleme
 }
 
 const MIN_PAGE_SLICE_PX = 72;
+/** Merge a tiny tail onto the current slice instead of emitting a near-blank PDF page. */
+const TRAILING_SLICE_MERGE_RATIO = 0.14;
+const TRAILING_SLICE_MERGE_MAX_PX = 240;
 
 /** Shrink a page slice so it does not cut through `data-pdf-avoid-break` blocks. */
 function adjustSliceHeightForAvoidBreaks(
@@ -235,17 +254,19 @@ function adjustSliceHeightForAvoidBreaks(
   const rootTop = element.getBoundingClientRect().top;
   const sliceEnd = sourceY + sliceH;
 
-  for (const el of element.querySelectorAll<HTMLElement>("[data-pdf-avoid-break]")) {
+  for (const el of element.querySelectorAll<HTMLElement>("[data-pdf-avoid-break], .game-review-pdf-player-block")) {
     const r = el.getBoundingClientRect();
     const top = (r.top - rootTop) * scaleY;
     const bottom = (r.bottom - rootTop) * scaleY;
     const blockH = bottom - top;
-    const wouldSplit =
-      top > sourceY + 6 && sliceEnd > top + 6 && sliceEnd < bottom - 6 && blockH <= maxSlicePx + 2;
+    const wouldSplit = top > sourceY + 6 && sliceEnd > top + 6 && sliceEnd < bottom - 6;
     if (wouldSplit) {
       const beforeBlock = Math.floor(top - sourceY);
       if (beforeBlock >= MIN_PAGE_SLICE_PX) {
         sliceH = Math.min(sliceH, beforeBlock);
+      } else if (sourceY > 0 && blockH <= maxSlicePx + 4) {
+        // Block fits on one page but not in remaining space — start on next slice.
+        sliceH = Math.min(sliceH, Math.max(MIN_PAGE_SLICE_PX, beforeBlock));
       }
     }
   }
@@ -258,8 +279,12 @@ function addCanvasToPdf(
   doc: jsPDF,
   canvas: HTMLCanvasElement,
   sourceElement: HTMLElement,
-  marginMm = PDF_MARGIN_MM
+  options: {
+    marginMm?: number;
+    onPageAdded?: (pageNumber: number) => void;
+  } = {}
 ): void {
+  const marginMm = options.marginMm ?? PDF_MARGIN_MM;
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const contentW = pageWidth - marginMm * 2;
@@ -278,7 +303,15 @@ function addCanvasToPdf(
     if (pageIndex > 0) doc.addPage();
 
     const maxSlice = Math.min(pageSlicePx, canvas.height - sourceY);
-    const sliceH = adjustSliceHeightForAvoidBreaks(sourceElement, sourceY, maxSlice, canvas.height);
+    let sliceH = adjustSliceHeightForAvoidBreaks(sourceElement, sourceY, maxSlice, canvas.height);
+    const tailPx = canvas.height - sourceY - sliceH;
+    const mergeTailThreshold = Math.min(
+      TRAILING_SLICE_MERGE_MAX_PX,
+      Math.floor(pageSlicePx * TRAILING_SLICE_MERGE_RATIO)
+    );
+    if (tailPx > 0 && tailPx <= mergeTailThreshold) {
+      sliceH = canvas.height - sourceY;
+    }
     const sliceCanvas = document.createElement("canvas");
     sliceCanvas.width = canvas.width;
     sliceCanvas.height = sliceH;
@@ -296,9 +329,53 @@ function addCanvasToPdf(
     const sliceHeightMm = sliceH * scale;
 
     doc.addImage(imgData, format, marginMm, marginMm, contentW, sliceHeightMm);
+    options.onPageAdded?.(doc.getNumberOfPages());
 
     sourceY += sliceH;
     pageIndex += 1;
+  }
+}
+
+function pdfContentWidthMm(orientation: "portrait" | "landscape", marginMm: number): number {
+  const pageWidth = orientation === "portrait" ? 215.9 : 279.4;
+  return pageWidth - marginMm * 2;
+}
+
+function pdfContentHeightMm(orientation: "portrait" | "landscape", marginMm: number): number {
+  const pageHeight = orientation === "portrait" ? 279.4 : 215.9;
+  return pageHeight - marginMm * 2;
+}
+
+function estimateSliceCountForElement(
+  element: HTMLElement,
+  orientation: "portrait" | "landscape",
+  marginMm = PDF_MARGIN_MM
+): number {
+  const h = element.scrollHeight || element.offsetHeight;
+  if (h < 1) return 0;
+  const captureWidthPx = LETTER_CAPTURE_WIDTH_PX[orientation];
+  const contentW = pdfContentWidthMm(orientation, marginMm);
+  const contentH = pdfContentHeightMm(orientation, marginMm);
+  const scale = contentW / captureWidthPx;
+  const pageSlicePx = Math.floor(contentH / scale);
+  if (pageSlicePx < 1) return 1;
+  return Math.max(1, Math.ceil(h / pageSlicePx));
+}
+
+function applyPdfFooters(doc: jsPDF, footerLeft: string | undefined, marginMm: number): void {
+  const total = doc.getNumberOfPages();
+  for (let i = 1; i <= total; i++) {
+    doc.setPage(i);
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const y = pageHeight - marginMm * 0.55;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(100, 100, 100);
+    if (footerLeft) {
+      doc.text(footerLeft, marginMm, y);
+    }
+    doc.text(`Page ${i} of ${total}`, pageWidth - marginMm, y, { align: "right" });
   }
 }
 
@@ -308,11 +385,21 @@ function applyCaptureWidth(element: HTMLElement, captureWidthPx: number): void {
   element.style.boxSizing = "border-box";
 }
 
+export type PdfExportProgress = {
+  sectionIndex: number;
+  sectionCount: number;
+  pageNumber: number;
+  estimatedTotalPages: number;
+};
+
 export type DownloadElementPdfOptions = {
   captureClass?: string;
   orientation?: "portrait" | "landscape";
   /** Capture each top-level child separately — cleaner page breaks for long reports. */
   splitByTopLevelSections?: boolean;
+  /** Left-aligned footer text on every page (page numbers added automatically). */
+  footerLeft?: string;
+  onProgress?: (progress: PdfExportProgress) => void;
 };
 
 export async function downloadElementAsPdf(
@@ -346,29 +433,59 @@ export async function downloadElementAsPdf(
     });
 
     const targets = options.splitByTopLevelSections ? pdfCaptureUnits(element) : [element];
+    const visibleTargets = targets.filter((target) => {
+      applyCaptureWidth(target, captureWidthPx);
+      const h = target.scrollHeight || target.offsetHeight;
+      return h >= 1;
+    });
 
-    if (targets.length === 0) {
+    if (visibleTargets.length === 0) {
       throw new Error("Report has no visible content to export.");
     }
 
-    for (let i = 0; i < targets.length; i++) {
-      const target = targets[i]!;
+    const sectionEstimates = visibleTargets.map((target) =>
+      estimateSliceCountForElement(target, orientation)
+    );
+    let estimatedTotalPages = sectionEstimates.reduce((sum, n) => sum + n, 0) || 1;
+
+    const reportProgress = (sectionIndex: number, pageNumber: number) => {
+      options.onProgress?.({
+        sectionIndex,
+        sectionCount: visibleTargets.length,
+        pageNumber,
+        estimatedTotalPages,
+      });
+    };
+
+    reportProgress(1, 1);
+
+    for (let i = 0; i < visibleTargets.length; i++) {
+      const target = visibleTargets[i]!;
       applyCaptureWidth(target, captureWidthPx);
       prepareDomForPdfCapture(target);
 
-      const h = target.scrollHeight || target.offsetHeight;
-      if (h < 1) continue;
-
-      if (options.splitByTopLevelSections && i > 0 && doc.getNumberOfPages() > 0) {
-        doc.addPage();
-      }
+      reportProgress(i + 1, doc.getNumberOfPages() || 1);
 
       const canvas = await captureAtBestRatio(target);
-      addCanvasToPdf(doc, canvas, target);
+      const pagesBeforeSection = doc.getNumberOfPages();
+      if (options.splitByTopLevelSections && i > 0 && pagesBeforeSection > 0) {
+        doc.addPage();
+      }
+      addCanvasToPdf(doc, canvas, target, {
+        marginMm: PDF_MARGIN_MM,
+        onPageAdded: (pageNumber) => {
+          estimatedTotalPages = Math.max(estimatedTotalPages, pageNumber);
+          reportProgress(i + 1, pageNumber);
+        },
+      });
     }
 
     if (doc.getNumberOfPages() === 0) {
       throw new Error("Report has no visible content to export.");
+    }
+
+    if (options.footerLeft) {
+      applyPdfFooters(doc, options.footerLeft, PDF_MARGIN_MM);
     }
 
     deliverJsPdf(doc, filename);

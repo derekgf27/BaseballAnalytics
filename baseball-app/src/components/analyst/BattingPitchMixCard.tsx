@@ -18,8 +18,9 @@ import {
   type PitchTypeDistributionResult,
 } from "@/lib/compute/pitchTypeDistributionFromPitchLog";
 import { formatBatterGameStatLine } from "@/lib/format/batterGameLine";
+import { platoonPitchMixDistributions } from "@/lib/compute/gamePasIndexes";
 import { pitchTrackerAbbrev, pitchTrackerTypeChipClass, pitchTrackerTypeLabel } from "@/lib/pitchTrackerUi";
-import type { PitchEvent, PitchTrackerPitchType, PlateAppearance, Player } from "@/lib/types";
+import type { Bats, PitchEvent, PitchTrackerPitchType, PlateAppearance, Player } from "@/lib/types";
 
 const RESULT_ADDS_ONE_OUT = new Set<PlateAppearance["result"]>([
   "out",
@@ -467,6 +468,36 @@ function PitchMixDistributionBlock({
   );
 }
 
+function PitchPlatoonMixBlock({
+  vsLHB,
+  vsRHB,
+  compact,
+}: {
+  vsLHB: PitchTypeDistributionResult;
+  vsRHB: PitchTypeDistributionResult;
+  compact?: boolean;
+}) {
+  if (vsLHB.typedTotal <= 0 && vsRHB.typedTotal <= 0) return null;
+  return (
+    <div className="mt-2 space-y-2 border-t border-[var(--border)]/40 pt-2">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+        Mix vs LHB / RHB
+      </p>
+      <div className="space-y-2">
+        <div>
+          <p className="mb-1 text-[10px] font-medium text-white">vs LHB</p>
+          <PitchMixDistributionBlock dist={vsLHB} compact={compact ?? false} />
+        </div>
+        <div>
+          <p className="mb-1 text-[10px] font-medium text-white">vs RHB</p>
+          <PitchMixDistributionBlock dist={vsRHB} compact={compact ?? false} />
+        </div>
+      </div>
+      <p className="text-[9px] text-[var(--text-faint)]">L and R batters only; switch hitters excluded.</p>
+    </div>
+  );
+}
+
 function PitchMixExtrasBlock({
   agg,
   compact,
@@ -888,6 +919,9 @@ function PitchMixRow({
   omitName = false,
   layout = "grid",
   stripTypeDistribution = null,
+  platoonMix = null,
+  showPlatoonMix = false,
+  showPitchLogEmptyNote = false,
   coachPad = false,
   coachPadDense = false,
   coachPadExpanded = false,
@@ -925,6 +959,12 @@ function PitchMixRow({
   layout?: "grid" | "strip";
   /** When set, adds a full-width “Mix” row below the grid or as the second row in strip layout. */
   stripTypeDistribution?: PitchTypeDistributionResult | null;
+  platoonMix?: {
+    vsLHB: PitchTypeDistributionResult;
+    vsRHB: PitchTypeDistributionResult;
+  } | null;
+  showPlatoonMix?: boolean;
+  showPitchLogEmptyNote?: boolean;
   hidePitchesInRates?: boolean;
   coachPadFullGame?: boolean;
   /** When set, Mix type chips open per-pitch-type stats (coach pad). */
@@ -1013,7 +1053,21 @@ function PitchMixRow({
           {...padProps}
           onPitchTypeClick={onPitchTypeClick}
         />
+        {showPlatoonMix && platoonMix ? (
+          <PitchPlatoonMixBlock
+            vsLHB={platoonMix.vsLHB}
+            vsRHB={platoonMix.vsRHB}
+            compact={compact}
+          />
+        ) : null}
       </PitchMixMiniCard>
+    ) : null;
+
+  const pitchLogEmptyNote =
+    showPitchLogEmptyNote && (extras?.pitchesLogged ?? 0) <= 0 ? (
+      <p className="mb-2 text-xs leading-snug text-[var(--text-muted)]">
+        No typed pitches in log — rates and mix need pitch data from Record.
+      </p>
     ) : null;
 
   const expandedCell = (child: ReactNode) => (
@@ -1022,6 +1076,7 @@ function PitchMixRow({
 
   return (
     <Tag className={outerClass}>
+      {pitchLogEmptyNote}
       {!omitName ? (
         <p className={`mb-1 ${nameClass}`} title={name}>
           {name}
@@ -1188,6 +1243,9 @@ export function BattingPitchMixCard({
   inningHalf,
   onPitchTypeClick,
   hideTypeMix = false,
+  batterBatsById: batterBatsByIdProp,
+  pitcherCardsLayout = "compact",
+  showPitchLogEmptyNote = false,
 }: {
   pas: PlateAppearance[];
   players: Player[];
@@ -1210,12 +1268,19 @@ export function BattingPitchMixCard({
   onPitchTypeClick?: (type: PitchTrackerPitchType) => void;
   /** Hide only the pitch-type Mix block (Rates / Contact / 2-strike stay). */
   hideTypeMix?: boolean;
+  batterBatsById?: Map<string, Bats | null | undefined>;
+  pitcherCardsLayout?: "compact" | "expanded";
+  showPitchLogEmptyNote?: boolean;
 }) {
   const pad = pitchPadLayoutFlags(pitchPadLayout);
   const eventsByPaId = useMemo(() => groupPitchEventsByPaId(pitchEvents), [pitchEvents]);
   const eventsByPaIdForDistribution = useMemo(
     () => groupPitchEventsByPaId(distributionPitchEvents ?? pitchEvents),
     [distributionPitchEvents, pitchEvents]
+  );
+  const batterBatsById = useMemo(
+    () => batterBatsByIdProp ?? new Map(players.map((p) => [p.id, p.bats ?? null])),
+    [batterBatsByIdProp, players]
   );
 
   const rows = useMemo(() => {
@@ -1227,11 +1292,12 @@ export function BattingPitchMixCard({
       const extras = aggregatePitchMixExtrasFromPas(pitcherPas, eventsByPaId);
       const twoStrikeAgg = aggregateTwoStrikePitchAggFromPas(pitcherPas, eventsByPaId);
       const stripTypeDistribution = pitchTypeDistributionFromPitchLog(pitcherPas, eventsByPaIdForDistribution);
+      const platoonMix = platoonPitchMixDistributions(pitcherPas, eventsByPaId, batterBatsById);
       const name = byId.get(pitcherId)?.name?.trim() || "Unknown";
       const lob = lobByPitcher.get(pitcherId) ?? 0;
-      return { pitcherId, name, mix, lob, extras, twoStrikeAgg, stripTypeDistribution };
+      return { pitcherId, name, mix, lob, extras, twoStrikeAgg, stripTypeDistribution, platoonMix };
     });
-  }, [pas, players, eventsByPaId, eventsByPaIdForDistribution]);
+  }, [pas, players, eventsByPaId, eventsByPaIdForDistribution, batterBatsById]);
 
   const teamMix = useMemo(
     () => pitchMixFromPlateAppearancesOrPitchLog(pas, eventsByPaId),
@@ -1252,7 +1318,11 @@ export function BattingPitchMixCard({
   }, [pas]);
   const teamStripDistribution = useMemo(
     () => pitchTypeDistributionFromPitchLog(pas, eventsByPaIdForDistribution),
-    [pas, eventsByPaId]
+    [pas, eventsByPaIdForDistribution]
+  );
+  const teamPlatoonMix = useMemo(
+    () => platoonPitchMixDistributions(pas, eventsByPaId, batterBatsById),
+    [pas, eventsByPaId, batterBatsById]
   );
 
   const multi = rows.length > 1;
@@ -1322,10 +1392,22 @@ export function BattingPitchMixCard({
         variant="team"
         as="div"
         stripTypeDistribution={teamStripDistribution}
+        platoonMix={teamPlatoonMix}
+        showPlatoonMix
+        showPitchLogEmptyNote={showPitchLogEmptyNote}
         hideTypeMix={hideTypeMix}
       />
     </div>
   );
+
+  const pitcherRowProps = {
+    nameClass,
+    compact,
+    hideTypeMix,
+    showPlatoonMix: true,
+    showPitchLogEmptyNote,
+    multi: true as const,
+  };
 
   return (
     <div
@@ -1389,6 +1471,31 @@ export function BattingPitchMixCard({
           </div>
         </>
       ) : multi ? (
+        pitcherCardsLayout === "expanded" ? (
+          <div className="space-y-2">
+            {rows.map((row) => (
+              <div
+                key={row.pitcherId}
+                className="rounded border border-[var(--border)]/50 bg-[var(--bg-elevated)]/25 px-3 py-2.5"
+              >
+                <PitchMixRow
+                  name={row.name}
+                  mix={row.mix}
+                  lob={row.lob}
+                  extras={row.extras}
+                  twoStrikeAgg={row.twoStrikeAgg}
+                  stripTypeDistribution={row.stripTypeDistribution}
+                  platoonMix={row.platoonMix}
+                  {...pitcherRowProps}
+                  multi={false}
+                  as="div"
+                  flush
+                />
+              </div>
+            ))}
+            {teamTotalsFooter}
+          </div>
+        ) : (
         <div className="batting-pitch-mix-inner-scroll overflow-x-hidden rounded border border-[var(--border)]/60 bg-[var(--bg-elevated)]/30">
           <ul className="divide-y divide-[var(--border)]/50">
             {rows.map((row) => (
@@ -1399,16 +1506,15 @@ export function BattingPitchMixCard({
                 lob={row.lob}
                 extras={row.extras}
                 twoStrikeAgg={row.twoStrikeAgg}
-                nameClass={nameClass}
-                compact={compact}
-                multi
                 stripTypeDistribution={row.stripTypeDistribution}
-                hideTypeMix={hideTypeMix}
+                platoonMix={row.platoonMix}
+                {...pitcherRowProps}
               />
             ))}
           </ul>
           {teamTotalsFooter}
         </div>
+        )
       ) : (
         <ul className="space-y-1.5">
           {rows.map((row) => (
@@ -1419,11 +1525,10 @@ export function BattingPitchMixCard({
               lob={row.lob}
               extras={row.extras}
               twoStrikeAgg={row.twoStrikeAgg}
-              nameClass={nameClass}
-              compact={compact}
-              multi={false}
               stripTypeDistribution={row.stripTypeDistribution}
-              hideTypeMix={hideTypeMix}
+              platoonMix={row.platoonMix}
+              {...pitcherRowProps}
+              multi={false}
             />
           ))}
         </ul>

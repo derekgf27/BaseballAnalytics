@@ -428,6 +428,26 @@ export function PostGameReport({
                 <li key={`addendum-${i}`}>{line}</li>
               ))}
             </ul>
+            {data.coachingInsights?.recommendations && data.coachingInsights.recommendations.length > 0 ? (
+              <div className="mt-6">
+                <h3 className="text-sm font-semibold text-[var(--text)]">Action items</h3>
+                <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-[var(--text)]">
+                  {data.coachingInsights.recommendations.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {data.coachingInsights?.trendChanges && data.coachingInsights.trendChanges.length > 0 ? (
+              <div className="mt-4">
+                <h3 className="text-sm font-semibold text-[var(--text)]">Trend changes</h3>
+                <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-[var(--text-muted)]">
+                  {data.coachingInsights.trendChanges.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             {!pdfCapture ? (
               <label className="mt-8 block">
                 <span className="text-sm font-semibold text-[var(--text)]">Add bullets for coaches</span>

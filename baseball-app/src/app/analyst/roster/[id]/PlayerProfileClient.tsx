@@ -27,6 +27,8 @@ import {
 } from "@/lib/profileBattingDisplay";
 import type { AnalystPlayerSpraySplits } from "@/lib/analystPlayerSpraySplits";
 import { PlayerSprayChartsSection } from "@/components/analyst/PlayerSprayChartsSection";
+import { BattingPitchTypeTable } from "@/components/analyst/BattingPitchTypeTable";
+import { BattingPitchTypeDisciplineTable } from "@/components/analyst/BattingPitchTypeDisciplineTable";
 import {
   hasPitchingProfileStats,
   PlayerPitchingProfileSections,
@@ -478,6 +480,7 @@ export function PlayerBattingProfileSections({
   battingPas?: PlateAppearance[];
   battingPitchEvents?: PitchEvent[];
 }) {
+  const [pitchTypePlatoon, setPitchTypePlatoon] = useState<"overall" | "vsL" | "vsR">("overall");
   const overallBr = battingSplits.overall;
   const seasonPa = overallBr?.pa ?? 0;
   const pasWithPitchLog = useMemo(
@@ -515,6 +518,12 @@ export function PlayerBattingProfileSections({
       hasSample: raw != null,
     };
   });
+
+  const pitchTypeSampleStats = useMemo(() => {
+    if (pitchTypePlatoon === "vsL") return battingSplits.vsL ?? overallBr;
+    if (pitchTypePlatoon === "vsR") return battingSplits.vsR ?? overallBr;
+    return overallBr;
+  }, [battingSplits.vsL, battingSplits.vsR, overallBr, pitchTypePlatoon]);
 
   const disciplineSeason = profileLineWithCountState(
     overallBr,
@@ -607,9 +616,38 @@ export function PlayerBattingProfileSections({
     .filter(Boolean)
     .join(" ");
 
+  const pitchTypePlatoonControl = (
+    <label className="flex min-w-0 items-center gap-2 text-sm text-white">
+      <span className="shrink-0 text-[11px] uppercase tracking-wide text-[var(--text-muted)]">Split</span>
+      <select
+        value={pitchTypePlatoon}
+        onChange={(e) => setPitchTypePlatoon(e.target.value as "overall" | "vsL" | "vsR")}
+        className="max-w-[8rem] rounded border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none"
+        aria-label="Platoon split for pitch type stats"
+      >
+        <option value="overall">Overall</option>
+        <option value="vsL">vs LHP</option>
+        <option value="vsR">vs RHP</option>
+      </select>
+    </label>
+  );
+
+  const emptyPitchTypeLine = { avg: 0, obp: 0, slg: 0, ops: 0, opsPlus: 0, woba: 0 };
+
   return (
     <>
       <ProfileSeasonLineTable title="Season line" line={seasonStandard} baserunningSource={overallBr} />
+
+      <BattingPitchTypeTable
+        stats={pitchTypeSampleStats ?? emptyPitchTypeLine}
+        showAllPitchTypes
+        platoonControl={pitchTypePlatoonControl}
+      />
+
+      <BattingPitchTypeDisciplineTable
+        stats={pitchTypeSampleStats ?? emptyPitchTypeLine}
+        platoonControl={pitchTypePlatoonControl}
+      />
 
       <ProfileBattingLabeledTable
         title="Batting splits"

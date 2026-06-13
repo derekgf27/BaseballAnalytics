@@ -6,6 +6,7 @@ export function pitchOutcomeToTrackerLogResult(outcome: PitchOutcome): PitchTrac
   return outcome;
 }
 
+/** Detailed pitch types — coach pad on defense (our pitcher throwing). */
 export const PITCH_TRACKER_TYPES: readonly PitchTrackerPitchType[] = [
   "fastball",
   "slider",
@@ -15,6 +16,24 @@ export const PITCH_TRACKER_TYPES: readonly PitchTrackerPitchType[] = [
   "changeup",
   "splitter",
 ] as const;
+
+/** Coarse opponent-pitch buckets — coach pad on offense (we are hitting). */
+export const PITCH_TRACKER_OFFENSE_TYPES: readonly PitchTrackerPitchType[] = [
+  "fastball",
+  "off_speed",
+  "breaking_ball",
+] as const;
+
+export const ALL_PITCH_TRACKER_TYPES: readonly PitchTrackerPitchType[] = [
+  ...PITCH_TRACKER_TYPES,
+  "sweeper",
+  "off_speed",
+  "breaking_ball",
+] as const;
+
+export function isPitchTrackerPitchType(raw: string): raw is PitchTrackerPitchType {
+  return (ALL_PITCH_TRACKER_TYPES as readonly string[]).includes(raw);
+}
 
 export function pitchTrackerTypeLabel(t: PitchTrackerPitchType | null): string {
   if (t == null) return "Type pending";
@@ -35,6 +54,10 @@ export function pitchTrackerTypeLabel(t: PitchTrackerPitchType | null): string {
       return "Changeup";
     case "splitter":
       return "Splitter";
+    case "off_speed":
+      return "Off-speed";
+    case "breaking_ball":
+      return "Breaking ball";
     default: {
       const _e: never = t;
       return _e;
@@ -62,6 +85,10 @@ export function pitchTrackerAbbrev(t: PitchTrackerPitchType | null): string {
       return "CH";
     case "splitter":
       return "SP";
+    case "off_speed":
+      return "OS";
+    case "breaking_ball":
+      return "BRK";
     default: {
       const _e: never = t;
       return _e;
@@ -91,6 +118,10 @@ export function pitchTrackerTypeChipClass(t: PitchTrackerPitchType | null): stri
       return "bg-[#5b21b6] text-white border-[#4c1d95]/90";
     case "splitter":
       return "bg-[#0d5c56] text-white border-[#0a4844]/90";
+    case "off_speed":
+      return "bg-[#5b21b6] text-white border-[#4c1d95]/90";
+    case "breaking_ball":
+      return "bg-[#1e3a8a] text-white border-[#172554]/90";
     default: {
       const _e: never = t;
       return _e;
@@ -140,6 +171,10 @@ export function pitchTrackerCoachButtonClass(t: PitchTrackerPitchType): string {
       return "bg-[#5b21b6] text-white hover:bg-[#5220a0] active:bg-[#3b1778] border-[#4c1d95]/80 shadow-black/40";
     case "splitter":
       return "bg-[#0d5c56] text-white hover:bg-[#0c524e] active:bg-[#093f3c] border-[#0a4844]/80 shadow-black/40";
+    case "off_speed":
+      return "bg-[#5b21b6] text-white hover:bg-[#5220a0] active:bg-[#3b1778] border-[#4c1d95]/80 shadow-black/40";
+    case "breaking_ball":
+      return "bg-[#1e3a8a] text-white hover:bg-[#234e99] active:bg-[#172e6b] border-[#172554]/80 shadow-black/40";
     default: {
       const _e: never = t;
       return _e;

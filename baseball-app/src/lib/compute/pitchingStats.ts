@@ -15,6 +15,10 @@ import {
   finalCountBucketKey,
   pasMatchFinalCount,
 } from "@/lib/compute/battingStatsWithSplitsFromPas";
+import {
+  buildPitchingStatsForVenue,
+  gameOurSideByIdFromGames,
+} from "@/lib/compute/gameVenueSplits";
 import { groupPitchEventsByPaId, mergeContactProfileIntoPitchingRates } from "@/lib/compute/contactProfileFromPas";
 import { mergePitchTypeTeamProfileFromLines } from "@/lib/compute/pitchTypeProfileFromPas";
 import { isDemoId } from "@/lib/db/mockData";
@@ -671,7 +675,7 @@ export function pitchingStatsFromPAs(
     overall.l = options.officialLosses;
   }
 
-  return { overall, vsLHB, vsRHB };
+  return { overall, vsLHB, vsRHB, home: null, away: null };
 }
 
 /**
@@ -799,6 +803,8 @@ function emptyPitchingStatsWithSplits(): PitchingStatsWithSplits {
     },
     vsLHB: null,
     vsRHB: null,
+    home: null,
+    away: null,
     runnerSituations: {
       basesEmpty: emptyPitchingRunnerSituationSplit(),
       runnersOn: emptyPitchingRunnerSituationSplit(),
@@ -822,6 +828,9 @@ export function computePitchingStatsWithSplitsForRoster(
   gamesForOfficialDecisions?: Game[]
 ): Record<string, PitchingStatsWithSplits> {
   const eventsByPaId = groupPitchEventsByPaId(pitchEvents);
+  const gameOurSideById = gamesForOfficialDecisions?.length
+    ? gameOurSideByIdFromGames(gamesForOfficialDecisions)
+    : new Map<string, "home" | "away">();
   const byPitcher = new Map<string, PlateAppearance[]>();
   for (const pa of pas) {
     if (!pa.pitcher_id || isDemoId(pa.pitcher_id)) continue;
@@ -846,8 +855,38 @@ export function computePitchingStatsWithSplitsForRoster(
       officialLosses: official?.losses,
     });
     const base = stats ?? emptyPitchingStatsWithSplits();
+    const home =
+      gameOurSideById.size > 0
+        ? buildPitchingStatsForVenue(
+            list,
+            "home",
+            gameOurSideById,
+            playerId,
+            starters,
+            batterBatsById,
+            eventsByPaId,
+            pas,
+            gamesForOfficialDecisions
+          )
+        : null;
+    const away =
+      gameOurSideById.size > 0
+        ? buildPitchingStatsForVenue(
+            list,
+            "away",
+            gameOurSideById,
+            playerId,
+            starters,
+            batterBatsById,
+            eventsByPaId,
+            pas,
+            gamesForOfficialDecisions
+          )
+        : null;
     result[playerId] = {
       ...base,
+      home,
+      away,
       runnerSituations: buildPitchingRunnerSituationsForPitcher(
         list,
         starters,

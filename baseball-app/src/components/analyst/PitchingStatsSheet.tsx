@@ -10,6 +10,7 @@ import { PITCHING_STAT_HEADER_TOOLTIPS } from "@/lib/statHeaderTooltips";
 import type {
   Bats,
   BattingFinalCountBucketKey,
+  Game,
   PitchEvent,
   PitchingRateLine,
   PitchingStats,
@@ -18,6 +19,7 @@ import type {
   Player,
   StatsRunnersFilterKey,
 } from "@/lib/types";
+import { gameOurSideByIdFromGames } from "@/lib/compute/gameVenueSplits";
 import { FINAL_COUNT_BUCKET_OPTIONS } from "@/components/analyst/battingStatsSheetModel";
 import { aggregatePitchingTeamLine } from "@/lib/compute/pitchingStats";
 import { isBasesEmpty, isBasesLoaded, isRisp, isRunnersOn } from "@/lib/compute/battingStats";
@@ -44,8 +46,10 @@ import {
 } from "@/lib/pitchTypeBaaDisplay";
 
 import { StatsRunnersFilterSelect } from "@/components/analyst/StatsRunnersFilterSelect";
-import { pitchingStatsForSheetLiveFilters } from "@/lib/compute/statsSheetLiveFilters";
+import { pitchingStatsForSheetLiveFilters, paMatchesStatsVenueFilter } from "@/lib/compute/statsSheetLiveFilters";
 import { STATS_RUNNERS_LABEL } from "@/lib/statsRunnersFilter";
+import { STATS_VENUE_LABEL, type StatsVenueFilter } from "@/lib/statsVenueFilter";
+import { StatsVenueFilterSelect } from "@/components/analyst/StatsVenueFilterSelect";
 
 const THROWS_LABEL: Record<string, string> = { L: "L", R: "R" };
 
@@ -724,7 +728,9 @@ function buildPitchTypeCountStateRatesByPitcher(
   splitView: PitchingSplitView,
   runnersFilter: StatsRunnersFilterKey,
   finalCountBucket: BattingFinalCountBucketKey | null,
-  batterBatsById: Record<string, Bats | null | undefined> | undefined
+  batterBatsById: Record<string, Bats | null | undefined> | undefined,
+  venueFilter: StatsVenueFilter = "all",
+  gameOurSideById?: ReturnType<typeof gameOurSideByIdFromGames>
 ): Record<string, Partial<PitchingRateLine>> {
   if (!pas || !pitchEvents || !finalCountBucket) return {};
   const [ballsNeed, strikesNeed] = finalCountBucket.split("-").map((n) => Number(n));
@@ -740,6 +746,7 @@ function buildPitchTypeCountStateRatesByPitcher(
     if (runnersFilter === "runnersOn" && !isRunnersOn(pa.base_state)) continue;
     if (runnersFilter === "risp" && !isRisp(pa.base_state)) continue;
     if (runnersFilter === "basesLoaded" && !isBasesLoaded(pa.base_state)) continue;
+    if (!paMatchesStatsVenueFilter(pa, venueFilter, gameOurSideById)) continue;
     if (!pasMatchFinalCount(pa, ballsNeed, strikesNeed)) continue;
     paById.set(pa.id, pa);
   }
@@ -881,15 +888,19 @@ function getPitchingLineForSheet(
   splits: Record<string, PitchingStatsWithSplits>,
   playerId: string,
   platoon: PitchingSplitView,
+  venue: StatsVenueFilter,
   runners: StatsRunnersFilterKey
 ): PitchingStats | undefined {
   const s = splits[playerId];
   if (!s) return undefined;
   if (runners === "all") {
+    if (venue === "home") return s.home ?? undefined;
+    if (venue === "away") return s.away ?? undefined;
     if (platoon === "overall") return s.overall;
     if (platoon === "vsLHB") return s.vsLHB ?? undefined;
     return s.vsRHB ?? undefined;
   }
+  if (venue !== "all") return undefined;
   const triple = s.runnerSituations?.[runners];
   if (!triple) return undefined;
   if (platoon === "overall") return triple.combined ?? undefined;
@@ -908,7 +919,8 @@ function getPitchingFinalCountMapForSplit(
   if (!sfc) return undefined;
   if (split === "overall") return sfc.overall;
   if (split === "vsLHB") return sfc.vsLHB;
-  return sfc.vsRHB;
+  if (split === "vsRHB") return sfc.vsRHB;
+  return undefined;
 }
 
 function getPitchingStatValue(stats: PitchingStats | undefined, key: PitchSortKey): number | undefined {
@@ -1154,14 +1166,17 @@ export interface PitchingStatsSheetProps {
   onFinalCountBucketChange?: (v: BattingFinalCountBucketKey | null) => void;
   runnersFilter?: StatsRunnersFilterKey;
   onRunnersFilterChange?: (v: StatsRunnersFilterKey) => void;
+  venueFilter?: StatsVenueFilter;
+  onVenueFilterChange?: (v: StatsVenueFilter) => void;
   /** With `onSplitViewChange`, platoon split is controlled by the parent. */
   splitView?: PitchingSplitView;
   onSplitViewChange?: (v: PitchingSplitView) => void;
   /** `grouped`: filter card. `section`: table only (parent supplies filters / locked slice). */
   toolbarVariant?: "default" | "grouped" | "section";
-  /** When set, split/runners/count/columns are fixed and hidden from the toolbar. */
+  /** When set, split/runners/venue/count/columns are fixed and hidden from the toolbar. */
   lockedSplitView?: PitchingSplitView;
   lockedRunnersFilter?: StatsRunnersFilterKey;
+  lockedVenueFilter?: StatsVenueFilter;
   lockedFinalCountBucket?: BattingFinalCountBucketKey | null;
   lockedColumnMode?: PitchColumnMode;
   /** Shared search from the team stats page (all sections). */
@@ -1177,6 +1192,8 @@ export interface PitchingStatsSheetProps {
   batterBatsById?: Record<string, Bats | null | undefined>;
   /** Games where each pitcher was listed as starting pitcher (for G/GS on live-filtered samples). */
   starterGameIdsByPlayer?: Record<string, string[]>;
+  /** Games in the current sample (for home/away split live filters). */
+  games?: Pick<Game, "id" | "our_side">[];
 }
 
 export function PitchingStatsSheet({
@@ -1192,11 +1209,14 @@ export function PitchingStatsSheet({
   onFinalCountBucketChange,
   runnersFilter: runnersFilterProp,
   onRunnersFilterChange,
+  venueFilter: venueFilterProp,
+  onVenueFilterChange,
   splitView: splitViewProp,
   onSplitViewChange,
   toolbarVariant = "default",
   lockedSplitView,
   lockedRunnersFilter,
+  lockedVenueFilter,
   lockedFinalCountBucket,
   lockedColumnMode,
   searchQuery: searchQueryProp,
@@ -1207,6 +1227,7 @@ export function PitchingStatsSheet({
   pitchEvents,
   batterBatsById,
   starterGameIdsByPlayer = {},
+  games,
 }: PitchingStatsSheetProps) {
   const [searchInternal, setSearchInternal] = useState("");
   const searchControlled = onSearchQueryChange != null;
@@ -1229,6 +1250,13 @@ export function PitchingStatsSheet({
     if (runnersControlled) onRunnersFilterChange(v);
     else setRunnersFilterInternal(v);
   };
+  const [venueFilterInternal, setVenueFilterInternal] = useState<StatsVenueFilter>("all");
+  const venueControlled = onVenueFilterChange != null;
+  const venueFilter = venueControlled ? (venueFilterProp ?? "all") : venueFilterInternal;
+  const setVenueFilter = (v: StatsVenueFilter) => {
+    if (venueControlled) onVenueFilterChange(v);
+    else setVenueFilterInternal(v);
+  };
   const [columnMode, setColumnMode] = useState<PitchColumnMode>("standard");
   const [finalCountBucketInternal, setFinalCountBucketInternal] = useState<BattingFinalCountBucketKey | null>(null);
   const finalCountControlled = onFinalCountBucketChange != null;
@@ -1239,6 +1267,7 @@ export function PitchingStatsSheet({
   };
   const effectiveSplitView = lockedSplitView ?? splitView;
   const effectiveRunnersFilter = lockedRunnersFilter ?? runnersFilter;
+  const effectiveVenueFilter = lockedVenueFilter ?? venueFilter;
   const effectiveFinalCountBucket =
     lockedFinalCountBucket !== undefined ? lockedFinalCountBucket : finalCountBucket;
   const effectiveColumnMode = lockedColumnMode ?? columnMode;
@@ -1289,6 +1318,7 @@ export function PitchingStatsSheet({
 
   const groupedFiltersSummary = useMemo(() => {
     const parts: string[] = [];
+    if (effectiveVenueFilter !== "all") parts.push(STATS_VENUE_LABEL[effectiveVenueFilter]);
     if (effectiveRunnersFilter !== "all") parts.push(STATS_RUNNERS_LABEL[effectiveRunnersFilter]);
     if (effectiveFinalCountBucket) {
       const label = FINAL_COUNT_BUCKET_OPTIONS.find((o) => o.value === effectiveFinalCountBucket)?.label;
@@ -1301,7 +1331,12 @@ export function PitchingStatsSheet({
     if (matchupToolbar?.batterId) parts.push("Batter");
     if (search.trim()) parts.push("Search");
     return parts.length > 0 ? parts.join(" · ") : null;
-  }, [effectiveRunnersFilter, effectiveFinalCountBucket, matchupToolbar, search]);
+  }, [effectiveVenueFilter, effectiveRunnersFilter, effectiveFinalCountBucket, matchupToolbar, search]);
+
+  const gameOurSideById = useMemo(
+    () => (games?.length ? gameOurSideByIdFromGames(games) : new Map()),
+    [games]
+  );
 
   const countStateContactByPitcher = useMemo(
     () =>
@@ -1314,7 +1349,9 @@ export function PitchingStatsSheet({
             effectiveRunnersFilter,
             effectiveFinalCountBucket,
             batterBatsById,
-            countStatePaQualificationForRunnersFilter(effectiveRunnersFilter)
+            countStatePaQualificationForRunnersFilter(effectiveRunnersFilter),
+            effectiveVenueFilter,
+            gameOurSideById.size ? gameOurSideById : undefined
           )
         : {},
     [
@@ -1325,7 +1362,9 @@ export function PitchingStatsSheet({
       pitchEvents,
       effectiveSplitView,
       effectiveRunnersFilter,
+      effectiveVenueFilter,
       batterBatsById,
+      gameOurSideById,
     ]
   );
 
@@ -1339,7 +1378,9 @@ export function PitchingStatsSheet({
             effectiveSplitView,
             effectiveRunnersFilter,
             effectiveFinalCountBucket,
-            batterBatsById
+            batterBatsById,
+            effectiveVenueFilter,
+            gameOurSideById.size ? gameOurSideById : undefined
           )
         : {},
     [
@@ -1350,31 +1391,37 @@ export function PitchingStatsSheet({
       pitchEvents,
       effectiveSplitView,
       effectiveRunnersFilter,
+      effectiveVenueFilter,
       batterBatsById,
+      gameOurSideById,
     ]
   );
 
   const initialPitchingStats = useMemo(() => {
     const out: Record<string, PitchingStats> = {};
-    const canLiveFilter =
+    const usesVenueFilter = effectiveVenueFilter !== "all";
+    const needsLiveFilter =
       pas != null &&
       pas.length > 0 &&
-      effectiveFinalCountBucket != null &&
-      effectiveRunnersFilter !== "all";
+      (effectiveRunnersFilter !== "all" ||
+        effectiveFinalCountBucket != null ||
+        (usesVenueFilter && effectiveSplitView !== "overall"));
     for (const p of players) {
       let s: PitchingStats | undefined;
       if (effectiveFinalCountBucket != null) {
-        if (canLiveFilter) {
+        if (needsLiveFilter) {
           const starters = new Set(starterGameIdsByPlayer[p.id] ?? []);
           s = pitchingStatsForSheetLiveFilters(
             p.id,
             pas,
             effectiveSplitView,
+            effectiveVenueFilter,
             effectiveRunnersFilter,
             effectiveFinalCountBucket,
             starters,
             batterBatsMap,
-            pitchEvents
+            pitchEvents,
+            gameOurSideById.size ? gameOurSideById : undefined
           );
         } else {
           const map = getPitchingFinalCountMapForSplit(
@@ -1402,11 +1449,26 @@ export function PitchingStatsSheet({
         if (s && effectiveColumnMode === "contact") {
           s = applyCountStateContactToPitchingStats(s, countStateContactByPitcher[p.id]);
         }
+      } else if (needsLiveFilter) {
+        const starters = new Set(starterGameIdsByPlayer[p.id] ?? []);
+        s = pitchingStatsForSheetLiveFilters(
+          p.id,
+          pas!,
+          effectiveSplitView,
+          effectiveVenueFilter,
+          effectiveRunnersFilter,
+          null,
+          starters,
+          batterBatsMap,
+          pitchEvents,
+          gameOurSideById.size ? gameOurSideById : undefined
+        );
       } else {
         s = getPitchingLineForSheet(
           pitchingStatsWithSplits,
           p.id,
           effectiveSplitView,
+          effectiveVenueFilter,
           effectiveRunnersFilter
         );
       }
@@ -1417,6 +1479,7 @@ export function PitchingStatsSheet({
     players,
     pitchingStatsWithSplits,
     effectiveSplitView,
+    effectiveVenueFilter,
     effectiveFinalCountBucket,
     effectiveRunnersFilter,
     effectiveColumnMode,
@@ -1426,6 +1489,7 @@ export function PitchingStatsSheet({
     pitchEvents,
     batterBatsMap,
     starterGameIdsByPlayer,
+    games,
   ]);
 
   const filtered = useMemo(() => {
@@ -1557,6 +1621,16 @@ export function PitchingStatsSheet({
                     <option value="vsLHB">vs LHB</option>
                     <option value="vsRHB">vs RHB</option>
                   </select>
+                </div>
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                    Venue
+                  </span>
+                  <StatsVenueFilterSelect
+                    value={venueFilter}
+                    onChange={setVenueFilter}
+                    className="w-full min-w-0 rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-2 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none"
+                  />
                 </div>
                 <div className="flex min-w-0 flex-col gap-1.5">
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
@@ -1719,6 +1793,14 @@ export function PitchingStatsSheet({
                 <option value="vsLHB">vs LHB</option>
                 <option value="vsRHB">vs RHB</option>
               </select>
+            </label>
+            <label className="flex min-w-0 items-center gap-2 text-sm text-white">
+              <span className="shrink-0">Venue</span>
+              <StatsVenueFilterSelect
+                value={venueFilter}
+                onChange={setVenueFilter}
+                className="max-w-[12rem] rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-1.5 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none"
+              />
             </label>
             <label className="flex min-w-0 items-center gap-2 text-sm text-white">
               <span className="shrink-0">Runners</span>

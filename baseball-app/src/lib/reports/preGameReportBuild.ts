@@ -40,6 +40,7 @@ const MIN_SITUATIONAL_TEAM_PA = 10;
 /** Min PAs in split for a hitter to appear in situational leader lists. */
 const MIN_SITUATIONAL_PLAYER_PA = 5;
 const SITUATIONAL_HITTER_ROWS = 5;
+
 export type PreGamePitchMixRow = {
   label: string;
   usagePct: number;
@@ -100,6 +101,12 @@ export type PreGameCoachHittingNotes = {
   contact: PreGameContactProfile | null;
 };
 
+export type PreGamePlayerTrendInsight = {
+  playerId?: string;
+  name: string;
+  line: string;
+};
+
 export type PreGameReportSections = {
   gameContext: { bullets: string[] };
   pitchingPlan: {
@@ -128,8 +135,8 @@ export type PreGameReportSections = {
     insights: string[];
   } | null;
   playerInsights: {
-    hot: Array<{ name: string; line: string }>;
-    cold: Array<{ name: string; line: string }>;
+    hot: PreGamePlayerTrendInsight[];
+    cold: PreGamePlayerTrendInsight[];
   };
   opponentObservations: string[];
   matchupInsights: string[];
@@ -375,6 +382,10 @@ export function buildPreGameReport(input: {
   teamTrendInsights: string[];
   /** Season pitching for our listed starter (`getPitchingStatsForPlayers`; overall + platoon). */
   ourStarterSeasonPitching: PitchingStatsWithSplits | null;
+  /** Optional insights-engine bundle (pregame profile). */
+  insightsBundle?: import("@/lib/insights").InsightsBundle;
+  engineHittingInsights?: string[];
+  enginePlayerInsights?: { hot: PreGamePlayerTrendInsight[]; cold: PreGamePlayerTrendInsight[] };
 }): PreGameReportSections {
   const {
     game,
@@ -393,6 +404,9 @@ export function buildPreGameReport(input: {
     playersById,
     teamTrendInsights,
     ourStarterSeasonPitching,
+    engineHittingInsights,
+    enginePlayerInsights,
+    insightsBundle,
   } = input;
 
   const us = ourTeamName(game);
@@ -412,34 +426,44 @@ export function buildPreGameReport(input: {
   const seasonSnap = seasonOur.length >= MIN_TEAM_PA ? hittingSnapshotFromPas(seasonOur) : null;
   const recentSnap = recentOur.length >= 8 ? hittingSnapshotFromPas(recentOur) : null;
 
-  const hittingInsights: string[] = [];
-  if (seasonSnap && seasonSnap.pa >= MIN_RISP_PA) {
-    const rispPas = seasonOur.filter((p) => isRisp(p.base_state));
-    if (rispPas.length >= MIN_RISP_PA) {
-      const r = battingStatsFromPAs(rispPas);
-      if (r && (r.ops ?? 0) < 0.6)
+  const hittingInsights: string[] =
+    engineHittingInsights && engineHittingInsights.length > 0
+      ? [...engineHittingInsights]
+      : [];
+  if (hittingInsights.length === 0) {
+    if (seasonSnap && seasonSnap.pa >= MIN_RISP_PA) {
+      const rispPas = seasonOur.filter((p) => isRisp(p.base_state));
+      if (rispPas.length >= MIN_RISP_PA) {
+        const r = battingStatsFromPAs(rispPas);
+        if (r && (r.ops ?? 0) < 0.6)
+          hittingInsights.push(
+            `RISP OPS has been thin (${fmtDecimalNoLeadingZero(r.ops ?? 0, 3)}) over ${rispPas.length} PA in the sample—pressure situations matter today.`
+          );
+        if (r && (r.ops ?? 0) > 0.85)
+          hittingInsights.push(
+            `RISP production has been a strength (OPS ${fmtDecimalNoLeadingZero(r.ops ?? 0, 3)} on ${rispPas.length} PA).`
+          );
+      }
+    }
+    if (recentSnap && seasonSnap && recentSnap.pa >= 8) {
+      if (recentSnap.ops - seasonSnap.ops > 0.08)
         hittingInsights.push(
-          `RISP OPS has been thin (${fmtDecimalNoLeadingZero(r.ops ?? 0, 3)}) over ${rispPas.length} PA in the sample—pressure situations matter today.`
+          `Last few games: OPS trending up vs the wider sample (${fmtDecimalNoLeadingZero(recentSnap.ops, 3)} vs ${fmtDecimalNoLeadingZero(seasonSnap.ops, 3)}).`
         );
-      if (r && (r.ops ?? 0) > 0.85)
+      if (seasonSnap.ops - recentSnap.ops > 0.08)
         hittingInsights.push(
-          `RISP production has been a strength (OPS ${fmtDecimalNoLeadingZero(r.ops ?? 0, 3)} on ${rispPas.length} PA).`
+          `Recent OPS (${fmtDecimalNoLeadingZero(recentSnap.ops, 3)}) is below the wider sample (${fmtDecimalNoLeadingZero(seasonSnap.ops, 3)})—small window, but worth a conversation.`
         );
     }
+    for (const line of teamTrendInsights.slice(0, 2)) {
+      if (!hittingInsights.includes(line)) hittingInsights.push(line);
+    }
+  } else {
+    for (const line of teamTrendInsights.slice(0, 1)) {
+      if (!hittingInsights.includes(line)) hittingInsights.push(line);
+    }
   }
-  if (recentSnap && seasonSnap && recentSnap.pa >= 8) {
-    if (recentSnap.ops - seasonSnap.ops > 0.08)
-      hittingInsights.push(
-        `Last few games: OPS trending up vs the wider sample (${fmtDecimalNoLeadingZero(recentSnap.ops, 3)} vs ${fmtDecimalNoLeadingZero(seasonSnap.ops, 3)}).`
-      );
-    if (seasonSnap.ops - recentSnap.ops > 0.08)
-      hittingInsights.push(
-        `Recent OPS (${fmtDecimalNoLeadingZero(recentSnap.ops, 3)}) is below the wider sample (${fmtDecimalNoLeadingZero(seasonSnap.ops, 3)})—small window, but worth a conversation.`
-      );
-  }
-  for (const line of teamTrendInsights.slice(0, 2)) {
-    if (!hittingInsights.includes(line)) hittingInsights.push(line);
-  }
+  void insightsBundle;
 
   const windowLabel =
     seasonGamesNewestFirst.length > 0
@@ -530,8 +554,25 @@ export function buildPreGameReport(input: {
     };
   }
 
-  const hot: Array<{ name: string; line: string }> = [];
-  const cold: Array<{ name: string; line: string }> = [];
+  const dedupeTrendInsights = (items: PreGamePlayerTrendInsight[]): PreGamePlayerTrendInsight[] => {
+    const seen = new Set<string>();
+    const out: PreGamePlayerTrendInsight[] = [];
+    for (const item of items) {
+      const key = item.playerId ?? item.name;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(item);
+    }
+    return out;
+  };
+
+  const hot: PreGamePlayerTrendInsight[] = enginePlayerInsights?.hot?.length
+    ? dedupeTrendInsights(enginePlayerInsights.hot)
+    : [];
+  const cold: PreGamePlayerTrendInsight[] = enginePlayerInsights?.cold?.length
+    ? dedupeTrendInsights(enginePlayerInsights.cold)
+    : [];
+  if (hot.length === 0 && cold.length === 0) {
   for (const pid of ourLineupIds) {
     const p = playersById[pid];
     const name = p?.name ?? "Unknown";
@@ -543,15 +584,18 @@ export function buildPreGameReport(input: {
     const d = (recent?.ops ?? 0) - (season?.ops ?? 0);
     if (d >= HOT_COLD_OPS_DELTA) {
       hot.push({
+        playerId: pid,
         name,
         line: `Recent ${rPa} PA: OPS ${fmtDecimalNoLeadingZero(recent!.ops, 3)} vs season ${fmtDecimalNoLeadingZero(season?.ops ?? 0, 3)} (${sPa} PA)`,
       });
     } else if (d <= -HOT_COLD_OPS_DELTA) {
       cold.push({
+        playerId: pid,
         name,
         line: `Recent ${rPa} PA: OPS ${fmtDecimalNoLeadingZero(recent!.ops, 3)} vs season ${fmtDecimalNoLeadingZero(season?.ops ?? 0, 3)} (${sPa} PA)`,
       });
     }
+  }
   }
 
   const opponentObservations: string[] = [];
@@ -620,6 +664,11 @@ export function buildPreGameReport(input: {
   }
 
   const gamePlan: string[] = [];
+  if (insightsBundle?.recommendations?.length) {
+    for (const rec of insightsBundle.recommendations.slice(0, 3)) {
+      gamePlan.push(rec.title);
+    }
+  }
   if (pitchingPlan?.planNotes) gamePlan.push(`Starter plan (staff): ${pitchingPlan.planNotes}`);
   if (pitchingPlan?.pitchMix.length) {
     const top = pitchingPlan.pitchMix[0]!;

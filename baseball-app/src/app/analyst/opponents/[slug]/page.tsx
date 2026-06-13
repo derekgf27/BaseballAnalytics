@@ -240,7 +240,8 @@ export default async function OpponentDetailPage({
       opponentPasTagged,
       baserunningByPlayerId,
       startedGamesByPlayer,
-      opponentPitchEvents
+      opponentPitchEvents,
+      vsGames
     );
     opponentPitchingStatsWithSplits = computePitchingStatsWithSplitsForRoster(
       taggedPitcherIds,

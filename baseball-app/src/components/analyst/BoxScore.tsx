@@ -118,7 +118,7 @@ export function BoxScore({
 
   return (
     <section className={wrapClass}>
-      <table className={`${tableWidth} border-collapse ${tableText}`}>
+      <table className={`box-score-linescore-table ${tableWidth} border-collapse ${tableText}`}>
         <thead>
           <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
             <th

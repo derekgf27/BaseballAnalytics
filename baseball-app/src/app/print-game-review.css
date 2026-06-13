@@ -183,3 +183,432 @@
     text-align: center;
   }
 }
+
+/**
+ * Detailed game review PDF capture (off-screen raster export).
+ * Screen capture ignores @media print — mirror post-game light theme here.
+ */
+.game-review-detailed-report-root.reports-pdf-capture,
+.reports-pdf-capture.game-review-detailed-report-root {
+  --bg-base: #ffffff;
+  --bg-card: #ffffff;
+  --bg-elevated: #f8fafc;
+  --bg-input: #f8fafc;
+  --border: #cbd5e1;
+  --text: #0f172a;
+  --text-muted: #334155;
+  --text-faint: #64748b;
+  --accent: #92400e;
+  --accent-dim: #fef3c7;
+  --danger: #b91c1c;
+  --success: #15803d;
+  background: #ffffff !important;
+  color: var(--text) !important;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root [class*="text-white"] {
+  color: #0f172a !important;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root [class*="bg-[var(--bg-elevated)]"],
+.reports-pdf-capture.game-review-detailed-report-root [class*="bg-[var(--bg-card)]"],
+.reports-pdf-capture.game-review-detailed-report-root [class*="bg-[var(--bg-base)]"],
+.reports-pdf-capture.game-review-detailed-report-root [class*="bg-gradient"],
+.reports-pdf-capture.game-review-detailed-report-root .batting-pitch-mix-card-root,
+.reports-pdf-capture.game-review-detailed-report-root [class*="color-mix"] {
+  background-color: #ffffff !important;
+  background-image: none !important;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root thead tr,
+.reports-pdf-capture.game-review-detailed-report-root tr[class*="bg-[var(--bg-elevated)]"] {
+  background-color: #f1f5f9 !important;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .shadow-\[0_1px_0_0_var\(--border\)\],
+.reports-pdf-capture.game-review-detailed-report-root .shadow-\[inset_0_1px_0_0_rgba\(255\,255\,255\,0\.06\)\] {
+  box-shadow: none !important;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .overflow-x-auto,
+.reports-pdf-capture.game-review-detailed-report-root .overflow-auto,
+.reports-pdf-capture.game-review-detailed-report-root .overflow-hidden,
+.reports-pdf-capture.game-review-detailed-report-root .game-batting-table-scroll,
+.reports-pdf-capture.game-review-detailed-report-root .batting-pitch-mix-inner-scroll {
+  max-height: none !important;
+  overflow: visible !important;
+  overflow-x: visible !important;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .pitch-mix-pdf-grid {
+  grid-template-columns: 1fr !important;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-page-one {
+  gap: 0.75rem !important;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-page-one .game-review-pdf-doc-header {
+  padding-bottom: 0.5rem !important;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-main-title {
+  font-size: 1.35rem !important;
+  line-height: 1.25 !important;
+  margin: 0 !important;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-batting-table-scroll table {
+  table-layout: auto !important;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-batting-table-scroll th,
+.reports-pdf-capture.game-review-detailed-report-root .game-batting-table-scroll td {
+  white-space: nowrap !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-batting-table-scroll th:first-child,
+.reports-pdf-capture.game-review-detailed-report-root .game-batting-table-scroll td:first-child {
+  white-space: normal !important;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-page-one .game-review-pdf-linescore {
+  padding: 0.75rem !important;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-page-one .game-review-pdf-linescore h2 {
+  margin-bottom: 0.5rem !important;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-page-one .game-review-detailed-team {
+  margin-top: 0 !important;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-page-one .game-review-pdf-team-heading {
+  font-size: 1rem !important;
+  margin-bottom: 0.25rem !important;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-page-one-batting .game-batting-table-scroll {
+  max-height: none !important;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-page-our-detail,
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-page-opponent {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root table {
+  border-color: var(--border) !important;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root th,
+.reports-pdf-capture.game-review-detailed-report-root td {
+  border-color: var(--border) !important;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-summary-layout {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  gap: 1rem !important;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-pitcher-credits {
+  width: 100% !important;
+  max-width: 22rem !important;
+  min-width: 14rem !important;
+  flex-shrink: 0 !important;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-credit-row,
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-credit-name {
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .box-score-linescore-table {
+  width: auto !important;
+  max-width: 100% !important;
+  table-layout: auto !important;
+}
+
+/* PDF player pitch blocks — print-first layout, one block per capture unit */
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-section-title {
+  font-family: var(--font-display, inherit);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #0f172a;
+  margin: 0 0 0.65rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 2px solid #cbd5e1;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-subsection-unit {
+  margin-bottom: 0.5rem;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-player-page-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-player-page-group .game-review-pdf-section-title {
+  margin-bottom: 0.45rem;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-player-page-group .game-review-pdf-player-block {
+  margin-bottom: 0;
+  padding: 0.5rem 0.6rem;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-player-page-group .game-review-pdf-player-block-header {
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.25rem;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-player-page-group .game-review-pdf-player-panels {
+  gap: 0.35rem;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-player-page-group .game-review-pdf-stat-panel {
+  padding: 0.35rem 0.4rem;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-player-page-group .game-review-pdf-stat {
+  min-height: 2.75rem;
+  padding: 0.15rem 0.1rem;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-player-page-group .game-review-pdf-stat-empty {
+  min-height: 2.75rem;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-player-page-group .game-review-pdf-player-mix {
+  margin-top: 0.3rem;
+  padding-top: 0.25rem;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-player-block {
+  break-inside: avoid;
+  page-break-inside: avoid;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.375rem;
+  background: #ffffff;
+  padding: 0.65rem 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-player-block-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 1rem;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-player-name {
+  font-family: var(--font-display, inherit);
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #92400e;
+  margin: 0;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-player-game-line {
+  font-family: Arial, Helvetica, "Segoe UI", sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums lining-nums;
+  color: #334155;
+  margin: 0;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-player-panels {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-stat-panel {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.25rem;
+  background: #f8fafc;
+  padding: 0.5rem 0.5rem;
+  min-width: 0;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-stat-panel-title {
+  font-family: Arial, Helvetica, "Segoe UI", sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin: 0 0 0.4rem;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-stat-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(0, auto));
+  gap: 0.3rem 0.35rem;
+  font-family: Arial, Helvetica, "Segoe UI", sans-serif;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  min-height: 3.1rem;
+  padding: 0.22rem 0.14rem;
+  text-align: center;
+  line-height: 1.15;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-stat-empty {
+  visibility: hidden;
+  min-height: 3.1rem;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-stat-label {
+  font-family: Arial, Helvetica, "Segoe UI", sans-serif;
+  color: #475569;
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-stat-value {
+  font-family: Arial, Helvetica, "Segoe UI", sans-serif;
+  color: #0f172a;
+  font-weight: 700;
+  font-size: 1.2rem;
+  font-variant-numeric: tabular-nums lining-nums;
+  text-align: center;
+  word-break: break-word;
+  line-height: 1.05;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-player-mix {
+  margin-top: 0.45rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-mix-title {
+  font-family: Arial, Helvetica, "Segoe UI", sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin: 0 0 0.45rem;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-mix-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-mix-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  font-family: Arial, Helvetica, "Segoe UI", sans-serif;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-mix-type {
+  font-weight: 800;
+  font-size: 1rem;
+  color: #92400e;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-mix-pct {
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: #0f172a;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-mix-count {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #64748b;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-mix-empty {
+  font-family: Arial, Helvetica, "Segoe UI", sans-serif;
+  font-size: 0.95rem;
+  color: #64748b;
+  margin: 0;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-platoon-mix {
+  margin-top: 0.5rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-platoon-mix-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem 1rem;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-platoon-mix-row {
+  min-width: 0;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-platoon-label {
+  font-family: Arial, Helvetica, "Segoe UI", sans-serif;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #92400e;
+  margin: 0 0 0.3rem;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-platoon-note {
+  font-family: Arial, Helvetica, "Segoe UI", sans-serif;
+  font-size: 0.62rem;
+  color: #64748b;
+  margin: 0.35rem 0 0;
+  line-height: 1.3;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-team-pitch-totals {
+  margin-top: 0.85rem;
+  padding-top: 0.65rem;
+  border-top: 2px solid #cbd5e1;
+}
+
+.reports-pdf-capture.game-review-detailed-report-root .game-review-pdf-team-totals-heading {
+  font-family: Arial, Helvetica, "Segoe UI", sans-serif;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #0f172a;
+  margin: 0 0 0.55rem;
+}

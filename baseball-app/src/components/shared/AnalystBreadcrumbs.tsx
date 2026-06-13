@@ -17,7 +17,7 @@ const STATIC_LABELS: Record<string, string> = {
   opponents: "Opponents",
   lineup: "Lineup Construction",
   charts: "Charts",
-  "run-expectancy": "Run Expectancy",
+  insights: "Insights",
   record: "Record",
   log: "Log",
   review: "Review",

@@ -14,7 +14,7 @@ export const ANALYST_NAV_LINKS: readonly AnalystNavLink[] = [
   { href: "/analyst/stats", label: "Stats", icon: "\u{1F4C8}" },
   { href: "/analyst/compare-players", label: "Compare players", icon: "\u{2696}\u{FE0F}" },
   { href: "/analyst/charts", label: "Charts", icon: "\u{1F4C9}" },
-  { href: "/analyst/run-expectancy", label: "Run Expectancy", icon: "\u{1F9EE}" },
+  { href: "/analyst/insights", label: "Insights", icon: "\u{1F4A1}" },
 ] as const;
 
 /** Opponent roster uses `/analyst/roster?opponentTeam=…` — treat as Opponents section, not club Roster. */

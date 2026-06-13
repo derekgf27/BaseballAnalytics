@@ -207,6 +207,13 @@ body {
   font-family: var(--font-display);
 }
 
+/* Coach & analyst portal page titles. */
+.coach-portal h1,
+.analyst-portal h1 {
+  font-family: var(--font-display);
+  letter-spacing: 0.02em;
+}
+
 /* Home page: retro–futuristic / high-tech game feel */
 .home-page {
   position: relative;

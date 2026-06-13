@@ -14,6 +14,7 @@ export type StatsPageUrlState = {
   pb: string;
   bfc: string | null;
   bdc: string | null;
+  bptc: string | null;
   pfc: string | null;
   pdc: string | null;
   ppc: string | null;
@@ -47,6 +48,7 @@ export function buildStatsUrlState(get: (key: string) => string | null): StatsPa
     pb: get("pb") ?? "",
     bfc: get("bfc"),
     bdc: get("bdc"),
+    bptc: get("bptc"),
     pfc: get("pfc"),
     pdc: get("pdc"),
     ppc: get("ppc"),

@@ -2,51 +2,16 @@
 
 import { getCachedGames, getCachedPlayers } from "@/lib/db/cachedQueries";
 import { buildAnalystPlayerSpraySplits } from "@/lib/analystPlayerSpraySplits";
-import { buildCoachPacketModel } from "@/lib/reports/coachPacketBuild";
-import type { CoachPacketModel } from "@/lib/reports/coachPacketTypes";
 import type { HitterReportBundle } from "@/lib/reports/playerReportTypes";
 import { isClubRosterPlayer } from "@/lib/opponentUtils";
 import {
-  getGame,
-  getGameLineup,
-  getPlateAppearancesByBatter,
-  getPlateAppearancesByGame,
-  getPlateAppearancesByPitcher,
-  getPlayersByIds,
   getBattingStatsWithSplitsForPlayers,
-  getPitchEventsForPaIds,
+  getHitterReportSprayData,
 } from "@/lib/db/queries";
 import { buildHitterProfileReportPayload } from "@/lib/reports/hitterProfileReportTables";
 import type { Player } from "@/lib/types";
 
 const MAX_HITTER_REPORT_PLAYERS = 5;
-
-export async function fetchCoachPacketAction(
-  gameId: string
-): Promise<CoachPacketModel | { error: string }> {
-  if (!gameId?.trim()) return { error: "Pick a game." };
-  const game = await getGame(gameId);
-  if (!game) return { error: "Game not found." };
-
-  const [lineup, pas] = await Promise.all([
-    getGameLineup(gameId),
-    getPlateAppearancesByGame(gameId),
-  ]);
-
-  const ids = new Set<string>();
-  for (const s of lineup) ids.add(s.player_id);
-  for (const pa of pas) {
-    ids.add(pa.batter_id);
-    if (pa.pitcher_id) ids.add(pa.pitcher_id);
-  }
-  const players: Player[] = ids.size > 0 ? await getPlayersByIds([...ids]) : [];
-  const playersById = new Map<string, Player>(players.map((p) => [p.id, p]));
-  const lineupPlayerIds = [...new Set(lineup.map((s) => s.player_id))];
-  const battingStatsByPlayerId =
-    lineupPlayerIds.length > 0 ? await getBattingStatsWithSplitsForPlayers(lineupPlayerIds) : {};
-
-  return buildCoachPacketModel(game, lineup, playersById, pas, battingStatsByPlayerId);
-}
 
 /** Splits + spray data for PDF hitter reports (club roster only). */
 export async function fetchHitterReportBundleAction(
@@ -70,28 +35,24 @@ export async function fetchHitterReportBundleAction(
   }
 
   const ids = resolved.map((p) => p.id);
-  const [statsMap, games] = await Promise.all([
+  const [statsMap, games, sprayData] = await Promise.all([
     getBattingStatsWithSplitsForPlayers(ids),
     getCachedGames(),
+    getHitterReportSprayData(ids),
   ]);
 
-  const perPlayer = await Promise.all(
-    resolved.map(async (pl) => {
-      const [pasAb, pasAp] = await Promise.all([
-        getPlateAppearancesByBatter(pl.id),
-        getPlateAppearancesByPitcher(pl.id),
-      ]);
-      const pitchEvents =
-        pasAb.length > 0 ? await getPitchEventsForPaIds(pasAb.map((pa) => pa.id)) : [];
-      const spray = buildAnalystPlayerSpraySplits(pl, allPlayers, pasAb, pasAp);
-      const splits = statsMap[pl.id];
-      const profile =
-        splits != null
-          ? buildHitterProfileReportPayload(pl.id, splits, pasAb, pitchEvents, games)
-          : undefined;
-      return { id: pl.id, spray, profile };
-    })
-  );
+  const perPlayer = resolved.map((pl) => {
+    const pasAb = sprayData.pasByBatter[pl.id] ?? [];
+    const pasAp = sprayData.pasByPitcher[pl.id] ?? [];
+    const pitchEvents = sprayData.pitchEventsByBatter[pl.id] ?? [];
+    const spray = buildAnalystPlayerSpraySplits(pl, allPlayers, pasAb, pasAp);
+    const splits = statsMap[pl.id];
+    const profile =
+      splits != null
+        ? buildHitterProfileReportPayload(pl.id, splits, pasAb, pitchEvents, games)
+        : undefined;
+    return { id: pl.id, spray, profile };
+  });
 
   const spray: HitterReportBundle["spray"] = {};
   const profile: NonNullable<HitterReportBundle["profile"]> = {};

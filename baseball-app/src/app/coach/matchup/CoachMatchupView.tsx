@@ -360,32 +360,28 @@ function OpponentThreatsTable({ rows }: { rows: ThreatRow[] }) {
 }
 
 function TrendStatTable({
-  names,
-  playersById,
-  playerIds,
+  entries,
   recentById,
   stats,
 }: {
-  names: string[];
-  playersById: PreGameOverviewPayload["playersById"];
-  playerIds: string[];
+  entries: Array<{ playerId?: string; name: string }>;
   recentById: PreGameOverviewPayload["recentHitterLineByPlayerId"];
   stats: PreGameOverviewPayload["lineupStatsByPlayerId"];
 }) {
-  const rows = names
-    .map((name) => {
-      const id = playerIds.find((pid) => playersById[pid]?.name === name);
-      if (!id) return null;
-      const recent = recentById[id];
-      const season = stats[id]?.overall;
+  const rows = entries
+    .map((entry, index) => {
+      const id = entry.playerId;
+      const recent = id ? recentById[id] : undefined;
+      const season = id ? stats[id]?.overall : undefined;
       return {
-        name,
+        key: id ? `${id}-${index}` : `trend-${index}`,
+        name: entry.name,
         recentOps: recent ? fmtStat(recent.ops) : "—",
         recentK: recent ? fmtPct(recent.kPct) : "—",
         seasonOps: season ? fmtStat(season.ops) : "—",
       };
     })
-    .filter((r): r is NonNullable<typeof r> => r != null);
+    .filter((r) => r.name.trim().length > 0);
 
   if (rows.length === 0) {
     return <p className="text-sm text-[var(--neo-text-muted)]">—</p>;
@@ -404,7 +400,7 @@ function TrendStatTable({
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.name} className="border-b border-[var(--neo-border)]/60 last:border-0">
+            <tr key={row.key} className="border-b border-[var(--neo-border)]/60 last:border-0">
               <td className="px-3 py-2 font-medium text-[var(--neo-text)]">{row.name}</td>
               <td className="px-2 py-2 text-right tabular-nums font-semibold text-[var(--accent-coach)]">
                 {row.recentOps}
@@ -464,7 +460,7 @@ export function CoachMatchupView({
   return (
     <div className="mx-auto max-w-6xl space-y-4">
       <div className="neo-card p-4 lg:p-5">
-        <p className="font-display text-xl font-semibold tracking-tight text-[var(--neo-text)] sm:text-2xl">
+        <p className="font-orbitron text-xl font-semibold tracking-tight text-[var(--neo-text)] sm:text-2xl">
           {matchupLabelUsFirst(game, true)}
         </p>
         <p className="mt-1 text-sm text-[var(--neo-text-muted)]">
@@ -565,18 +561,14 @@ export function CoachMatchupView({
         <div className="grid gap-4 sm:grid-cols-2">
           <Card title="Hot">
             <TrendStatTable
-              names={rep.playerInsights.hot.map((p) => p.name)}
-              playersById={playersById}
-              playerIds={ourLineupIds}
+              entries={rep.playerInsights.hot}
               recentById={overview.recentHitterLineByPlayerId}
               stats={stats}
             />
           </Card>
           <Card title="Cold">
             <TrendStatTable
-              names={rep.playerInsights.cold.map((p) => p.name)}
-              playersById={playersById}
-              playerIds={ourLineupIds}
+              entries={rep.playerInsights.cold}
               recentById={overview.recentHitterLineByPlayerId}
               stats={stats}
             />

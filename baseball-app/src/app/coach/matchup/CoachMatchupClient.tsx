@@ -87,7 +87,7 @@ export function CoachMatchupClient({
   return (
     <div className="app-shell min-h-full pb-8">
       <header className="mx-auto mb-4 flex max-w-6xl flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-[var(--text)] sm:text-3xl">
+        <h1 className="font-orbitron text-2xl font-semibold tracking-tight text-[var(--text)] sm:text-3xl">
           Matchup
         </h1>
         <select

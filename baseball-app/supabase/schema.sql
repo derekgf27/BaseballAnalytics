@@ -22,6 +22,7 @@ create table if not exists public.games (
   pitch_tracker_batter_slot smallint,
   pitch_tracker_outs smallint not null default 0,
   pitch_tracker_pitcher_id uuid references public.players(id) on delete set null,
+  pitch_tracker_mound_pitcher_id uuid references public.players(id) on delete set null,
   pitch_tracker_balls smallint not null default 0,
   pitch_tracker_strikes smallint not null default 0,
   created_at timestamptz default now()
@@ -125,7 +126,9 @@ create table if not exists public.pitches (
       'sweeper',
       'curveball',
       'changeup',
-      'splitter'
+      'splitter',
+      'off_speed',
+      'breaking_ball'
     )
   ),
   result text check (result is null or result in ('ball', 'called_strike', 'swinging_strike', 'foul', 'in_play')),

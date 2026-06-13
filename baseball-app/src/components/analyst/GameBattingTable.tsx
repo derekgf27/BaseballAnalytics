@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Fragment, memo, useMemo, useState } from "react";
+import { LazyInView } from "@/components/shared/LazyInView";
 import { analystPlayerProfileHref } from "@/lib/analystRoutes";
 import { CurrentBatterPitchDataCard } from "@/components/analyst/BattingPitchMixCard";
 import {
@@ -17,30 +18,59 @@ import type { Game, PitchEvent, PlateAppearance, Player } from "@/lib/types";
 
 /** Scrollable list of `CurrentBatterPitchDataCard` in batting-table order (game review, etc.). */
 export function GameBatterPitchDetailStack({
+  rows: rowsProp,
   pas,
   players,
   lineupOrder,
   lineupPositionByPlayerId,
   baserunningByPlayerId,
   pitchEvents = [],
+  pasByBatterId: pasByBatterIdProp,
+  pitchEventsByBatterId: pitchEventsByBatterIdProp,
+  highlightedBatterId = null,
+  expandAll = null,
+  cardIdPrefix = "game-review",
   compact = false,
 }: {
-  pas: PlateAppearance[];
-  players: Player[];
+  rows?: GameBattingRow[];
+  pas?: PlateAppearance[];
+  players?: Player[];
   lineupOrder?: string[] | null;
   lineupPositionByPlayerId?: Record<string, string | null>;
   baserunningByPlayerId?: Record<string, { sb: number; cs: number }>;
   pitchEvents?: PitchEvent[];
+  pasByBatterId?: Map<string, PlateAppearance[]>;
+  pitchEventsByBatterId?: Map<string, PitchEvent[]>;
+  highlightedBatterId?: string | null;
+  /** true = all expanded, false = all collapsed, null = auto (pinch hitters with ≤1 AB collapsed). */
+  expandAll?: boolean | null;
+  cardIdPrefix?: string;
   compact?: boolean;
 }) {
-  const rows = computeGameBatting(
-    pas,
-    players ?? [],
-    lineupOrder,
-    lineupPositionByPlayerId,
-    baserunningByPlayerId
-  );
+  const rows =
+    rowsProp ??
+    computeGameBatting(
+      pas ?? [],
+      players ?? [],
+      lineupOrder,
+      lineupPositionByPlayerId,
+      baserunningByPlayerId
+    );
   if (rows.length === 0) return null;
+
+  const pasByBatterId = useMemo(() => {
+    if (pasByBatterIdProp) return pasByBatterIdProp;
+    if (!pas?.length) return new Map<string, PlateAppearance[]>();
+    const map = new Map<string, PlateAppearance[]>();
+    for (const pa of pas) {
+      if (!pa.batter_id) continue;
+      const list = map.get(pa.batter_id);
+      if (list) list.push(pa);
+      else map.set(pa.batter_id, [pa]);
+    }
+    return map;
+  }, [pasByBatterIdProp, pas]);
+
   const substitutionLabelByPlayerId = useMemo(() => {
     const map = new Map<string, string>();
     for (const row of rows) {
@@ -49,6 +79,12 @@ export function GameBatterPitchDetailStack({
     }
     return map;
   }, [rows]);
+
+  function isCollapsed(row: GameBattingRow): boolean {
+    if (expandAll === true) return false;
+    if (expandAll === false) return true;
+    return row.isSubstitution && row.ab <= 1;
+  }
 
   return (
     <div
@@ -61,19 +97,74 @@ export function GameBatterPitchDetailStack({
         const substitutionLabel =
           substitutionLabelByPlayerId.get(row.playerId) ?? pinchHitterDisplayLabel(row);
         const nameWithOrder = row.isSubstitution ? substitutionLabel : starterLabel;
-        const batterPas = pas.filter((p) => p.batter_id === row.playerId);
-        const batterPaIds = new Set(batterPas.map((p) => p.id));
-        const batterPitchEvents = pitchEvents.filter((e) => batterPaIds.has(e.pa_id));
+        const batterPas = pasByBatterId.get(row.playerId) ?? [];
+        const batterPitchEvents =
+          pitchEventsByBatterIdProp?.get(row.playerId) ??
+          pitchEvents.filter((e) => batterPas.some((p) => p.id === e.pa_id));
+        const cardId = `${cardIdPrefix}-batter-${row.playerId}`;
+
         return (
-          <CurrentBatterPitchDataCard
-            key={row.playerId}
+          <BatterPitchDetailSlot
+            key={`${row.playerId}-${expandAll ?? "auto"}`}
+            cardId={cardId}
             batterName={nameWithOrder}
+            batterPas={batterPas}
+            batterPitchEvents={batterPitchEvents}
+            compact={compact}
+            collapsed={isCollapsed(row)}
+            isHighlighted={highlightedBatterId === row.playerId}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function BatterPitchDetailSlot({
+  cardId,
+  batterName,
+  batterPas,
+  batterPitchEvents,
+  compact,
+  collapsed,
+  isHighlighted,
+}: {
+  cardId: string;
+  batterName: string;
+  batterPas: PlateAppearance[];
+  batterPitchEvents: PitchEvent[];
+  compact?: boolean;
+  collapsed: boolean;
+  isHighlighted: boolean;
+}) {
+  const [open, setOpen] = useState(!collapsed);
+
+  return (
+    <div
+      id={cardId}
+      className={`scroll-mt-28 rounded-lg transition ${
+        isHighlighted ? "ring-2 ring-[var(--accent)]/60 ring-offset-2 ring-offset-[var(--bg-card)]" : ""
+      }`}
+    >
+      {!open ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex w-full items-center justify-between rounded-lg border border-[var(--border)]/60 bg-[var(--bg-elevated)]/40 px-3 py-2 text-left text-xs transition hover:border-[var(--accent)]/40"
+        >
+          <span className="font-medium text-[var(--text)]">{batterName}</span>
+          <span className="shrink-0 text-[var(--text-faint)]">Show pitch detail</span>
+        </button>
+      ) : (
+        <LazyInView forceShow={isHighlighted} minHeight={140}>
+          <CurrentBatterPitchDataCard
+            batterName={batterName}
             pas={batterPas}
             pitchEvents={batterPitchEvents}
             compact={compact}
           />
-        );
-      })}
+        </LazyInView>
+      )}
     </div>
   );
 }
@@ -158,7 +249,7 @@ function pinchHitterDisplayLabel(row: Pick<GameBattingRow, "name" | "position">)
   return pos ? `PH ${row.name} ${pos}` : `PH ${row.name}`;
 }
 
-function computeGameBatting(
+export function computeGameBatting(
   pas: PlateAppearance[],
   players: Player[],
   lineupOrder?: string[] | null,
@@ -365,6 +456,10 @@ interface GameBattingTableProps {
   lineupPositionByPlayerId?: Record<string, string | null>;
   /** Player ID to highlight in the table (e.g. current batter in Record PAs). */
   highlightedBatterId?: string | null;
+  /** Precomputed rows (avoids duplicate `computeGameBatting` in parent + stack). */
+  battingRows?: GameBattingRow[];
+  /** When set, table rows are clickable and scroll to batter pitch cards on Review. */
+  onBatterRowClick?: (playerId: string) => void;
   /** Tighter layout for side panel (smaller text, padding, min-width). */
   compact?: boolean;
   /** SB/CS from baserunning_events for this game (runner-centric). */
@@ -386,6 +481,8 @@ export const GameBattingTable = memo(function GameBattingTable({
   lineupOrder,
   lineupPositionByPlayerId,
   highlightedBatterId,
+  battingRows: battingRowsProp,
+  onBatterRowClick,
   compact = false,
   baserunningByPlayerId,
   teamName: teamNameProp,
@@ -395,7 +492,7 @@ export const GameBattingTable = memo(function GameBattingTable({
 }: GameBattingTableProps) {
   /** Expanded by default in compact contexts (e.g. PDF) so highlight lines print without a click. */
   const [battingNotesOpen, setBattingNotesOpen] = useState(() => compact);
-  const rows = computeGameBatting(
+  const rows = battingRowsProp ?? computeGameBatting(
     pas,
     players ?? [],
     lineupOrder,
@@ -526,13 +623,31 @@ export const GameBattingTable = memo(function GameBattingTable({
                       highlightedBatterId && row.playerId === highlightedBatterId
                         ? "bg-[var(--accent)]/15"
                         : ""
-                    }`}
+                    } ${onBatterRowClick ? "cursor-pointer hover:bg-[var(--bg-elevated)]/60" : ""}`}
+                    onClick={
+                      onBatterRowClick
+                        ? () => onBatterRowClick(row.playerId)
+                        : undefined
+                    }
+                    onKeyDown={
+                      onBatterRowClick
+                        ? (e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              onBatterRowClick(row.playerId);
+                            }
+                          }
+                        : undefined
+                    }
+                    tabIndex={onBatterRowClick ? 0 : undefined}
+                    role={onBatterRowClick ? "button" : undefined}
                   >
                     <td className={compact ? "px-1.5 py-1 font-medium text-[var(--text)]" : "px-3 py-2 font-medium text-[var(--text)]"}>
                       {linkPlayersToProfile ? (
                         <Link
                           href={analystPlayerProfileHref(row.playerId)}
                           className={`${row.isSubstitution ? "inline-block pl-4" : ""} text-[var(--accent)] hover:underline`}
+                          onClick={(e) => e.stopPropagation()}
                         >
                           {nameWithOrder}
                         </Link>

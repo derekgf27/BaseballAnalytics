@@ -65,6 +65,8 @@ export interface Game {
   pitch_tracker_outs?: number | null;
   /** Defensive pitcher on Record — coach pad follows this. */
   pitch_tracker_pitcher_id?: string | null;
+  /** Mound pitcher from Record PA form (opponent when we hit). */
+  pitch_tracker_mound_pitcher_id?: string | null;
   /** PA count balls (0–3) on Record — coach pad follows this. */
   pitch_tracker_balls?: number | null;
   /** PA count strikes (0–3) on Record — coach pad follows this. */
@@ -192,7 +194,10 @@ export type PitchTrackerPitchType =
   | "sweeper"
   | "curveball"
   | "changeup"
-  | "splitter";
+  | "splitter"
+  /** Offense pad: coarse bucket when opponent pitch type is unknown. */
+  | "off_speed"
+  | "breaking_ball";
 
 /** Analyst-assigned pitch result on `pitches` rows (nullable until set). */
 export type PitchTrackerLogResult =
@@ -325,6 +330,12 @@ export interface BattingStats {
   ldPct?: number;
   fbPct?: number;
   iffPct?: number;
+  /** Pitches seen with a logged `pitch_type` (from pitch log). */
+  batTyped?: number;
+  /** Per–pitch-type profile (usage, discipline, results when PA ended on that type). */
+  batBuckets?: Partial<Record<PitchTypeBucketKey, PitchTypeBucketProfile>>;
+  /** Raw tallies for pooling team rows (not shown in UI). */
+  batBucketCounts?: Partial<Record<PitchTypeBucketKey, PitchTypeBucketCounts>>;
 }
 
 /** Keys like "0-0" … "3-2" for final ball–strike count on a PA (see `statsByFinalCount`). */
@@ -359,6 +370,10 @@ export interface BattingStatsWithSplits {
   vsL: BattingStats | null;
   /** Stats when batter faced a right-handed pitcher. */
   vsR: BattingStats | null;
+  /** Stats in games where our club was the home team. */
+  home: BattingStats | null;
+  /** Stats in games where our club was the away team. */
+  away: BattingStats | null;
   /** Stats on plate appearances with runners on 2nd and/or 3rd (RISP). */
   risp: BattingStats | null;
   /**
@@ -531,6 +546,10 @@ export interface PitchTypeBucketProfile {
   ab?: number;
   h?: number;
   baa?: number;
+  /** Batter OBP when PA ended on this pitch type (H+BB+IBB+HBP ÷ PA-end denominator). */
+  obp?: number;
+  /** Batter OPS (OBP + SLG) when both are defined. */
+  ops?: number;
   kPct?: number;
   bbPct?: number;
   hrPct?: number;
@@ -620,6 +639,10 @@ export interface PitchingStatsWithSplits {
   vsLHB: PitchingStats | null;
   /** PAs vs batters with `bats === 'R'` only (switch hitters excluded). */
   vsRHB: PitchingStats | null;
+  /** PAs in games where our club was the home team. */
+  home: PitchingStats | null;
+  /** PAs in games where our club was the away team. */
+  away: PitchingStats | null;
   /** PAs filtered by offensive base state when the PA began. */
   runnerSituations?: {
     basesEmpty: PitchingRunnerSituationSplit;

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import {
   getGame,
   getGameLineup,
@@ -74,7 +75,8 @@ export default async function GameReviewPage({
       );
 
   return (
-    <GameReviewClientGate
+    <Suspense fallback={<div className="min-h-[50vh] p-8 text-sm text-[var(--text-muted)]">Loading review…</div>}>
+      <GameReviewClientGate
       game={game}
       canEdit={hasSupabase()}
       pasAll={pas}
@@ -89,5 +91,6 @@ export default async function GameReviewPage({
       baserunningByPlayerId={baserunningByPlayerId}
       pitchEvents={pitchEvents}
     />
+    </Suspense>
   );
 }

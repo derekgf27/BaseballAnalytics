@@ -62,3 +62,17 @@ export async function persistPitchTrackerPitcherToGame(gameId: string, pitcherId
     console.warn("[Record] Could not sync pitch_tracker_pitcher_id:", error.message);
   }
 }
+
+/** Pitcher on the mound for the current PA (opponent when we hit). */
+export async function persistPitchTrackerMoundPitcherToGame(gameId: string, pitcherId: string | null) {
+  if (isDemoId(gameId)) return;
+  const sb = getSupabaseBrowserClient();
+  if (!sb) return;
+  const { error } = await sb
+    .from("games")
+    .update({ pitch_tracker_mound_pitcher_id: pitcherId })
+    .eq("id", gameId);
+  if (error) {
+    console.warn("[Record] Could not sync pitch_tracker_mound_pitcher_id:", error.message);
+  }
+}

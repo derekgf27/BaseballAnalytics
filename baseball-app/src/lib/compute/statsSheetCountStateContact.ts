@@ -18,9 +18,12 @@ import {
   paMatchesBattingPlatoonSplit,
   paMatchesPitchingPlatoonSplit,
   paMatchesStatsRunnersFilter,
+  paMatchesStatsVenueFilter,
   type BattingSheetSplitView,
   type PitchingSheetSplitView,
 } from "@/lib/compute/statsSheetLiveFilters";
+import type { GameVenueSide } from "@/lib/compute/gameVenueSplits";
+import type { StatsVenueFilter } from "@/lib/statsVenueFilter";
 import { buildPitchingStatsLine } from "@/lib/compute/pitchingStats";
 import { pitchOutcomeIsSwing, pitchOutcomeStrikesThrownIncrement } from "@/lib/compute/pitchSequence";
 import type { ProfileBattingLine } from "@/lib/profileBattingDisplay";
@@ -159,7 +162,9 @@ function buildQualifyingPaMap(
   paQualification: CountStatePaQualification,
   pitchEvents: PitchEvent[] | undefined,
   batterBatsById?: Map<string, Bats | null | undefined>,
-  pitchingSplit?: boolean
+  pitchingSplit?: boolean,
+  venueFilter: StatsVenueFilter = "all",
+  gameOurSideById?: Map<string, GameVenueSide>
 ): { paById: Map<string, PlateAppearance>; paCountByEntity: Record<string, number> } {
   const paIdsAtCount =
     paQualification === "reachedCount" && pitchEvents?.length
@@ -185,6 +190,7 @@ function buildQualifyingPaMap(
       continue;
     }
     if (!paMatchesStatsRunnersFilter(pa, runnersFilter)) continue;
+    if (!paMatchesStatsVenueFilter(pa, venueFilter, gameOurSideById)) continue;
     if (paQualification === "finalCount") {
       if (!pasMatchFinalCount(pa, ballsNeed, strikesNeed)) continue;
     } else if (
@@ -249,7 +255,9 @@ export function buildCountStateContactByBatter(
   splitView: BattingSheetSplitView,
   runnersFilter: StatsRunnersFilterKey,
   finalCountBucket: BattingFinalCountBucketKey | null,
-  paQualification: CountStatePaQualification = "reachedCount"
+  paQualification: CountStatePaQualification = "reachedCount",
+  venueFilter: StatsVenueFilter = "all",
+  gameOurSideById?: Map<string, GameVenueSide>
 ): Record<string, CountStateContactRates> {
   if (!pas?.length || !pitchEvents?.length || !finalCountBucket) return {};
   const parsed = parseCountBucket(finalCountBucket);
@@ -265,7 +273,11 @@ export function buildCountStateContactByBatter(
     ballsNeed,
     strikesNeed,
     paQualification,
-    pitchEvents
+    pitchEvents,
+    undefined,
+    false,
+    venueFilter,
+    gameOurSideById
   );
   return aggregateCountStateContact(paById, paCountByEntity, pitchEvents, ballsNeed, strikesNeed, (pa) => pa.batter_id);
 }
@@ -278,7 +290,9 @@ export function buildCountStateContactByPitcher(
   runnersFilter: StatsRunnersFilterKey,
   finalCountBucket: BattingFinalCountBucketKey | null,
   batterBatsById: Record<string, Bats | null | undefined> | undefined,
-  paQualification: CountStatePaQualification = "reachedCount"
+  paQualification: CountStatePaQualification = "reachedCount",
+  venueFilter: StatsVenueFilter = "all",
+  gameOurSideById?: Map<string, GameVenueSide>
 ): Record<string, CountStateContactRates> {
   if (!pas?.length || !pitchEvents?.length || !finalCountBucket) return {};
   const parsed = parseCountBucket(finalCountBucket);
@@ -297,7 +311,9 @@ export function buildCountStateContactByPitcher(
     paQualification,
     pitchEvents,
     batsMap,
-    true
+    true,
+    venueFilter,
+    gameOurSideById
   );
   return aggregateCountStateContact(paById, paCountByEntity, pitchEvents, ballsNeed, strikesNeed, (pa) => pa.pitcher_id!);
 }
@@ -317,7 +333,9 @@ export function battingStatsForCountStateReached(
   splitView: BattingSheetSplitView,
   runnersFilter: StatsRunnersFilterKey,
   countBucket: BattingFinalCountBucketKey,
-  startedGames: Set<string> = new Set()
+  startedGames: Set<string> = new Set(),
+  venueFilter: StatsVenueFilter = "all",
+  gameOurSideById?: Map<string, GameVenueSide>
 ): BattingStats | undefined {
   const parsed = parseCountBucket(countBucket);
   if (!parsed) return undefined;
@@ -328,7 +346,8 @@ export function battingStatsForCountStateReached(
       pa.batter_id === playerId &&
       paQualifiesForReachedCountState(pa.id, ballsNeed, strikesNeed, paIdsAtCount) &&
       paMatchesBattingPlatoonSplit(pa, splitView) &&
-      paMatchesStatsRunnersFilter(pa, runnersFilter)
+      paMatchesStatsRunnersFilter(pa, runnersFilter) &&
+      paMatchesStatsVenueFilter(pa, venueFilter, gameOurSideById)
   );
   if (sub.length === 0) return undefined;
 

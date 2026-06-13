@@ -109,6 +109,8 @@ export interface RecordPitcherChangeModalProps {
   /** Same roster list as the former Record pitcher dropdown. */
   pitchers: Player[];
   onApply: (playerId: string) => void;
+  /** When set, empty roster shows a shortcut to add an opponent arm. */
+  onQuickAddPitcher?: () => void;
 }
 
 export function RecordPitcherChangeModal({
@@ -118,6 +120,7 @@ export function RecordPitcherChangeModal({
   currentPitcherId,
   pitchers,
   onApply,
+  onQuickAddPitcher,
 }: RecordPitcherChangeModalProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const sensors = useTouchOptimizedDndSensors();
@@ -202,9 +205,23 @@ export function RecordPitcherChangeModal({
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           {emptyRoster ? (
-            <p className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-4 text-sm text-[var(--text-muted)]">
-              No pitchers on this roster. Add pitchers (position P + throwing hand) for the defensive team.
-            </p>
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-4 text-sm text-[var(--text-muted)]">
+              <p>
+                No pitchers on this roster. Add pitchers (position P + throwing hand) for the defensive team.
+              </p>
+              {onQuickAddPitcher ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onQuickAddPitcher();
+                  }}
+                  className="mt-3 font-semibold text-[var(--accent)] underline decoration-dotted underline-offset-2 hover:opacity-90"
+                >
+                  Add opponent pitcher
+                </button>
+              ) : null}
+            </div>
           ) : (
             <DndContext
               sensors={sensors}

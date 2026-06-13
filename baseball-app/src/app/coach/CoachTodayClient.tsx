@@ -93,6 +93,12 @@ export function CoachTodayClient({
   return (
     <div className="app-shell min-h-full">
       <div className="mx-auto max-w-6xl space-y-5 pb-8">
+        <header>
+          <h1 className="font-orbitron text-2xl font-semibold tracking-tight text-[var(--text)] sm:text-3xl">
+            Today
+          </h1>
+        </header>
+
         {/* Mission context: full width so game + opponent read first */}
         <section className="neo-card p-4 lg:p-5">
           {game ? (

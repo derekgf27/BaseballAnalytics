@@ -10,7 +10,7 @@ export default function AnalystLayout({
   return (
     <div className="flex min-h-0 flex-1 bg-[var(--bg-base)]">
       <AnalystNav footer={<SidebarAuthSession portal="analyst" />} />
-      <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:max-w-[96rem] lg:mx-auto">
+      <main className="analyst-portal min-w-0 flex-1 px-4 py-6 sm:px-6 lg:max-w-[96rem] lg:mx-auto">
         <AnalystBreadcrumbs />
         {children}
       </main>

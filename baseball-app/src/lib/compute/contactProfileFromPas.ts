@@ -8,7 +8,10 @@ import {
   pitchOutcomeStrikesThrownIncrement,
   withInferredTerminalOutcomePitches,
 } from "@/lib/compute/pitchSequence";
-import { mergePitchTypeProfileIntoPitchingRates } from "@/lib/compute/pitchTypeProfileFromPas";
+import {
+  mergePitchTypeProfileIntoBattingStats,
+  mergePitchTypeProfileIntoPitchingRates,
+} from "@/lib/compute/pitchTypeProfileFromPas";
 import type {
   BattingStats,
   PAResult,
@@ -269,6 +272,7 @@ export function mergeContactProfileIntoBattingStats(
     stats.fbPct = a.fb / a.bipTyped;
     stats.iffPct = a.iff / a.bipTyped;
   }
+  mergePitchTypeProfileIntoBattingStats(stats, pas, eventsByPaId);
 }
 
 export function mergeContactProfileIntoPitchingRates(

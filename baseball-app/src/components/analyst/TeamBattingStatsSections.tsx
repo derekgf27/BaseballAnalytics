@@ -9,7 +9,17 @@ import {
 } from "@/components/analyst/BattingStatsSheet";
 import { FINAL_COUNT_BUCKET_OPTIONS } from "@/components/analyst/battingStatsSheetModel";
 import { StatsRunnersFilterSelect } from "@/components/analyst/StatsRunnersFilterSelect";
+import { StatsVenueFilterSelect } from "@/components/analyst/StatsVenueFilterSelect";
+import { BattingPitchTypeTeamSheet } from "@/components/analyst/BattingPitchTypeTeamSheet";
+import { BattingPitchTypeDisciplineTeamSheet } from "@/components/analyst/BattingPitchTypeDisciplineTeamSheet";
+import {
+  BAT_PITCH_TYPE_COLUMNS_MODE_LABEL,
+  BAT_PITCH_TYPE_DISCIPLINE_MODE_LABEL,
+  BAT_PITCH_TYPE_DISCIPLINE_HELPER_TEXT,
+  BAT_PITCH_TYPE_STATS_HELPER_TEXT,
+} from "@/lib/pitchTypeBattingDisplay";
 import type { BattingFinalCountBucketKey, StatsRunnersFilterKey } from "@/lib/types";
+import type { StatsVenueFilter } from "@/lib/statsVenueFilter";
 
 type TeamBattingStatsSectionsProps = Omit<
   BattingStatsSheetProps,
@@ -26,6 +36,8 @@ type TeamBattingStatsSectionsProps = Omit<
   | "onRunnersFilterChange"
   | "splitView"
   | "onSplitViewChange"
+  | "venueFilter"
+  | "onVenueFilterChange"
   | "toolbarEnd"
   | "sampleToolbarEnd"
   | "matchupToolbar"
@@ -38,6 +50,8 @@ type TeamBattingStatsSectionsProps = Omit<
   matchupToolbar?: BattingMatchupToolbarConfig;
   splitView: SplitView;
   onSplitViewChange: (v: SplitView) => void;
+  venueFilter: StatsVenueFilter;
+  onVenueFilterChange: (v: StatsVenueFilter) => void;
   runnersFilter: StatsRunnersFilterKey;
   onRunnersFilterChange: (v: StatsRunnersFilterKey) => void;
   disciplineSplit: SplitView;
@@ -52,6 +66,12 @@ type TeamBattingStatsSectionsProps = Omit<
   onFinalCountRunnersChange: (v: StatsRunnersFilterKey) => void;
   finalCountBucket: BattingFinalCountBucketKey;
   onFinalCountBucketChange: (v: BattingFinalCountBucketKey) => void;
+  pitchTypesSplit: SplitView;
+  onPitchTypesSplitChange: (v: SplitView) => void;
+  pitchTypesRunners: StatsRunnersFilterKey;
+  onPitchTypesRunnersChange: (v: StatsRunnersFilterKey) => void;
+  pitchTypesCount: BattingFinalCountBucketKey | null;
+  onPitchTypesCountChange: (v: BattingFinalCountBucketKey | null) => void;
 };
 
 function SectionBlock({
@@ -184,6 +204,8 @@ export function TeamBattingStatsSections({
   subheading,
   splitView,
   onSplitViewChange,
+  venueFilter,
+  onVenueFilterChange,
   runnersFilter,
   onRunnersFilterChange,
   disciplineSplit,
@@ -198,6 +220,12 @@ export function TeamBattingStatsSections({
   onFinalCountRunnersChange,
   finalCountBucket,
   onFinalCountBucketChange,
+  pitchTypesSplit,
+  onPitchTypesSplitChange,
+  pitchTypesRunners,
+  onPitchTypesRunnersChange,
+  pitchTypesCount,
+  onPitchTypesCountChange,
   splitDisabled = false,
   ...sheetProps
 }: TeamBattingStatsSectionsProps) {
@@ -206,19 +234,22 @@ export function TeamBattingStatsSections({
     if (splitView !== "overall") onSplitViewChange("overall");
     if (disciplineSplit !== "overall") onDisciplineSplitChange("overall");
     if (finalCountSplit !== "overall") onFinalCountSplitChange("overall");
+    if (pitchTypesSplit !== "overall") onPitchTypesSplitChange("overall");
   }, [
     splitDisabled,
     splitView,
     disciplineSplit,
     finalCountSplit,
+    pitchTypesSplit,
     onSplitViewChange,
     onDisciplineSplitChange,
     onFinalCountSplitChange,
+    onPitchTypesSplitChange,
   ]);
 
   const sharedSheet: Omit<
     BattingStatsSheetProps,
-    "heading" | "lockedSplitView" | "lockedRunnersFilter" | "lockedFinalCountBucket" | "lockedColumnMode"
+    "heading" | "lockedSplitView" | "lockedRunnersFilter" | "lockedVenueFilter" | "lockedFinalCountBucket" | "lockedColumnMode"
   > = {
     ...sheetProps,
     toolbarVariant: "section",
@@ -256,6 +287,16 @@ export function TeamBattingStatsSections({
               <option value="vsL">vs LHP</option>
               <option value="vsR">vs RHP</option>
             </select>
+          </div>
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+              Venue
+            </span>
+            <StatsVenueFilterSelect
+              value={venueFilter}
+              onChange={onVenueFilterChange}
+              className="w-full min-w-[12rem] rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-2 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none"
+            />
           </div>
           <div className="flex min-w-0 flex-col gap-1.5">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
@@ -351,6 +392,8 @@ export function TeamBattingStatsSections({
           {...sharedSheet}
           splitView={splitView}
           onSplitViewChange={onSplitViewChange}
+          venueFilter={venueFilter}
+          onVenueFilterChange={onVenueFilterChange}
           runnersFilter={runnersFilter}
           onRunnersFilterChange={onRunnersFilterChange}
           lockedColumnMode="standard"
@@ -376,6 +419,7 @@ export function TeamBattingStatsSections({
             {...sharedSheet}
             lockedSplitView={disciplineSplit}
             lockedRunnersFilter={disciplineRunners}
+            lockedVenueFilter={venueFilter}
             lockedFinalCountBucket={disciplineCount}
             lockedColumnMode="discipline"
             hideFilterFootnote={disciplineCount == null}
@@ -404,11 +448,89 @@ export function TeamBattingStatsSections({
             {...sharedSheet}
             lockedSplitView={finalCountSplit}
             lockedRunnersFilter={finalCountRunners}
+            lockedVenueFilter={venueFilter}
             lockedFinalCountBucket={finalCountBucket}
             lockedColumnMode="finalCount"
             hideFilterFootnote={
               finalCountRunners === "all" && finalCountSplit === "overall"
             }
+          />
+        </div>
+      </SectionBlock>
+
+      <SectionBlock
+        title={BAT_PITCH_TYPE_COLUMNS_MODE_LABEL}
+        description={
+          pitchTypesCount != null
+            ? `${BAT_PITCH_TYPE_STATS_HELPER_TEXT} Mix uses pitches seen at the selected count state; AVG and K% need the full sample (clear count to view).`
+            : BAT_PITCH_TYPE_STATS_HELPER_TEXT
+        }
+      >
+        <div className="space-y-3">
+          <SectionSliceFilters
+            splitView={pitchTypesSplit}
+            onSplitViewChange={onPitchTypesSplitChange}
+            runnersFilter={pitchTypesRunners}
+            onRunnersFilterChange={onPitchTypesRunnersChange}
+            splitDisabled={splitDisabled}
+          />
+          <CountTabBar
+            ariaLabel="Pitch-type count state"
+            includeAll
+            selected={pitchTypesCount}
+            onSelect={onPitchTypesCountChange}
+          />
+          <BattingPitchTypeTeamSheet
+            players={sheetProps.players ?? []}
+            battingStatsWithSplits={sheetProps.battingStatsWithSplits ?? {}}
+            pas={sheetProps.pas}
+            pitchEvents={sheetProps.pitchEvents}
+            games={sheetProps.games}
+            splitView={pitchTypesSplit}
+            venueFilter={venueFilter}
+            runnersFilter={pitchTypesRunners}
+            countState={pitchTypesCount}
+            searchQuery={searchQuery}
+            playerProfileHref={sheetProps.playerProfileHref}
+            splitDisabled={splitDisabled}
+          />
+        </div>
+      </SectionBlock>
+
+      <SectionBlock
+        title={BAT_PITCH_TYPE_DISCIPLINE_MODE_LABEL}
+        description={
+          pitchTypesCount != null
+            ? `${BAT_PITCH_TYPE_DISCIPLINE_HELPER_TEXT} Discipline rates use pitches seen at the selected count state; BIP mix uses the full sample (clear count to align).`
+            : BAT_PITCH_TYPE_DISCIPLINE_HELPER_TEXT
+        }
+      >
+        <div className="space-y-3">
+          <SectionSliceFilters
+            splitView={pitchTypesSplit}
+            onSplitViewChange={onPitchTypesSplitChange}
+            runnersFilter={pitchTypesRunners}
+            onRunnersFilterChange={onPitchTypesRunnersChange}
+            splitDisabled={splitDisabled}
+          />
+          <CountTabBar
+            ariaLabel="Discipline pitch-type count state"
+            includeAll
+            selected={pitchTypesCount}
+            onSelect={onPitchTypesCountChange}
+          />
+          <BattingPitchTypeDisciplineTeamSheet
+            players={sheetProps.players ?? []}
+            battingStatsWithSplits={sheetProps.battingStatsWithSplits ?? {}}
+            pas={sheetProps.pas}
+            pitchEvents={sheetProps.pitchEvents}
+            games={sheetProps.games}
+            splitView={pitchTypesSplit}
+            venueFilter={venueFilter}
+            runnersFilter={pitchTypesRunners}
+            countState={pitchTypesCount}
+            searchQuery={searchQuery}
+            playerProfileHref={sheetProps.playerProfileHref}
           />
         </div>
       </SectionBlock>

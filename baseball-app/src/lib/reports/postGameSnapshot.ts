@@ -70,6 +70,13 @@ export type PostGameSnapshot = {
   };
   keyMoment: string;
   analystNotes: string[];
+  /** Insights engine output (post-game). */
+  coachingInsights?: {
+    insights: string[];
+    alerts: string[];
+    recommendations: string[];
+    trendChanges: string[];
+  };
 };
 
 export function pasOurTeamBatting(game: Game, pas: PlateAppearance[]): PlateAppearance[] {

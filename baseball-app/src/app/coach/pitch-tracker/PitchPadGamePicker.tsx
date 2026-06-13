@@ -39,7 +39,7 @@ function PitchPadGameCard({
         <p className="text-xs font-semibold uppercase tracking-wider text-emerald-400/90">
           {featuredGameHeading(game, today)} · {venue}
         </p>
-        <p className="mt-2 font-display text-2xl font-bold tracking-tight text-zinc-50">
+        <p className="mt-2 font-orbitron text-2xl font-bold tracking-tight text-zinc-50">
           vs {opponent}
         </p>
         <p className="mt-1 text-sm text-zinc-400">{formatDateMMDDYYYY(game.date)}</p>
@@ -117,7 +117,7 @@ export function PitchPadGamePicker({
         </Link>
 
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Pitch pad</h1>
+          <h1 className="font-orbitron text-2xl font-bold tracking-tight">Pitch pad</h1>
           <p className="mt-2 text-sm leading-relaxed text-zinc-400">
             Pick tonight&apos;s game to start tracking pitches. Batter, count, and outs update live with the
             scorekeeper.

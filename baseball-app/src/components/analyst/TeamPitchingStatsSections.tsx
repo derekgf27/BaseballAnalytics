@@ -10,7 +10,9 @@ import {
 import { FINAL_COUNT_BUCKET_OPTIONS } from "@/components/analyst/battingStatsSheetModel";
 import { PITCH_TYPE_COLUMNS_MODE_LABEL, PITCH_TYPE_STATS_HELPER_TEXT } from "@/lib/pitchTypeBaaDisplay";
 import { StatsRunnersFilterSelect } from "@/components/analyst/StatsRunnersFilterSelect";
+import { StatsVenueFilterSelect } from "@/components/analyst/StatsVenueFilterSelect";
 import type { BattingFinalCountBucketKey, StatsRunnersFilterKey } from "@/lib/types";
+import type { StatsVenueFilter } from "@/lib/statsVenueFilter";
 
 type TeamPitchingStatsSectionsProps = Omit<
   PitchingStatsSheetProps,
@@ -27,6 +29,8 @@ type TeamPitchingStatsSectionsProps = Omit<
   | "onRunnersFilterChange"
   | "splitView"
   | "onSplitViewChange"
+  | "venueFilter"
+  | "onVenueFilterChange"
   | "toolbarEnd"
   | "sampleToolbarEnd"
   | "matchupToolbar"
@@ -39,6 +43,8 @@ type TeamPitchingStatsSectionsProps = Omit<
   matchupToolbar?: PitchingMatchupToolbarConfig;
   splitView: PitchingSplitView;
   onSplitViewChange: (v: PitchingSplitView) => void;
+  venueFilter: StatsVenueFilter;
+  onVenueFilterChange: (v: StatsVenueFilter) => void;
   runnersFilter: StatsRunnersFilterKey;
   onRunnersFilterChange: (v: StatsRunnersFilterKey) => void;
   disciplineSplit: PitchingSplitView;
@@ -191,6 +197,8 @@ export function TeamPitchingStatsSections({
   subheading,
   splitView,
   onSplitViewChange,
+  venueFilter,
+  onVenueFilterChange,
   runnersFilter,
   onRunnersFilterChange,
   disciplineSplit,
@@ -234,7 +242,7 @@ export function TeamPitchingStatsSections({
 
   const sharedSheet: Omit<
     PitchingStatsSheetProps,
-    "heading" | "lockedSplitView" | "lockedRunnersFilter" | "lockedFinalCountBucket" | "lockedColumnMode"
+    "heading" | "lockedSplitView" | "lockedRunnersFilter" | "lockedVenueFilter" | "lockedFinalCountBucket" | "lockedColumnMode"
   > = {
     ...sheetProps,
     toolbarVariant: "section",
@@ -272,6 +280,16 @@ export function TeamPitchingStatsSections({
               <option value="vsLHB">vs LHB</option>
               <option value="vsRHB">vs RHB</option>
             </select>
+          </div>
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+              Venue
+            </span>
+            <StatsVenueFilterSelect
+              value={venueFilter}
+              onChange={onVenueFilterChange}
+              className="w-full min-w-[12rem] rounded border border-[var(--border)] bg-[var(--bg-base)] px-3 py-2 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none"
+            />
           </div>
           <div className="flex min-w-0 flex-col gap-1.5">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
@@ -367,6 +385,8 @@ export function TeamPitchingStatsSections({
           {...sharedSheet}
           splitView={splitView}
           onSplitViewChange={onSplitViewChange}
+          venueFilter={venueFilter}
+          onVenueFilterChange={onVenueFilterChange}
           runnersFilter={runnersFilter}
           onRunnersFilterChange={onRunnersFilterChange}
           lockedColumnMode="standard"
@@ -392,6 +412,7 @@ export function TeamPitchingStatsSections({
             {...sharedSheet}
             lockedSplitView={disciplineSplit}
             lockedRunnersFilter={disciplineRunners}
+            lockedVenueFilter={venueFilter}
             lockedFinalCountBucket={disciplineCount}
             lockedColumnMode="contact"
             hideFilterFootnote={disciplineCount == null}
@@ -420,6 +441,7 @@ export function TeamPitchingStatsSections({
             {...sharedSheet}
             lockedSplitView={finalCountSplit}
             lockedRunnersFilter={finalCountRunners}
+            lockedVenueFilter={venueFilter}
             lockedFinalCountBucket={finalCountBucket}
             lockedColumnMode="finalCount"
             hideFilterFootnote={
@@ -455,6 +477,7 @@ export function TeamPitchingStatsSections({
             {...sharedSheet}
             lockedSplitView={pitchTypesSplit}
             lockedRunnersFilter={pitchTypesRunners}
+            lockedVenueFilter={venueFilter}
             lockedFinalCountBucket={pitchTypesCount}
             lockedColumnMode="pitchTypes"
             hideFilterFootnote={pitchTypesCount == null}

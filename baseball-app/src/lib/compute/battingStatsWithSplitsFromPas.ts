@@ -10,6 +10,7 @@ import type {
   BattingRunnerSituationSplit,
   BattingStats,
   BattingStatsWithSplits,
+  Game,
   PitchEvent,
   PlateAppearance,
 } from "@/lib/types";
@@ -21,6 +22,11 @@ import {
   isRisp,
   isRunnersOn,
 } from "./battingStats";
+import {
+  buildBattingStatsForVenue,
+  gameOurSideByIdFromGames,
+  type GameVenueSide,
+} from "./gameVenueSplits";
 
 /** All distinct in-play ball–strike pairs before resolution (12 rows). */
 export const FINAL_COUNT_PAIRS: readonly [number, number][] = [
@@ -196,9 +202,11 @@ export function computeBattingStatsWithSplitsFromPas(
   pas: PlateAppearance[],
   baserunningByPlayerId: Record<string, { sb: number; cs: number }>,
   startedGamesByPlayer: Map<string, Set<string>>,
-  pitchEvents: PitchEvent[] = []
+  pitchEvents: PitchEvent[] = [],
+  gamesForVenue?: Pick<Game, "id" | "our_side">[]
 ): Record<string, BattingStatsWithSplits> {
   const eventsByPaId = pitchEvents.length > 0 ? groupPitchEventsByPaId(pitchEvents) : new Map<string, PitchEvent[]>();
+  const gameOurSideById = gamesForVenue?.length ? gameOurSideByIdFromGames(gamesForVenue) : new Map<string, GameVenueSide>();
   const eByPlayer = fieldingErrorsByPlayerFromPas(pas);
   const byBatter = new Map<string, PlateAppearance[]>();
   for (const pa of pas) {
@@ -286,6 +294,15 @@ export function computeBattingStatsWithSplitsFromPas(
       vsRStats.e = eN;
     }
 
+    const homeStats =
+      gameOurSideById.size > 0
+        ? buildBattingStatsForVenue(list, "home", gameOurSideById, playerId, startedGames, eventsByPaId, eN)
+        : null;
+    const awayStats =
+      gameOurSideById.size > 0
+        ? buildBattingStatsForVenue(list, "away", gameOurSideById, playerId, startedGames, eventsByPaId, eN)
+        : null;
+
     const runnerSituations = {
       basesEmpty: buildBattingRunnerSituationSplit(
         list,
@@ -327,6 +344,8 @@ export function computeBattingStatsWithSplitsFromPas(
       overall,
       vsL: vsLStats,
       vsR: vsRStats,
+      home: homeStats,
+      away: awayStats,
       risp: rispStats,
       runnerSituations,
       statsByFinalCount: buildStatsByFinalCountForSplits(

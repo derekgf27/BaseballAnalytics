@@ -6,7 +6,7 @@
  * - `/`, `/login`
  * - `/reports` (Reports hub), `/analyst`, `/analyst/roster`, `/analyst/roster/[id]`, `/analyst/stats`, `/analyst/games`,
  *   `/analyst/games/[id]/log`, `/analyst/games/[id]/review`, `/analyst/opponents`, `/analyst/opponents/[slug]`,
- *   `/analyst/lineup`, `/analyst/charts`, `/analyst/record`, `/analyst/run-expectancy`, `/analyst/compare-players`, `/analyst/assistant`
+ *   `/analyst/lineup`, `/analyst/charts`, `/analyst/record`, `/analyst/insights`, `/analyst/compare-players`, `/analyst/assistant`
  * - `/coach`, `/coach/matchup`, `/coach/stats`, `/coach/lineup`, `/coach/players`, `/coach/players/[id]`, `/coach/pitch-tracker`
  * - `/coach/today` → redirects to `/coach` (see `app/coach/today/page.tsx`)
  * - `/auth/callback`, API routes under `/api/*`
@@ -32,7 +32,8 @@ export const SHORTLINK_REDIRECTS: { source: string; destination: string; permane
   { source: "/charts", destination: "/analyst/charts", permanent: false },
   { source: "/analyst/reports", destination: "/reports", permanent: false },
   { source: "/lineup", destination: "/analyst/lineup", permanent: false },
-  { source: "/run-expectancy", destination: "/analyst/run-expectancy", permanent: false },
+  { source: "/run-expectancy", destination: "/analyst/insights", permanent: false },
+  { source: "/analyst/run-expectancy", destination: "/analyst/insights", permanent: false },
   { source: "/dashboard", destination: "/analyst", permanent: false },
 
   // Coach (sidebar: CoachNav.tsx — "Today" is `/coach`)

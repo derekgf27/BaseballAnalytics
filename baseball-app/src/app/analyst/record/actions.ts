@@ -10,6 +10,7 @@ import type {
 } from "@/lib/types";
 import {
   getPlateAppearancesByGame,
+  getGame,
   getGameLineup,
   insertPlateAppearance,
   insertPlateAppearanceWithPitchLog,
@@ -158,6 +159,32 @@ export async function saveRecordGameLineupAction(
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to save lineup" };
+  }
+}
+
+/** Set listed starter for home/away when none is saved yet (e.g. quick-add opponent arm). */
+export async function setGameStartingPitcherIfEmptyAction(
+  gameId: string,
+  side: "home" | "away",
+  pitcherId: string
+): Promise<{ ok: boolean; error?: string }> {
+  await requireAnalystAccess();
+  if (isDemoId(gameId)) return { ok: false, error: "Cannot edit demo game." };
+  const game = await getGame(gameId);
+  if (!game) return { ok: false, error: "Game not found." };
+  const existing =
+    side === "home" ? game.starting_pitcher_home_id : game.starting_pitcher_away_id;
+  if (existing?.trim()) return { ok: true };
+  try {
+    await updateGame(gameId, {
+      ...(side === "home"
+        ? { starting_pitcher_home_id: pitcherId }
+        : { starting_pitcher_away_id: pitcherId }),
+    });
+    revalidateGamesListCache();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to save starter." };
   }
 }
 

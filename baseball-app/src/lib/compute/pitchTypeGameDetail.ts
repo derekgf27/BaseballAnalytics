@@ -1,5 +1,5 @@
 import { pitchOutcomeIsSwing } from "@/lib/compute/pitchSequence";
-import { PITCH_TRACKER_TYPES } from "@/lib/pitchTrackerUi";
+import { isPitchTrackerPitchType } from "@/lib/pitchTrackerUi";
 import type {
   PAResult,
   PitchEvent,
@@ -106,9 +106,7 @@ const OUT_RESULTS = new Set<PAResult>([
 function normalizeType(raw: string | null | undefined): PitchTrackerPitchType | null {
   if (raw == null) return null;
   const t = String(raw).trim().toLowerCase();
-  return (PITCH_TRACKER_TYPES as readonly string[]).includes(t)
-    ? (t as PitchTrackerPitchType)
-    : null;
+  return isPitchTrackerPitchType(t) ? t : null;
 }
 
 /**
