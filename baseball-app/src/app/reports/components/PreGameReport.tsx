@@ -16,6 +16,7 @@ import {
   ourVenueLabel,
 } from "@/lib/opponentUtils";
 import { fmtDecimalNoLeadingZero, fmtPitchDecimal, formatDateMMDDYYYY } from "@/lib/format";
+import { perRegulationInningStatLabel } from "@/lib/leagueConfig";
 import { formatBattingTripleSlash } from "@/lib/format/battingSlash";
 import type {
   BattingStats,
@@ -654,19 +655,19 @@ function PitchingRatesProcessBlock({ rates }: { rates: PitchingRateLine }) {
               <dd className="mt-0.5 font-display text-xl font-bold tabular-nums text-[var(--text)] print:text-2xl">{pct1(rates.bbPct)}</dd>
             </div>
             <div>
-              <dt className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] print:text-xs">K/9</dt>
+              <dt className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] print:text-xs">{perRegulationInningStatLabel("K")}</dt>
               <dd className="mt-0.5 font-display text-xl font-bold tabular-nums text-[var(--text)] print:text-2xl">{fmtPitchDec(rates.k7, 1)}</dd>
             </div>
             <div>
-              <dt className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] print:text-xs">BB/9</dt>
+              <dt className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] print:text-xs">{perRegulationInningStatLabel("BB")}</dt>
               <dd className="mt-0.5 font-display text-xl font-bold tabular-nums text-[var(--text)] print:text-2xl">{fmtPitchDec(rates.bb7, 1)}</dd>
             </div>
             <div>
-              <dt className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] print:text-xs">H/9</dt>
+              <dt className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] print:text-xs">{perRegulationInningStatLabel("H")}</dt>
               <dd className="mt-0.5 font-display text-xl font-bold tabular-nums text-[var(--text)] print:text-2xl">{fmtPitchDec(rates.h7, 1)}</dd>
             </div>
             <div>
-              <dt className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] print:text-xs">HR/9</dt>
+              <dt className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] print:text-xs">{perRegulationInningStatLabel("HR")}</dt>
               <dd className="mt-0.5 font-display text-xl font-bold tabular-nums text-[var(--text)] print:text-2xl">{fmtPitchDec(rates.hr7, 1)}</dd>
             </div>
           </dl>

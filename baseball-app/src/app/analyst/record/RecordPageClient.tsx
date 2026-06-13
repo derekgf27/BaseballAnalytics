@@ -2086,7 +2086,7 @@ export default function RecordPageClient({
             showMsg(
               "success",
               next.heldForManualExtras
-                ? "3rd out — regulation complete. Set inning/half manually for extras."
+                ? `3rd out — ${REGULATION_INNINGS}-inning regulation complete. Set inning/half manually for extras.`
                 : "Caught stealing — 3rd out, side retired"
             );
           } else {

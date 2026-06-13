@@ -21,7 +21,7 @@ export function fmtDecimalNoLeadingZero(n: number, decimals: number): string {
 }
 
 /**
- * Pitching rates (ERA, FIP, WHIP, K/9, P/PA, etc.): always show a digit before the decimal (`0.65`, `-0.90`).
+ * Pitching rates (ERA, FIP, WHIP, K/regulation IP, P/PA, etc.): always show a digit before the decimal (`0.65`, `-0.90`).
  */
 export function fmtPitchDecimal(n: number, decimals: number): string {
   return n.toFixed(decimals);
