@@ -1,10 +1,11 @@
 import type { MetadataRoute } from "next";
+import { APP_NAME, APP_TAGLINE } from "@/lib/appBrand";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Baseball Analytics",
-    short_name: "BB Analytics",
-    description: "Internal baseball analytics — analyst & coach modes",
+    name: APP_NAME,
+    short_name: APP_NAME,
+    description: APP_TAGLINE,
     start_url: "/",
     display: "standalone",
     background_color: "#0a0e12",

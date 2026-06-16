@@ -1,8 +1,9 @@
 import { listAdminUsersAction } from "./actions";
 import { AdminUsersClient } from "./AdminUsersClient";
+import { APP_NAME } from "@/lib/appBrand";
 
 export const metadata = {
-  title: "Users · Admin · Baseball Analytics",
+  title: `Users · Admin · ${APP_NAME}`,
 };
 
 export default async function AdminUsersPage() {

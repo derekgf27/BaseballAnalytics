@@ -6,6 +6,7 @@ import {
 } from "@/lib/auth/roles";
 import { getSessionWithRole } from "@/lib/auth/session";
 import { SidebarAuthSession } from "@/components/auth/SidebarAuthSession";
+import { APP_NAME, APP_TAGLINE } from "@/lib/appBrand";
 
 function isAuthEnforced(): boolean {
   if (process.env.AUTH_DISABLED === "true") return false;
@@ -43,11 +44,11 @@ export default async function Home() {
         >
           ⚾
         </div>
-        <h1 className="home-title-glow mt-4 text-3xl font-semibold text-[var(--text)]">
-          Baseball Analytics
+        <h1 className="home-title-glow mt-4 text-3xl font-semibold normal-case text-[var(--text)]">
+          {APP_NAME}
         </h1>
-        <p className="mt-1 text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">
-          Log it. Decide better.
+        <p className="mt-1 text-sm tracking-wide text-[var(--text-muted)]">
+          {APP_TAGLINE}
         </p>
       </header>
 

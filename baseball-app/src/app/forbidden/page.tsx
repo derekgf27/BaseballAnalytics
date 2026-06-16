@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { defaultHomePathForRole } from "@/lib/auth/roles";
 import { getSessionWithRole } from "@/lib/auth/session";
+import { APP_NAME } from "@/lib/appBrand";
 
 export const metadata = {
-  title: "Access denied · Baseball Analytics",
+  title: `Access denied · ${APP_NAME}`,
 };
 
 export default async function ForbiddenPage({

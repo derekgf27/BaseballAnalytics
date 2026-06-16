@@ -1,7 +1,8 @@
 import { LoginForm } from "./LoginForm";
+import { APP_NAME, APP_TAGLINE } from "@/lib/appBrand";
 
 export const metadata = {
-  title: "Sign in · Baseball Analytics",
+  title: `Sign in · ${APP_NAME}`,
 };
 
 export default async function LoginPage({
@@ -20,10 +21,11 @@ export default async function LoginPage({
           <span className="text-3xl" aria-hidden>
             ⚾
           </span>
-          <h1 className="mt-3 font-display text-3xl font-semibold uppercase tracking-wider text-[var(--neo-text)]">
-            Baseball Analytics
+          <h1 className="mt-3 font-display text-3xl font-semibold normal-case tracking-wider text-[var(--neo-text)]">
+            {APP_NAME}
           </h1>
-          <p className="mt-1 text-sm text-[var(--neo-text-muted)]">
+          <p className="mt-1 text-sm text-[var(--neo-text-muted)]">{APP_TAGLINE}</p>
+          <p className="mt-3 text-sm text-[var(--neo-text-muted)]">
             Sign in with your username and password to continue.
           </p>
         </div>

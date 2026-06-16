@@ -1,10 +1,8 @@
-import { isClubRosterPlayer, isPitcherPlayer } from "@/lib/opponentUtils";
 import { isDemoId } from "../mockData";
 import type { Game, LineupSide } from "@/lib/types";
 import { GAME_COLUMNS } from "./columns";
 import { getSupabase } from "./client";
 import { insertGameLineup, getSavedLineupWithSlots } from "./lineups";
-import { getPlayers } from "./players";
 
 export async function getGames(): Promise<Game[]> {
   const supabase = await getSupabase();
@@ -106,13 +104,6 @@ export async function createGameWithLineup(
           .filter((s) => !isDemoId(s.player_id))
           .map((s) => ({ player_id: s.player_id, position: s.position ?? null }));
       }
-    }
-    if (slots.length === 0) {
-      const players = await getPlayers();
-      const club = players.filter(
-        (p) => !isDemoId(p.id) && isClubRosterPlayer(p) && !isPitcherPlayer(p)
-      );
-      slots = club.slice(0, 9).map((p) => ({ player_id: p.id, position: null }));
     }
     if (slots.length > 0) await insertGameLineup(created.id, created.our_side as LineupSide, slots);
 

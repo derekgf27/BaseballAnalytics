@@ -15,8 +15,7 @@ import {
   fetchLineupSlotsForBallparkSideAction,
 } from "./actions";
 import { isGameFinalized, ourTeamOutcomeFromFinalScore } from "@/lib/gameRecord";
-import { isActiveRosterPlayer, isClubRosterPlayer, isPitcherPlayer, matchupLabelUsFirst, pitchersForGameTeamSide } from "@/lib/opponentUtils";
-import { getPlayerPrimaryPosition } from "@/lib/playerRoster";
+import { isActiveRosterPlayer, matchupLabelUsFirst, pitchersForGameTeamSide } from "@/lib/opponentUtils";
 import { formatDateMMDDYYYY } from "@/lib/format";
 import { StyledDatePicker } from "@/components/shared/StyledDatePicker";
 import { FlashMessage } from "@/components/shared/FlashMessage";
@@ -38,15 +37,15 @@ const OPP_CUSTOM_SENTINEL = "__custom_opponent__";
 interface GamesPageClientProps {
   initialGames: Game[];
   initialPlayers: Player[];
-  /** Names from Analyst → Opponents (tracked_opponents). */
-  initialTrackedOpponentNames: string[];
+  /** Opponent names from scheduled games + Analyst → Opponents. */
+  initialOpponentNames: string[];
   canEdit: boolean;
 }
 
 export function GamesPageClient({
   initialGames,
   initialPlayers,
-  initialTrackedOpponentNames,
+  initialOpponentNames,
   canEdit,
 }: GamesPageClientProps) {
   const router = useRouter();
@@ -135,8 +134,8 @@ export function GamesPageClient({
             : hasOpp
               ? "Game added with opponent lineup."
               : hasOur
-                ? "Game added with custom lineup."
-                : "Game added with default lineup.",
+                ? "Game added with club lineup."
+                : "Game added.",
         });
         refresh();
       } catch (e) {
@@ -198,7 +197,7 @@ export function GamesPageClient({
               key={editingGame?.id ?? "new-game"}
               game={editingGame && isGameFinalized(editingGame) ? null : editingGame}
               players={initialPlayers}
-              trackedOpponentNames={initialTrackedOpponentNames}
+              opponentNames={initialOpponentNames}
               onSave={handleSaveGame}
               onCancel={closeGameForm}
               onAddNew={() => {
@@ -318,7 +317,7 @@ export function GamesPageClient({
 function GameForm({
   game,
   players,
-  trackedOpponentNames,
+  opponentNames,
   onSave,
   onCancel,
   onAddNew,
@@ -329,7 +328,7 @@ function GameForm({
 }: {
   game: Game | null;
   players: Player[];
-  trackedOpponentNames: string[];
+  opponentNames: string[];
   onSave: (
     g: Omit<Game, "id" | "created_at">,
     opponentSlots?: { player_id: string; position?: string | null }[] | null,
@@ -461,15 +460,17 @@ function GameForm({
     };
   }, [game?.id]);
 
-  const trackedSorted = useMemo(
-    () => [...trackedOpponentNames].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })),
-    [trackedOpponentNames]
+  const opponentOptions = useMemo(
+    () => [...opponentNames].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })),
+    [opponentNames]
   );
   const activePlayers = useMemo(() => players.filter(isActiveRosterPlayer), [players]);
   const trimmedOpp = opponent.trim();
-  const isInTrackedList = trackedSorted.includes(trimmedOpp);
-  /** Dropdown only when we have tracked names and the opponent is a list pick (or new game). Legacy edits use text input. */
-  const useOpponentSelect = trackedSorted.length > 0 && (!isEditing || isInTrackedList);
+  const isInOpponentList = opponentOptions.some(
+    (name) => name.localeCompare(trimmedOpp, undefined, { sensitivity: "base" }) === 0
+  );
+  /** Dropdown when we have known opponents; legacy edits with unlisted names keep a text field. */
+  const useOpponentSelect = opponentOptions.length > 0 && (!isEditing || isInOpponentList);
 
   async function buildOurLineupPreview(): Promise<{
     ordered: { player_id: string; position: string | null }[];
@@ -482,11 +483,7 @@ function GameForm({
         title: "Lineup",
       };
     }
-    const club = activePlayers.filter((p) => isClubRosterPlayer(p) && !isPitcherPlayer(p));
-    return {
-      ordered: club.slice(0, 9).map((p) => ({ player_id: p.id, position: getPlayerPrimaryPosition(p) ?? null })),
-      title: "Club roster (first 9 batters)",
-    };
+    return { ordered: [], title: "Lineup" };
   }
 
   async function openOurLineupModal() {
@@ -685,7 +682,7 @@ function GameForm({
                       aria-required="true"
                     >
                       <option value="">Select team…</option>
-                      {trackedSorted.map((name) => (
+                      {opponentOptions.map((name) => (
                         <option key={name} value={name}>
                           {name}
                         </option>
@@ -718,7 +715,7 @@ function GameForm({
                         setOpponent("");
                       }}
                     >
-                      Choose from tracked opponents instead
+                      Choose from opponent list instead
                     </button>
                   </>
                 ) : (

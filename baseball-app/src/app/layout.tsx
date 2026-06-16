@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans, Orbitron, Oswald } from "next/font/google";
+import { APP_NAME, APP_TAGLINE } from "@/lib/appBrand";
 import "./globals.css";
 
 const ibmPlexSans = IBM_Plex_Sans({
@@ -31,12 +32,12 @@ const orbitron = Orbitron({
 });
 
 export const metadata: Metadata = {
-  title: "Baseball Analytics",
-  description: "Internal semi-pro baseball analytics — analyst & coach modes",
+  title: APP_NAME,
+  description: APP_TAGLINE,
   icons: { icon: "/favicon.svg" },
   appleWebApp: {
     capable: true,
-    title: "Baseball Analytics",
+    title: APP_NAME,
     statusBarStyle: "black-translucent",
   },
   manifest: "/manifest.webmanifest",

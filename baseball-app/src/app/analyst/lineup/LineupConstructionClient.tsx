@@ -155,7 +155,7 @@ export default function LineupConstructionClient({
   initialGameLineup = [],
 }: LineupConstructionClientProps) {
   const router = useRouter();
-  const gameMode = games != null && games.length > 0;
+  const gameMode = games != null;
   const editableGames = useMemo(
     () => (games ?? []).filter((g) => !isGameFinalized(g)),
     [games]
@@ -209,12 +209,7 @@ export default function LineupConstructionClient({
   }, [gameMode, editableGames, selectedGameId]);
 
   useEffect(() => {
-    if (!gameMode || !selectedGameId) {
-      if (gameMode) {
-        setLineup(Array.from({ length: 9 }, () => ({ player: null, position: "" })));
-      }
-      return;
-    }
+    if (!gameMode || !selectedGameId) return;
     if (
       selectedGameId === initialGameId &&
       initialGameLineup.length > 0 &&
@@ -446,6 +441,14 @@ export default function LineupConstructionClient({
     assignPlayerToSlot(player, slotIndex);
   }
 
+  const linkedToGame = gameMode && selectedGameId != null;
+  const gameSelectPlaceholder =
+    editableGames.length > 0
+      ? "Select a game"
+      : (games ?? []).length === 0
+        ? "No games yet"
+        : "No open games";
+
   return (
     <div className="app-shell flex min-h-[calc(100dvh-5rem)] flex-col gap-3 pb-4">
       <header className="shrink-0">
@@ -454,32 +457,7 @@ export default function LineupConstructionClient({
         </h1>
       </header>
 
-      {gameMode && games!.length === 0 ? (
-        <div className="neo-card border border-dashed border-[var(--neo-border)] p-8 text-center">
-          <p className="font-medium text-[var(--neo-text)]">No games yet</p>
-          <p className="mt-2 text-sm text-[var(--neo-text-muted)]">
-            Create a game in Analyst → Games, then you can set its lineup here.
-          </p>
-          <Link href="/analyst/games" className="mt-4 inline-block text-sm text-[var(--neo-accent)] hover:underline">
-            Go to Games →
-          </Link>
-        </div>
-      ) : null}
-
-      {gameMode && games!.length > 0 && editableGames.length === 0 ? (
-        <div className="neo-card border border-dashed border-[var(--neo-border)] p-8 text-center">
-          <p className="font-medium text-[var(--neo-text)]">No open games</p>
-          <p className="mt-2 text-sm text-[var(--neo-text-muted)]">
-            All games are finalized. Create a new game or clear final scores on an existing game to edit its lineup
-            here.
-          </p>
-          <Link href="/analyst/games" className="mt-4 inline-block text-sm text-[var(--neo-accent)] hover:underline">
-            Go to Games →
-          </Link>
-        </div>
-      ) : null}
-
-      {gameMode && editableGames.length > 0 ? (
+      {gameMode ? (
         <section className="neo-card p-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
             <div className="min-w-0 w-full flex-1 lg:max-w-[min(100%,30rem)]">
@@ -489,124 +467,139 @@ export default function LineupConstructionClient({
                 onChange={(e) => setSelectedGameId(e.target.value || null)}
                 className="input-tech mt-2 w-full min-w-0 rounded-lg px-3 py-2 text-sm text-[var(--neo-text)]"
                 aria-label="Select game"
+                disabled={editableGames.length === 0}
               >
-                <option value="">Select a game</option>
+                <option value="">{gameSelectPlaceholder}</option>
                 {editableGames.map((g) => (
                   <option key={g.id} value={g.id}>
                     {formatGameLabel(g)}
                   </option>
                 ))}
               </select>
+              {editableGames.length === 0 ? (
+                <p className="mt-2 text-xs text-[var(--neo-text-muted)]">
+                  {(games ?? []).length === 0 ? (
+                    <>
+                      Create a game in{" "}
+                      <Link href="/analyst/games" className="text-[var(--neo-accent)] hover:underline">
+                        Games
+                      </Link>{" "}
+                      to save a lineup to it. You can still build a lineup here or save a template below.
+                    </>
+                  ) : (
+                    <>
+                      All games are finalized.{" "}
+                      <Link href="/analyst/games" className="text-[var(--neo-accent)] hover:underline">
+                        Add a new game
+                      </Link>{" "}
+                      or clear final scores to edit a game lineup. You can still build a lineup or save a template
+                      below.
+                    </>
+                  )}
+                </p>
+              ) : null}
             </div>
             <LineupCollectiveStatsBar embedded lineupQuality={lineupQuality} />
           </div>
         </section>
       ) : null}
 
-      {(!gameMode || editableGames.length > 0) && (
-        <>
-          {(!gameMode || selectedGameId) && (
-            <DndContext
-              sensors={sensors}
-              autoScroll={false}
-              onDragStart={handleDragStart}
-              onDragEnd={handleDragEnd}
-            >
-              <div className="flex min-h-0 flex-1 flex-col gap-3">
-                {!gameMode ? (
-                  <LineupCollectiveStatsBar lineupQuality={lineupQuality} />
-                ) : null}
+      <DndContext
+        sensors={sensors}
+        autoScroll={false}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="flex min-h-0 flex-1 flex-col gap-3">
+          {!gameMode ? <LineupCollectiveStatsBar lineupQuality={lineupQuality} /> : null}
 
-                <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,0.85fr)_minmax(0,1.5fr)] lg:gap-3 lg:items-stretch">
-                  <div className="neo-card flex min-h-0 flex-col p-3">
-                    <h2 className="section-label mb-2 shrink-0">
-                      Available ({sortedAvailablePlayers.length})
-                    </h2>
-                    <PlayerPoolDropZone className="min-h-0 flex-1">
-                      <AvailablePlayerGrid
-                        players={sortedAvailablePlayers}
-                        onAddPlayer={placePlayerInFirstOpenSlot}
-                      />
-                    </PlayerPoolDropZone>
-                  </div>
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,0.85fr)_minmax(0,1.5fr)] lg:gap-3 lg:items-stretch">
+            <div className="neo-card flex min-h-0 flex-col p-3">
+              <h2 className="section-label mb-2 shrink-0">
+                Available ({sortedAvailablePlayers.length})
+              </h2>
+              <PlayerPoolDropZone className="min-h-0 flex-1">
+                <AvailablePlayerGrid
+                  players={sortedAvailablePlayers}
+                  onAddPlayer={placePlayerInFirstOpenSlot}
+                />
+              </PlayerPoolDropZone>
+            </div>
 
-                  <div className="neo-card flex min-h-0 flex-col gap-2 p-3">
-                    <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
-                      <h2 className="section-label">Batting order</h2>
-                      <LineupSaveActions
-                        gameMode={gameMode}
-                        templateName={templateName}
-                        onTemplateNameChange={(name) => setTemplateName(name ?? "")}
-                        onSave={gameMode ? handleSaveGameLineup : handleSaveTemplate}
-                        onClear={clearLineup}
-                        saveStatus={saveStatus}
-                        saveErrorMessage={saveErrorMessage}
-                        hasAnyPlayerInLineup={hasAnyPlayerInLineup}
-                        saveDisabled={gameMode ? !selectedGameId : !templateName.trim()}
-                      />
-                    </div>
-                    <LineupOrderPanel
-                      className="min-h-0 flex-1"
-                      lineup={lineup}
-                      loading={loadingLineup}
-                      positionsTakenByOthers={(i) =>
-                        new Set(
-                          lineup
-                            .map((s, j) => (j !== i && s.player && s.position ? s.position : null))
-                            .filter((p): p is string => p != null)
-                        )
-                      }
-                      onPositionChange={setSlotPosition}
-                      duplicatePositions={duplicatePositions}
-                    />
-                  </div>
-
-                  <div className="neo-card flex min-h-0 min-w-0 flex-col p-3">
-                    <div className="mb-2 flex shrink-0 flex-col gap-2">
-                      <div className="flex flex-wrap items-baseline justify-between gap-2">
-                        <h2 className="section-label">Roster stats</h2>
-                        <span className="text-[10px] text-[var(--neo-text-muted)]">
-                          In lineup · click name to add/remove
-                        </span>
-                      </div>
-                      <RosterStatsControls
-                        poolSortBy={poolSortBy}
-                        poolSplitView={poolSplitView}
-                        onSortChange={setPoolSortBy}
-                        onSplitChange={setPoolSplitView}
-                      />
-                    </div>
-                    <UnifiedRosterStatsTable
-                      rows={rosterTableRows}
-                      statsMap={poolBattingStats}
-                      onAddPlayer={placePlayerInFirstOpenSlot}
-                      onRemovePlayer={removePlayerFromLineup}
-                    />
-                  </div>
-                </div>
+            <div className="neo-card flex min-h-0 flex-col gap-2 p-3">
+              <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+                <h2 className="section-label">Batting order</h2>
+                <LineupSaveActions
+                  gameMode={linkedToGame}
+                  templateName={templateName}
+                  onTemplateNameChange={(name) => setTemplateName(name ?? "")}
+                  onSave={linkedToGame ? handleSaveGameLineup : handleSaveTemplate}
+                  onClear={clearLineup}
+                  saveStatus={saveStatus}
+                  saveErrorMessage={saveErrorMessage}
+                  hasAnyPlayerInLineup={hasAnyPlayerInLineup}
+                  saveDisabled={linkedToGame ? !selectedGameId : !templateName.trim()}
+                />
               </div>
+              <LineupOrderPanel
+                className="min-h-0 flex-1"
+                lineup={lineup}
+                loading={loadingLineup}
+                positionsTakenByOthers={(i) =>
+                  new Set(
+                    lineup
+                      .map((s, j) => (j !== i && s.player && s.position ? s.position : null))
+                      .filter((p): p is string => p != null)
+                  )
+                }
+                onPositionChange={setSlotPosition}
+                duplicatePositions={duplicatePositions}
+              />
+            </div>
 
-              <DragOverlay dropAnimation={null}>
-                {activePlayer ? (
-                  <div className="cursor-grabbing rounded border border-[var(--neo-border)] bg-[var(--neo-bg-card)] px-3 py-2 text-sm shadow-lg">
-                    {activePlayer.name}
-                  </div>
-                ) : null}
-              </DragOverlay>
-            </DndContext>
-          )}
+            <div className="neo-card flex min-h-0 min-w-0 flex-col p-3">
+              <div className="mb-2 flex shrink-0 flex-col gap-2">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <h2 className="section-label">Roster stats</h2>
+                  <span className="text-[10px] text-[var(--neo-text-muted)]">
+                    In lineup · click name to add/remove
+                  </span>
+                </div>
+                <RosterStatsControls
+                  poolSortBy={poolSortBy}
+                  poolSplitView={poolSplitView}
+                  onSortChange={setPoolSortBy}
+                  onSplitChange={setPoolSplitView}
+                />
+              </div>
+              <UnifiedRosterStatsTable
+                rows={rosterTableRows}
+                statsMap={poolBattingStats}
+                onAddPlayer={placePlayerInFirstOpenSlot}
+                onRemovePlayer={removePlayerFromLineup}
+              />
+            </div>
+          </div>
+        </div>
 
-          <LineupFooterTools
-            onSuggestObp={() => handleSuggestBy("obp")}
-            onSuggestAvg={() => handleSuggestBy("avg")}
-            suggestDisabled={initialPlayers.length === 0}
-            initialSavedLineups={initialSavedLineups}
-            loadStatus={loadStatus}
-            onLoadTemplate={handleLoadTemplate}
-            onDeleteTemplate={handleDeleteTemplate}
-          />
-        </>
-      )}
+        <DragOverlay dropAnimation={null}>
+          {activePlayer ? (
+            <div className="cursor-grabbing rounded border border-[var(--neo-border)] bg-[var(--neo-bg-card)] px-3 py-2 text-sm shadow-lg">
+              {activePlayer.name}
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+
+      <LineupFooterTools
+        onSuggestObp={() => handleSuggestBy("obp")}
+        onSuggestAvg={() => handleSuggestBy("avg")}
+        suggestDisabled={initialPlayers.length === 0}
+        initialSavedLineups={initialSavedLineups}
+        loadStatus={loadStatus}
+        onLoadTemplate={handleLoadTemplate}
+        onDeleteTemplate={handleDeleteTemplate}
+      />
     </div>
   );
 }
