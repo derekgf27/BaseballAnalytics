@@ -31,9 +31,9 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
   }
 
   return (
-    <form onSubmit={handleSignIn} className="mx-auto mt-8 max-w-sm space-y-4">
+    <form onSubmit={handleSignIn} className="mx-auto mt-10 w-full space-y-6">
       <label className="block">
-        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--neo-text-muted)]">
+        <span className="text-sm font-semibold uppercase tracking-wide text-[var(--neo-text-muted)]">
           Username
         </span>
         <input
@@ -47,13 +47,12 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           disabled={status === "submitting"}
-          className="mt-1 h-11 w-full rounded-lg border border-[var(--neo-border)] bg-[var(--neo-bg-base)] px-3 text-sm text-[var(--neo-text)] focus:border-[var(--neo-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--neo-accent)]/20"
-          placeholder="e.g. coach.rivera"
+          className="mt-2 h-14 w-full rounded-lg border border-[var(--neo-border)] bg-[var(--neo-bg-base)] px-4 text-base text-[var(--neo-text)] focus:border-[var(--neo-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--neo-accent)]/20"
         />
       </label>
 
       <label className="block">
-        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--neo-text-muted)]">
+        <span className="text-sm font-semibold uppercase tracking-wide text-[var(--neo-text-muted)]">
           Password
         </span>
         <input
@@ -64,14 +63,14 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           disabled={status === "submitting"}
-          className="mt-1 h-11 w-full rounded-lg border border-[var(--neo-border)] bg-[var(--neo-bg-base)] px-3 text-sm text-[var(--neo-text)] focus:border-[var(--neo-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--neo-accent)]/20"
+          className="mt-2 h-14 w-full rounded-lg border border-[var(--neo-border)] bg-[var(--neo-bg-base)] px-4 text-base text-[var(--neo-text)] focus:border-[var(--neo-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--neo-accent)]/20"
         />
       </label>
 
       <button
         type="submit"
         disabled={status === "submitting"}
-        className="flex h-12 w-full items-center justify-center rounded-lg bg-[var(--neo-accent)] text-sm font-bold text-[#0d1218] transition hover:brightness-110 disabled:opacity-50"
+        className="flex h-14 w-full items-center justify-center rounded-lg bg-[var(--neo-accent)] text-base font-bold text-[#0d1218] transition hover:brightness-110 disabled:opacity-50"
       >
         {status === "submitting" ? "Signing in…" : "Sign in"}
       </button>
@@ -84,10 +83,6 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
           {message}
         </p>
       ) : null}
-
-      <p className="text-center text-xs text-[var(--neo-text-faint)]">
-        Accounts are created by your admin. Contact them if you need access.
-      </p>
     </form>
   );
 }

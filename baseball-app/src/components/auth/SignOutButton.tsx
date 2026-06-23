@@ -28,8 +28,8 @@ function SignOutIcon() {
 
 export function SignOutButton({ className, sidebar = false }: SignOutButtonProps) {
   const buttonClass = sidebar
-    ? "sidebar-auth-signout-btn flex w-full items-center justify-center gap-2 rounded-md border border-[var(--neo-border)] bg-transparent px-3 py-1.5 text-sm font-medium text-[var(--neo-text-muted)] transition hover:bg-[#151b21] hover:text-[var(--neo-text)]"
-    : "flex items-center justify-center rounded-md border border-[var(--neo-border)] bg-transparent px-3 py-1.5 text-sm font-medium text-[var(--neo-text-muted)] transition hover:bg-[#151b21] hover:text-[var(--neo-text)]";
+    ? "sidebar-auth-signout-btn flex w-full items-center justify-center gap-2 rounded-md border border-[var(--neo-border)] bg-transparent px-3 py-1.5 text-sm font-medium text-[var(--neo-text-muted)] transition hover:bg-[var(--bg-elevated)] hover:text-[var(--neo-text)]"
+    : "auth-signout-btn flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium transition";
 
   return (
     <form action="/auth/signout" method="post" className={className}>

@@ -85,6 +85,62 @@
   --text-3xl--line-height: 2.25rem;
 }
 
+/* Light mode — inverted surfaces + darker gold accent for contrast on white */
+:root[data-theme="light"] {
+  --neo-accent-r: 161;
+  --neo-accent-g: 98;
+  --neo-accent-b: 7;
+  --neo-accent: #a16207;
+  --neo-bg-base: #e8edf3;
+  --neo-bg-elevated: #ffffff;
+  --neo-bg-card: #ffffff;
+  --neo-bg-input: #f8fafc;
+  --neo-text: #0f172a;
+  --neo-text-muted: #475569;
+  --neo-text-faint: #64748b;
+  --neo-border: rgba(15, 23, 42, 0.12);
+  --neo-border-focus: rgba(161, 98, 7, 0.5);
+  --neo-accent-dim: rgba(161, 98, 7, 0.14);
+  --neo-success: #15803d;
+  --neo-warning: #b45309;
+  --neo-secondary-dim: rgba(255, 76, 109, 0.1);
+  --success-dim: rgba(21, 128, 61, 0.12);
+  --warning-dim: rgba(180, 83, 9, 0.12);
+  --compare-stat-win-fg: #15803d;
+  --decision-green: #15803d;
+  --decision-yellow: #b45309;
+  --decision-gray-dim: rgba(15, 23, 42, 0.08);
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+/*
+ * Light mode: legacy `text-white` on cards/tables was authored for dark surfaces.
+ * Remap to theme text; keep white on saturated button backgrounds.
+ */
+:root[data-theme="light"] .text-white {
+  color: var(--text);
+}
+:root[data-theme="light"] [class*="bg-violet-4"].text-white,
+:root[data-theme="light"] [class*="bg-violet-5"].text-white,
+:root[data-theme="light"] [class*="bg-emerald-5"].text-white,
+:root[data-theme="light"] [class*="bg-emerald-6"].text-white,
+:root[data-theme="light"] [class*="bg-emerald-7"].text-white,
+:root[data-theme="light"] [class*="bg-red-"].text-white,
+:root[data-theme="light"] [class*="bg-[var(--danger)]"].text-white {
+  color: #ffffff !important;
+}
+
+:root[data-theme="light"] .players-watch-preview-note {
+  color: #92400e;
+}
+:root[data-theme="dark"] .players-watch-preview-note {
+  color: rgba(253, 230, 138, 0.9);
+}
+
 /* Buttons/elements with solid accent (gold) background: black text for contrast */
 [class*="bg-[var(--accent)]"]:not([class*="bg-[var(--accent)]/"]) {
   color: #000 !important;
@@ -274,6 +330,277 @@ body {
   animation: home-prompt-blink 1.5s ease-in-out infinite;
 }
 
+/* Login — night game: staggered outfield lights, then form reveal (one-shot) */
+.login-night-page {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 120% 80% at 50% 100%, rgba(18, 32, 22, 0.55) 0%, transparent 55%),
+    radial-gradient(ellipse 90% 50% at 50% 0%, rgba(12, 18, 28, 0.9) 0%, #06080c 70%);
+}
+
+.login-night-lights {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.login-night-horizon-glow {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 18%;
+  height: 28%;
+  opacity: 0;
+  background: radial-gradient(
+    ellipse 85% 100% at 50% 100%,
+    rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.22) 0%,
+    rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.06) 45%,
+    transparent 72%
+  );
+  animation: login-horizon-rise 1.6s ease-out forwards;
+  animation-delay: 0.15s;
+}
+
+.login-night-field-mist {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 22%;
+  background: linear-gradient(
+    to top,
+    rgba(8, 14, 10, 0.95) 0%,
+    rgba(8, 14, 10, 0.35) 55%,
+    transparent 100%
+  );
+  opacity: 0;
+  animation: login-mist-rise 1.4s ease-out forwards;
+  animation-delay: 0.5s;
+}
+
+.login-night-towers {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  bottom: 14%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  height: min(42vh, 320px);
+}
+
+.login-night-tower {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 8%;
+  max-width: 3.5rem;
+  height: var(--tower-height, 80%);
+}
+
+.login-night-pole {
+  flex: 1;
+  width: 2px;
+  min-height: 2rem;
+  border-radius: 1px;
+  background: linear-gradient(
+    to top,
+    rgba(80, 88, 96, 0.15) 0%,
+    rgba(140, 150, 160, 0.45) 55%,
+    rgba(180, 190, 200, 0.55) 100%
+  );
+  opacity: 0;
+  animation: login-pole-in 0.5s ease-out forwards;
+  animation-delay: calc(0.08s + var(--light-index) * 0.1s);
+}
+
+.login-night-lamp-wrap {
+  position: relative;
+  flex-shrink: 0;
+  width: 100%;
+  height: 1.75rem;
+  display: flex;
+  justify-content: center;
+}
+
+.login-night-lamp {
+  position: relative;
+  z-index: 2;
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  opacity: 0;
+  background: #fffef5;
+  box-shadow:
+    0 0 6px 2px rgba(255, 250, 220, 0.95),
+    0 0 18px 6px rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.75),
+    0 0 36px 12px rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.35);
+  animation: login-light-flicker 1.05s ease-out forwards;
+  animation-delay: calc(0.12s + var(--light-index) * 0.13s);
+}
+
+.login-night-beam {
+  position: absolute;
+  top: 0.2rem;
+  left: 50%;
+  width: 140%;
+  height: 220%;
+  transform: translateX(-50%) scaleY(0);
+  transform-origin: top center;
+  opacity: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 248, 210, 0.2) 0%,
+    rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.08) 35%,
+    transparent 100%
+  );
+  clip-path: polygon(42% 0%, 58% 0%, 100% 100%, 0% 100%);
+  animation: login-beam-in 0.9s ease-out forwards;
+  animation-delay: calc(0.35s + var(--light-index) * 0.13s);
+}
+
+.login-night-club {
+  opacity: 0;
+  animation: login-club-in 0.6s ease-out forwards;
+  animation-delay: 1.5s;
+}
+
+.login-form-reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  animation: login-form-rise 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: 1.25s;
+}
+
+.login-night-card {
+  background: rgba(17, 22, 25, 0.88);
+}
+
+@keyframes login-light-flicker {
+  0%,
+  6% {
+    opacity: 0;
+    filter: brightness(0.3);
+  }
+  14% {
+    opacity: 0.4;
+    filter: brightness(0.6);
+  }
+  22% {
+    opacity: 0.1;
+    filter: brightness(0.35);
+  }
+  32% {
+    opacity: 0.55;
+    filter: brightness(0.85);
+  }
+  42% {
+    opacity: 0.22;
+    filter: brightness(0.5);
+  }
+  54% {
+    opacity: 0.78;
+    filter: brightness(1);
+  }
+  64% {
+    opacity: 0.5;
+    filter: brightness(0.75);
+  }
+  78% {
+    opacity: 0.95;
+    filter: brightness(1.05);
+  }
+  90% {
+    opacity: 0.82;
+    filter: brightness(0.95);
+  }
+  100% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+}
+
+@keyframes login-beam-in {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) scaleY(0);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(-50%) scaleY(1);
+  }
+}
+
+@keyframes login-pole-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes login-horizon-rise {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes login-mist-rise {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes login-form-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes login-club-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-night-lamp,
+  .login-night-beam,
+  .login-night-pole,
+  .login-night-horizon-glow,
+  .login-night-field-mist,
+  .login-form-reveal,
+  .login-night-club {
+    animation: none;
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+  .login-night-beam {
+    transform: translateX(-50%) scaleY(1);
+  }
+}
+
 /* Terminal prompt — CLI style with blinking cursor */
 .home-terminal {
   font-family: var(--font-mono);
@@ -365,10 +692,117 @@ body {
   opacity: 1;
 }
 
-/* Full-page mode panes — app theme, subtle hover tint */
+/* Full-page mode panes — portal entry cards */
+.home-mode-pane {
+  border: 2px solid transparent;
+  background: var(--bg-card);
+  box-shadow: 0 0 32px rgba(214, 186, 72, 0.18);
+}
+.home-mode-pane-analyst {
+  border-color: rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.45);
+  background: linear-gradient(
+    165deg,
+    rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.14) 0%,
+    var(--bg-card) 55%
+  );
+}
+.home-mode-pane-coach {
+  border-color: rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.45);
+  background: linear-gradient(
+    165deg,
+    rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.14) 0%,
+    var(--bg-card) 55%
+  );
+}
+.home-mode-pane-admin {
+  border-color: rgba(139, 92, 246, 0.45);
+  background: linear-gradient(165deg, rgba(139, 92, 246, 0.14) 0%, var(--bg-card) 55%);
+  box-shadow: 0 0 32px rgba(139, 92, 246, 0.16);
+}
 .home-mode-pane-analyst:hover,
 .home-mode-pane-coach:hover {
-  background: linear-gradient(180deg, rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.16) 0%, var(--bg-base) 40%) !important;
+  border-color: rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.75);
+  background: linear-gradient(
+    165deg,
+    rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.22) 0%,
+    var(--bg-card) 50%
+  );
+  box-shadow: 0 0 40px rgba(214, 186, 72, 0.28);
+}
+.home-mode-pane-admin:hover {
+  border-color: rgba(167, 139, 250, 0.7);
+  background: linear-gradient(165deg, rgba(139, 92, 246, 0.22) 0%, var(--bg-card) 50%);
+  box-shadow: 0 0 40px rgba(139, 92, 246, 0.24);
+}
+.home-mode-pane-enter {
+  color: var(--accent);
+}
+.home-mode-pane-enter--coach {
+  color: var(--accent-coach);
+}
+.home-mode-pane-enter--admin {
+  color: #c4b5fd;
+}
+
+:root[data-theme="light"] .home-mode-pane {
+  box-shadow: 0 4px 24px rgba(15, 23, 42, 0.08);
+}
+:root[data-theme="light"] .home-mode-pane-analyst,
+:root[data-theme="light"] .home-mode-pane-coach {
+  border-color: rgba(161, 98, 7, 0.4);
+  background: linear-gradient(165deg, rgba(161, 98, 7, 0.12) 0%, #ffffff 58%);
+}
+:root[data-theme="light"] .home-mode-pane-admin {
+  border-color: rgba(109, 40, 217, 0.35);
+  background: linear-gradient(165deg, rgba(167, 139, 250, 0.28) 0%, #ffffff 58%);
+  box-shadow: 0 4px 24px rgba(91, 33, 182, 0.1);
+}
+:root[data-theme="light"] .home-mode-pane-analyst:hover,
+:root[data-theme="light"] .home-mode-pane-coach:hover {
+  border-color: rgba(161, 98, 7, 0.58);
+  background: linear-gradient(165deg, rgba(161, 98, 7, 0.18) 0%, #ffffff 52%);
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.1);
+}
+:root[data-theme="light"] .home-mode-pane-admin:hover {
+  border-color: rgba(109, 40, 217, 0.55);
+  background: linear-gradient(165deg, rgba(167, 139, 250, 0.38) 0%, #ffffff 52%);
+  box-shadow: 0 8px 28px rgba(91, 33, 182, 0.14);
+}
+:root[data-theme="light"] .home-mode-pane-enter--admin {
+  color: #6d28d9;
+}
+
+/* Role badges — readable in light and dark */
+.role-badge--admin {
+  border-color: rgba(139, 92, 246, 0.45);
+  background: rgba(139, 92, 246, 0.2);
+  color: #ddd6fe;
+}
+:root[data-theme="light"] .role-badge--admin {
+  border-color: #7c3aed;
+  background: #ede9fe;
+  color: #5b21b6;
+}
+
+/* Theme toggle + auth toolbar buttons */
+.theme-toggle-bar,
+.theme-toggle-icon,
+.auth-signout-btn {
+  border-color: var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+.theme-toggle-bar:hover,
+.theme-toggle-icon:hover,
+.auth-signout-btn:hover {
+  border-color: var(--border-focus);
+  color: var(--accent);
+  background: var(--bg-elevated);
+}
+.auth-signout-btn {
+  border-color: var(--border);
+  color: var(--text-muted);
 }
 
 @keyframes home-prompt-blink {
@@ -539,6 +973,64 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .sidebar-link-admin:hover { background: rgba(255,255,255,0.06); color: var(--text); }
 .sidebar-link-admin[data-active="true"] { background: rgba(139,92,246,0.18); color: #c4b5fd; }
 
+:root[data-theme="light"] .sidebar-link-coach,
+:root[data-theme="light"] .sidebar-link-analyst,
+:root[data-theme="light"] .sidebar-link-admin {
+  color: #64748b;
+}
+:root[data-theme="light"] .sidebar-link-coach:hover,
+:root[data-theme="light"] .sidebar-link-analyst:hover,
+:root[data-theme="light"] .sidebar-link-admin:hover,
+:root[data-theme="light"] .theme-toggle-sidebar:hover {
+  background: rgba(15, 23, 42, 0.06);
+  color: var(--text);
+}
+:root[data-theme="light"] .sidebar button:hover {
+  background: rgba(15, 23, 42, 0.06);
+}
+:root[data-theme="light"] .neo-card {
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 0 24px -8px rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.15);
+}
+:root[data-theme="light"] .app-shell::before {
+  opacity: 0.35;
+}
+:root[data-theme="light"] .home-page::after {
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(15, 23, 42, 0.02) 2px,
+    rgba(15, 23, 42, 0.02) 4px
+  );
+}
+:root[data-theme="light"] .home-title-glow {
+  text-shadow:
+    0 0 20px rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.25),
+    0 0 40px rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.12);
+}
+:root[data-theme="light"] .login-night-page {
+  background:
+    radial-gradient(ellipse 120% 80% at 50% 100%, rgba(180, 200, 170, 0.35) 0%, transparent 55%),
+    radial-gradient(ellipse 90% 50% at 50% 0%, rgba(220, 230, 245, 0.95) 0%, #e8edf3 70%);
+}
+:root[data-theme="light"] .login-night-card {
+  background: rgba(255, 255, 255, 0.92);
+}
+:root[data-theme="light"] .login-night-lamp {
+  box-shadow:
+    0 0 6px 2px rgba(255, 250, 220, 0.85),
+    0 0 18px 6px rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.45),
+    0 0 36px 12px rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.2);
+}
+:root[data-theme="light"] .login-night-horizon-glow {
+  background: radial-gradient(
+    ellipse 85% 100% at 50% 100%,
+    rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.14) 0%,
+    rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.04) 45%,
+    transparent 72%
+  );
+}
+
 /* Admin portal — violet accent overrides gold neo tokens within this subtree */
 .admin-portal {
   --neo-accent-r: 139;
@@ -551,7 +1043,11 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   --accent: var(--neo-accent);
   --accent-dim: var(--neo-accent-dim);
 }
-.sidebar-icon { font-size: 1.25rem; line-height: 1; flex-shrink: 0; }
+:root[data-theme="light"] .sidebar[data-collapsed="true"] .theme-toggle-sidebar .sidebar-label {
+  display: none;
+}
+
+.sidebar-icon { font-size: 1.25rem; line-height: 1; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
 .sidebar-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sidebar[data-collapsed="true"] .sidebar-auth-badge,
 .sidebar[data-collapsed="true"] .sidebar-auth .sidebar-label {

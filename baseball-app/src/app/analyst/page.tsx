@@ -44,7 +44,7 @@ function StatRow({ children }: { children: ReactNode }) {
 function StatPair({ label, value }: { label: string; value: ReactNode }) {
   return (
     <span className="inline-flex min-w-0 items-baseline gap-1.5">
-      <span className="shrink-0 font-semibold text-white">{label}</span>
+      <span className="shrink-0 font-semibold text-[var(--text)]">{label}</span>
       <span className="min-w-[2.75rem] font-semibold text-[var(--accent)] sm:min-w-[3rem]">{value}</span>
     </span>
   );
@@ -170,7 +170,7 @@ export default async function AnalystDashboard() {
 
       {/* Team batting (left) + pitching (right); stacked rows per side */}
       <div className="card-tech rounded-xl border p-6">
-        <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-white">
+        <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-[var(--text)]">
           Team stats
         </h2>
         <div className="mt-4 grid grid-cols-1 gap-8 text-sm leading-relaxed [font-family:var(--font-mono)] lg:grid-cols-3 lg:items-start lg:gap-8 xl:gap-10">
@@ -207,13 +207,13 @@ export default async function AnalystDashboard() {
               </p>
               <StatRow>
                 <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                  <span className="shrink-0 font-semibold text-white">RISP</span>
+                  <span className="shrink-0 font-semibold text-[var(--text)]">RISP</span>
                   <span className="min-w-[2.75rem] font-semibold text-[var(--accent)] sm:min-w-[3rem]">
                     {teamStatsRisp != null ? formatAvgLike(teamStatsRisp.avg) : "—"}
                   </span>
                   {teamStatsRisp != null && teamStatsRisp.pa != null && teamStatsRisp.pa > 0 && (
                     <span className="text-[11px] text-[var(--text-muted)]">
-                      (<span className="text-white">{teamStatsRisp.h ?? 0} for {teamStatsRisp.ab ?? 0}</span>)
+                      (<span className="text-[var(--text-muted)]">{teamStatsRisp.h ?? 0} for {teamStatsRisp.ab ?? 0}</span>)
                     </span>
                   )}
                 </span>

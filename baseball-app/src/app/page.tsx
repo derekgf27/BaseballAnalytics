@@ -6,6 +6,7 @@ import {
 } from "@/lib/auth/roles";
 import { getSessionWithRole } from "@/lib/auth/session";
 import { SidebarAuthSession } from "@/components/auth/SidebarAuthSession";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { APP_NAME, APP_TAGLINE } from "@/lib/appBrand";
 
 function isAuthEnforced(): boolean {
@@ -22,20 +23,19 @@ export default async function Home() {
 
   return (
     <div className="home-page flex min-h-screen flex-col bg-[var(--bg-base)]">
-      {authOn && session ? (
-        <div className="flex justify-end px-4 pt-4 sm:px-6">
+      <div className="relative z-10 flex items-center justify-end gap-3 px-4 pt-4 sm:px-6">
+        <ThemeToggle variant="bar" />
+        {authOn && session ? (
           <SidebarAuthSession variant="bar" />
-        </div>
-      ) : !authOn ? (
-        <div className="flex justify-end px-4 pt-4 sm:px-6">
+        ) : !authOn ? (
           <Link
             href="/login"
             className="text-sm font-medium text-[var(--accent)] hover:underline"
           >
             Sign in
           </Link>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
       <header className="shrink-0 py-8 text-center sm:py-10">
         <div
@@ -59,7 +59,7 @@ export default async function Home() {
         {showAnalyst ? (
           <Link
             href="/analyst"
-            className="home-mode-pane home-mode-pane-analyst group relative flex min-h-[40vh] flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-[var(--accent)]/60 bg-[var(--accent-dim)]/40 px-6 py-12 shadow-[0_0_32px_rgba(214,186,72,0.32)] transition sm:min-h-[36vh] sm:max-w-md focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 focus:ring-offset-[var(--bg-base)] hover:border-[var(--accent)] hover:bg-[var(--accent-dim)]/60"
+            className="home-mode-pane home-mode-pane-analyst group relative flex min-h-[40vh] flex-1 flex-col items-center justify-center gap-3 rounded-xl px-6 py-12 transition sm:min-h-[36vh] sm:max-w-md focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 focus:ring-offset-[var(--bg-base)]"
           >
             <span className="text-4xl sm:text-5xl" aria-hidden>
               📊
@@ -70,7 +70,7 @@ export default async function Home() {
             <p className="max-w-[260px] text-center text-sm text-[var(--text-muted)]">
               Log games, manage players, view charts and overrides.
             </p>
-            <span className="mt-1 text-xs font-medium uppercase tracking-wider text-[var(--accent)] opacity-0 transition group-hover:opacity-100">
+            <span className="home-mode-pane-enter mt-1 text-xs font-medium uppercase tracking-wider text-[var(--accent)] opacity-0 transition group-hover:opacity-100">
               Enter →
             </span>
           </Link>
@@ -79,7 +79,7 @@ export default async function Home() {
         {showCoach ? (
           <Link
             href="/coach"
-            className="home-mode-pane home-mode-pane-coach group relative flex min-h-[40vh] flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-[var(--accent-coach)]/60 bg-[var(--accent-coach-dim)]/40 px-6 py-12 shadow-[0_0_32px_rgba(214,186,72,0.32)] transition sm:min-h-[36vh] sm:max-w-md focus:outline-none focus:ring-2 focus:ring-[var(--accent-coach)] focus:ring-offset-2 focus:ring-offset-[var(--bg-base)] hover:border-[var(--accent-coach)] hover:bg-[var(--accent-coach-dim)]/60"
+            className="home-mode-pane home-mode-pane-coach group relative flex min-h-[40vh] flex-1 flex-col items-center justify-center gap-3 rounded-xl px-6 py-12 transition sm:min-h-[36vh] sm:max-w-md focus:outline-none focus:ring-2 focus:ring-[var(--accent-coach)] focus:ring-offset-2 focus:ring-offset-[var(--bg-base)]"
           >
             <span className="text-4xl sm:text-5xl" aria-hidden>
               👟
@@ -90,7 +90,7 @@ export default async function Home() {
             <p className="max-w-[260px] text-center text-sm text-[var(--text-muted)]">
               Today&apos;s lineup, players, stats, and green lights.
             </p>
-            <span className="mt-1 text-xs font-medium uppercase tracking-wider text-[var(--accent-coach)] opacity-0 transition group-hover:opacity-100">
+            <span className="home-mode-pane-enter home-mode-pane-enter--coach mt-1 text-xs font-medium uppercase tracking-wider opacity-0 transition group-hover:opacity-100">
               Enter →
             </span>
           </Link>
@@ -99,7 +99,7 @@ export default async function Home() {
         {showAdmin ? (
           <Link
             href="/admin/users"
-            className="home-mode-pane group relative flex min-h-[40vh] flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-violet-500/50 bg-violet-500/10 px-6 py-12 shadow-[0_0_32px_rgba(139,92,246,0.22)] transition sm:min-h-[36vh] sm:max-w-md focus:outline-none focus:ring-2 focus:ring-violet-400 focus:ring-offset-2 focus:ring-offset-[var(--bg-base)] hover:border-violet-400/70 hover:bg-violet-500/15"
+            className="home-mode-pane home-mode-pane-admin group relative flex min-h-[40vh] flex-1 flex-col items-center justify-center gap-3 rounded-xl px-6 py-12 transition sm:min-h-[36vh] sm:max-w-md focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 focus:ring-offset-[var(--bg-base)]"
           >
             <span className="text-4xl sm:text-5xl" aria-hidden>
               🛡️
@@ -110,7 +110,7 @@ export default async function Home() {
             <p className="max-w-[260px] text-center text-sm text-[var(--text-muted)]">
               Manage user accounts, roles, and access.
             </p>
-            <span className="mt-1 text-xs font-medium uppercase tracking-wider text-violet-300 opacity-0 transition group-hover:opacity-100">
+            <span className="home-mode-pane-enter home-mode-pane-enter--admin mt-1 text-xs font-medium uppercase tracking-wider opacity-0 transition group-hover:opacity-100">
               Enter →
             </span>
           </Link>

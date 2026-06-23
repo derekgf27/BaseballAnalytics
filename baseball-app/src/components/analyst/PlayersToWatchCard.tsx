@@ -54,14 +54,14 @@ function TrendPair({ formatted }: { formatted: string }) {
   const low = Math.min(p.a, p.b);
   const high = Math.max(p.a, p.b);
   const cls = (n: number) => {
-    if (p.a === p.b) return "font-semibold text-white";
+    if (p.a === p.b) return "font-semibold text-[var(--text-muted)]";
     if (n === low) return "font-semibold text-[var(--danger)]";
     return "font-semibold text-[var(--success)]";
   };
   return (
     <span className="inline-flex flex-wrap items-baseline justify-end gap-x-1">
       <span className={cls(p.a)}>{p.left}</span>
-      <span className="font-medium text-white">→</span>
+      <span className="font-medium text-[var(--text-muted)]">→</span>
       <span className={cls(p.b)}>{p.right}</span>
     </span>
   );
@@ -79,7 +79,7 @@ function StatTrendLines({ row }: { row: PlayersToWatchRow }) {
     <div className="space-y-1 text-right">
       {row.trendLines.map((line) => (
         <p key={line.label} className={trendStatLine}>
-          <span className="text-[11px] font-semibold text-white sm:text-xs">{line.label}</span>{" "}
+          <span className="text-[11px] font-semibold text-[var(--text)] sm:text-xs">{line.label}</span>{" "}
           <TrendPair formatted={line.formatted} />
         </p>
       ))}
@@ -98,12 +98,12 @@ export function PlayersToWatchCard({
   return (
     <div className="card-tech flex min-h-0 flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-card)]">
       <div className="border-b border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3">
-        <h2 className="font-display text-xs font-semibold uppercase tracking-wider text-white">
+        <h2 className="font-display text-xs font-semibold uppercase tracking-wider text-[var(--text)]">
           Players to watch
         </h2>
         <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">Season → last 10 PA</p>
         {isPreview && (
-          <p className="mt-2 rounded border border-amber-500/25 bg-amber-500/10 px-2 py-1.5 text-[11px] leading-snug text-amber-200/90">
+          <p className="players-watch-preview-note mt-2 rounded border border-amber-500/25 bg-amber-500/10 px-2 py-1.5 text-[11px] leading-snug">
             Preview — sample stats so you can see the layout. Real rows appear when a player’s
             last 10 PA diverges by more than 100 points in any slash line.
           </p>
@@ -128,10 +128,10 @@ export function PlayersToWatchCard({
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="truncate font-semibold text-[var(--accent)]">{row.name}</p>
-                        <p className="mt-0.5 text-sm font-medium uppercase tracking-wide text-white">
+                        <p className="mt-0.5 text-sm font-medium uppercase tracking-wide text-[var(--text-muted)]">
                           {row.position}
                         </p>
-                        <p className="mt-1 text-sm font-medium tabular-nums leading-snug text-white">
+                        <p className="mt-1 text-sm font-medium tabular-nums leading-snug text-[var(--text)]">
                           Last 10 PA: {row.last10PaSummary}
                         </p>
                       </div>

@@ -70,12 +70,12 @@ export function roleLabel(role: AppRole): string {
 
 export function roleBadgeClassName(role: AppRole): string {
   const base =
-    "rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide sm:text-sm";
+    "role-badge rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide sm:text-sm";
   if (role === "coach") {
-    return `${base} border-yellow-500/80 bg-yellow-400 text-[#0d1218]`;
+    return `${base} role-badge--coach border-yellow-500/80 bg-yellow-400 text-[#0d1218]`;
   }
   if (role === "admin") {
-    return `${base} border-violet-500/50 bg-violet-500/20 text-violet-200`;
+    return `${base} role-badge--admin`;
   }
-  return `${base} border-[var(--neo-border)] bg-[var(--neo-bg-card)] text-[var(--neo-text)]`;
+  return `${base} role-badge--analyst border-[var(--neo-border)] bg-[var(--neo-bg-card)] text-[var(--neo-text)]`;
 }
