@@ -36,6 +36,32 @@ export async function resolveUserRole(supabase: SupabaseClient, user: User): Pro
   return roleFromUserMetadata(user);
 }
 
+const MIDDLEWARE_PROFILE_ROLE_TIMEOUT_MS = 2500;
+
+/**
+ * Edge middleware: read JWT role first (no network), then profiles with a short timeout.
+ * Avoids Vercel `MIDDLEWARE_INVOCATION_TIMEOUT` when Supabase is slow.
+ */
+export async function resolveUserRoleForMiddleware(
+  supabase: SupabaseClient,
+  user: User
+): Promise<AppRole | null> {
+  const fromMeta = roleFromUserMetadata(user);
+  if (fromMeta) return fromMeta;
+
+  try {
+    const fromProfile = await Promise.race([
+      fetchProfileRole(supabase, user.id),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), MIDDLEWARE_PROFILE_ROLE_TIMEOUT_MS)),
+    ]);
+    if (fromProfile) return fromProfile;
+  } catch {
+    // fall through
+  }
+
+  return roleFromUserMetadata(user);
+}
+
 export async function fetchUserProfile(
   supabase: SupabaseClient,
   userId: string

@@ -1,8 +1,25 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { isEmailAllowed } from "@/lib/auth/allowlist";
-import { resolveUserRole } from "@/lib/auth/profile";
+import { resolveUserRoleForMiddleware } from "@/lib/auth/profile";
 import { isPathAllowedForRole, resolvePostLoginPath, type AppRole } from "@/lib/auth/roles";
+
+const MIDDLEWARE_AUTH_TIMEOUT_MS = 8000;
+
+function hasSupabaseAuthCookie(request: NextRequest): boolean {
+  return request.cookies.getAll().some((c) => c.name.includes("-auth-token"));
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
+    ]);
+  } catch {
+    return null;
+  }
+}
 
 /** When false, anyone can use the app without signing in (default). Set AUTH_REQUIRED=true to enforce login. */
 function isAuthEnforced(): boolean {
@@ -22,6 +39,11 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   if (!isAuthEnforced()) {
+    return NextResponse.next();
+  }
+
+  // Anonymous visitors on public routes skip Supabase round-trips.
+  if (isPublicPath(pathname) && !hasSupabaseAuthCookie(request)) {
     return NextResponse.next();
   }
 
@@ -48,9 +70,15 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const authResult = await withTimeout(supabase.auth.getUser(), MIDDLEWARE_AUTH_TIMEOUT_MS);
+  if (!authResult) {
+    if (isPublicPath(pathname)) return NextResponse.next();
+    const login = new URL("/login", request.url);
+    login.searchParams.set("next", pathname + request.nextUrl.search);
+    return NextResponse.redirect(login);
+  }
+
+  const user = authResult.data.user;
 
   if (user && !isEmailAllowed(user.email ?? undefined)) {
     await supabase.auth.signOut();
@@ -65,7 +93,7 @@ export async function middleware(request: NextRequest) {
 
   let role: AppRole | null = null;
   if (user) {
-    role = await resolveUserRole(supabase, user);
+    role = await resolveUserRoleForMiddleware(supabase, user);
   }
 
   if (user && !role && pathname !== "/forbidden" && !isPublicPath(pathname)) {
