@@ -1,9 +1,70 @@
 import {
   countAfterPitch,
   replayCountAtEndOfSequence,
+  resultImpliesBattedBallInPlay,
+  summarizePitchSequence,
+  withInferredTerminalOutcomePitches,
   type PitchSequenceEntry,
 } from "@/lib/compute/pitchSequence";
-import type { PitchEvent, PitchOutcome, PitchTrackerLogResult, PitchTrackerPitch, PlateAppearance } from "@/lib/types";
+import type {
+  PAResult,
+  PitchEvent,
+  PitchOutcome,
+  PitchTrackerLogResult,
+  PitchTrackerPitch,
+  PlateAppearance,
+} from "@/lib/types";
+
+export type RecordDraftPitchSequenceSummary = ReturnType<typeof summarizePitchSequence>;
+
+/**
+ * Pitch-log entries for the open AB: analyst pad rows first, else coach rows with a logged result.
+ */
+export function recordDraftPitchSequenceEntries(
+  draftLog: PitchSequenceEntry[],
+  coachRows: ReadonlyArray<{ pitch_number: number; result: PitchTrackerLogResult | null }>
+): PitchSequenceEntry[] {
+  if (draftLog.length > 0) return draftLog;
+  const coachResolved = coachRows.filter(
+    (r): r is typeof r & { result: PitchTrackerLogResult } => r.result != null
+  );
+  if (coachResolved.length > 0) return pitchTrackerRowsToSequenceEntries(coachResolved);
+  return [];
+}
+
+/**
+ * Full sequence for Record display/save: logged pitches + inferred terminal BIP / walk / HBP pitch.
+ * When outcome is ROE (or any BIP) with no log, synthesizes one `in_play` pitch so the counter shows 1.
+ */
+export function recordDraftPitchSequenceWithTerminal(
+  draftLog: PitchSequenceEntry[],
+  coachRows: ReadonlyArray<{ pitch_number: number; result: PitchTrackerLogResult | null }>,
+  result: PAResult | null
+): PitchSequenceEntry[] {
+  const entries = recordDraftPitchSequenceEntries(draftLog, coachRows);
+  const withTerminal = withInferredTerminalOutcomePitches(entries, result);
+  if (withTerminal.length > 0) return withTerminal;
+  if (result != null && resultImpliesBattedBallInPlay(result)) {
+    return [{ balls_before: 0, strikes_before: 0, outcome: "in_play" }];
+  }
+  if (result === "bb" || result === "ibb") {
+    return [{ balls_before: 0, strikes_before: 0, outcome: "ball" }];
+  }
+  if (result === "hbp") {
+    return [{ balls_before: 0, strikes_before: 0, outcome: "hbp" }];
+  }
+  return [];
+}
+
+export function recordDraftPitchSequenceSummary(
+  draftLog: PitchSequenceEntry[],
+  coachRows: ReadonlyArray<{ pitch_number: number; result: PitchTrackerLogResult | null }>,
+  result: PAResult | null
+): RecordDraftPitchSequenceSummary | null {
+  const sequence = recordDraftPitchSequenceWithTerminal(draftLog, coachRows, result);
+  if (sequence.length === 0) return null;
+  return summarizePitchSequence(sequence);
+}
 
 /** Synthetic PA id for in-progress coach tracker pitches (merged into matchup cards before Record saves). */
 export const COACH_LIVE_AB_PA_ID = "__coach_live_ab__";

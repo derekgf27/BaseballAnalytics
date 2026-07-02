@@ -1,4 +1,5 @@
 import { REGULATION_INNINGS } from "@/lib/leagueConfig";
+import { paDefensiveErrorCountForLinescore } from "@/lib/record/recordPaFielding";
 import type { PAResult, PlateAppearance } from "@/lib/types";
 
 const HIT_RESULTS = new Set<PAResult>(["single", "double", "triple", "hr"]);
@@ -64,27 +65,25 @@ export function isReachedOnError(pa: PlateAppearance): boolean {
  * Count this PA as one team error on the linescore (ROE, hit + E, or non-hit PA with a charged fielder, e.g. throw on a steal).
  */
 export function paCountsAsDefensiveErrorForLinescore(pa: PlateAppearance): boolean {
-  if (pa.result === "reached_on_error") return true;
-  if (pa.result === "hr") return false;
-  return Boolean(pa.error_fielder_id);
+  return paDefensiveErrorCountForLinescore(pa) > 0;
 }
 
 /**
  * Errors charged to the **home** team (they are fielding in the top of each inning).
  */
 export function totalErrorsChargedToHome(pas: PlateAppearance[]): number {
-  return usablePas(pas).filter(
-    (p) => p.inning_half === "top" && paCountsAsDefensiveErrorForLinescore(p)
-  ).length;
+  return usablePas(pas)
+    .filter((p) => p.inning_half === "top")
+    .reduce((s, p) => s + paDefensiveErrorCountForLinescore(p), 0);
 }
 
 /**
  * Errors charged to the **away** team (they field in the bottom of each inning).
  */
 export function totalErrorsChargedToAway(pas: PlateAppearance[]): number {
-  return usablePas(pas).filter(
-    (p) => p.inning_half === "bottom" && paCountsAsDefensiveErrorForLinescore(p)
-  ).length;
+  return usablePas(pas)
+    .filter((p) => p.inning_half === "bottom")
+    .reduce((s, p) => s + paDefensiveErrorCountForLinescore(p), 0);
 }
 
 /**

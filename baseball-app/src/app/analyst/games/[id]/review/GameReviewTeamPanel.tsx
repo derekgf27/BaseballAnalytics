@@ -1,7 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
-import { BattingPitchMixCard } from "@/components/analyst/BattingPitchMixCard";
+import { useMemo, useState } from "react";
+import {
+  pitchesByInningForPitcher,
+} from "@/components/analyst/BattingPitchMixCard";
+import { GamePitcherPitchDetailStack } from "@/components/analyst/GamePitcherPitchDetailStack";
+import { PitchesByInningModal } from "@/components/analyst/PitchesByInningModal";
 import { plateAppearancesForPitchingSide } from "@/lib/compute/gamePitchingBox";
 import {
   batterBatsByIdFromPlayers,
@@ -36,8 +40,8 @@ type GameReviewTeamPanelProps = {
   onBatterRowClick: (playerId: string) => void;
   batterExpandAll: boolean | null;
   onToggleBatterExpandAll: () => void;
-  pitcherCardsExpanded: boolean;
-  onTogglePitcherCardsExpanded: () => void;
+  pitcherExpandAll: boolean | null;
+  onTogglePitcherExpandAll: () => void;
   sectionIdPrefix: string;
 };
 
@@ -56,12 +60,15 @@ export function GameReviewTeamPanel({
   onBatterRowClick,
   batterExpandAll,
   onToggleBatterExpandAll,
-  pitcherCardsExpanded,
-  onTogglePitcherCardsExpanded,
+  pitcherExpandAll,
+  onTogglePitcherExpandAll,
   sectionIdPrefix,
 }: GameReviewTeamPanelProps) {
   const teamName = side === "away" ? game.away_team : game.home_team;
   const pasPitch = plateAppearancesForPitchingSide(pasAll, side);
+  const [pitchesByInningModalPitcherId, setPitchesByInningModalPitcherId] = useState<string | null>(
+    null
+  );
 
   const eventsByPaId = useMemo(() => groupPitchEventsByPaId(pitchEvents), [pitchEvents]);
   const pasByBatterId = useMemo(() => indexPasByPlayerId(pasTeam, "batter_id"), [pasTeam]);
@@ -71,6 +78,23 @@ export function GameReviewTeamPanel({
   );
   const batterBatsById = useMemo(() => batterBatsByIdFromPlayers(players), [players]);
   const hasPitchLog = pitchEvents.length > 0;
+
+  const pitchesByInningRows = useMemo(() => {
+    if (!pitchesByInningModalPitcherId) return [];
+    return pitchesByInningForPitcher(pasPitch, pitchEvents, pitchesByInningModalPitcherId);
+  }, [pitchesByInningModalPitcherId, pasPitch, pitchEvents]);
+
+  const pitchesByInningTotal = useMemo(
+    () => pitchesByInningRows.reduce((sum, row) => sum + row.pitches, 0),
+    [pitchesByInningRows]
+  );
+
+  const pitchesByInningModalPitcherName = useMemo(() => {
+    if (!pitchesByInningModalPitcherId) return "Pitcher";
+    return (
+      players.find((p) => p.id === pitchesByInningModalPitcherId)?.name?.trim() || "Pitcher"
+    );
+  }, [pitchesByInningModalPitcherId, players]);
 
   const battingSectionId = `${sectionIdPrefix}-batting`;
   const batterDetailSectionId = `${sectionIdPrefix}-batter-detail`;
@@ -145,15 +169,15 @@ export function GameReviewTeamPanel({
                   Pitcher pitch detail
                 </h3>
                 <p className="mt-1 text-xs text-[var(--text-muted)]">
-                  Per-pitcher rates, contact, two-strike, and mix vs LHB / RHB.
+                  Same order as the pitching box. Click a row to expand pitch detail.
                 </p>
               </div>
               <button
                 type="button"
-                onClick={onTogglePitcherCardsExpanded}
+                onClick={onTogglePitcherExpandAll}
                 className="shrink-0 rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1 text-xs font-semibold text-[var(--text-muted)] transition hover:border-[var(--accent)]/50 hover:text-[var(--text)]"
               >
-                {pitcherCardsExpanded ? "Compact pitchers" : "Expanded pitchers"}
+                {pitcherExpandAll === false ? "Expand all pitchers" : "Collapse all pitchers"}
               </button>
             </div>
             {!hasPitchLog ? (
@@ -161,17 +185,31 @@ export function GameReviewTeamPanel({
                 No pitch log for this game — rates and mix need typed pitches on Record.
               </p>
             ) : null}
-            <BattingPitchMixCard
-              pas={pasPitch}
-              players={players}
-              pitchEvents={pitchEvents}
-              batterBatsById={batterBatsById}
-              pitcherCardsLayout={pitcherCardsExpanded ? "expanded" : "compact"}
-              showPitchLogEmptyNote={!hasPitchLog}
-            />
+            <div className="overflow-x-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-2 sm:p-3">
+              <GamePitcherPitchDetailStack
+                pas={pasPitch}
+                players={players}
+                pitchEvents={pitchEvents}
+                batterBatsById={batterBatsById}
+                expandAll={pitcherExpandAll}
+                onPitchesByInningClick={setPitchesByInningModalPitcherId}
+                showPitchLogEmptyNote={!hasPitchLog}
+                cardIdPrefix={sectionIdPrefix}
+              />
+            </div>
           </div>
         </div>
       </div>
+
+      {pitchesByInningModalPitcherId ? (
+        <PitchesByInningModal
+          open
+          pitcherName={pitchesByInningModalPitcherName}
+          rows={pitchesByInningRows}
+          totalPitches={pitchesByInningTotal}
+          onClose={() => setPitchesByInningModalPitcherId(null)}
+        />
+      ) : null}
     </div>
   );
 }

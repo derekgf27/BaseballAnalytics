@@ -151,8 +151,11 @@ export interface PlateAppearance {
   /**
    * Fielder charged with the error: required context for `reached_on_error`, or optional on
    * 1B–3B when the batter still gets the hit but an error allows an extra base (e.g. E8 on throw).
+   * When multiple errors occur on one play, this is the first/primary fielder (legacy compat).
    */
   error_fielder_id?: string | null;
+  /** All fielders charged with an error on this play (may be multiple on one PA). */
+  error_fielder_ids?: string[];
   /** Inning half: top or bottom. */
   inning_half?: "top" | "bottom" | null;
   notes: string | null;

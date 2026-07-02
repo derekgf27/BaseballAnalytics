@@ -8,6 +8,8 @@ import { BaseStateSelector } from "@/components/shared/BaseStateSelector";
 import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
 import { BoxScoreLine } from "@/components/analyst/BoxScoreLine";
 import { PitchTypeStatsModal } from "@/components/coach/PitchTypeStatsModal";
+import { PitchesByInningModal } from "@/components/analyst/PitchesByInningModal";
+import { pitchesByInningForPitcher } from "@/components/analyst/BattingPitchMixCard";
 import { pitchTypeGameDetailFromPas } from "@/lib/compute/pitchTypeGameDetail";
 import { RecordBoxScoreSection } from "@/components/record/RecordBoxScoreSection";
 import { RecordLastPaSummary } from "@/components/record/RecordLastPaSummary";
@@ -34,7 +36,6 @@ import {
   writeUnavailablePlayers,
   type UnavailableBySide,
 } from "@/lib/record/recordUnavailablePlayers";
-import { pitchEventsFromDraftPitchLogWithTerminal } from "@/lib/compute/contactProfileFromPas";
 import {
   clampPitchCountBefore,
   hasPutawayStrikeAtTwoStrikes,
@@ -42,7 +43,6 @@ import {
   replayCountAtEndOfSequence,
   resultImpliesBattedBallInPlay,
   summarizePitchSequence,
-  withInferredTerminalOutcomePitches,
   type PitchSequenceEntry,
 } from "@/lib/compute/pitchSequence";
 import { battingSideFromHalf, nextHalfInningAfterThreeOuts } from "@/lib/gameBattingSide";
@@ -58,6 +58,8 @@ import {
   mapCoachPitchTypesToSequence,
   mergeTrackerPitchesIntoPitchEvents,
   nextOpenPitchNumberInGroup,
+  recordDraftPitchSequenceSummary,
+  recordDraftPitchSequenceWithTerminal,
   recordLiveTrackerSyntheticPa,
   sortCoachPitchRowsForAb,
 } from "@/lib/compute/pitchTrackerCount";
@@ -187,8 +189,8 @@ import {
 } from "@/lib/record/recordPaOutcome";
 import {
   computeShowEarnedUnearnedRunControls,
-  persistPlateAppearanceErrorFielderId,
-  playerIdsWhoReachedOnErrorFromPas,
+  persistPlateAppearanceErrorFielders,
+  playerIdsReachedOnErrorOnCurrentTrip,
   unearnedScorerIdsForSave,
 } from "@/lib/record/recordPaFielding";
 import {
@@ -323,7 +325,7 @@ export default function RecordPageClient({
     runsScoredPlayerIds,
     unearnedRunsScoredPlayerIds,
     inheritedForPriorPitcher,
-    errorFielderId,
+    errorFielderIds,
     hitDirection,
     battedBallType,
     pitcherId,
@@ -351,7 +353,7 @@ export default function RecordPageClient({
     setRunsScoredPlayerIds,
     setUnearnedRunsScoredPlayerIds,
     setInheritedForPriorPitcher,
-    setErrorFielderId,
+    setErrorFielderIds,
     setHitDirection,
     setBattedBallType,
     setPitcherId,
@@ -372,7 +374,7 @@ export default function RecordPageClient({
   const [showDetails, setShowDetails] = useState(false);
   const [errorFielderModalMode, setErrorFielderModalMode] = useState<null | "roe" | "hit">(null);
   const prevResultBeforeRoeModalRef = useRef<PAResult | null>(null);
-  const prevErrorFielderIdBeforeRoeModalRef = useRef<string | null>(null);
+  const prevErrorFielderIdsBeforeRoeModalRef = useRef<string[]>([]);
   const hrScorersSeededRef = useRef(false);
   const [baserunningEvents, setBaserunningEvents] = useState<BaserunningEvent[]>([]);
   const draftPitchLogEmptyRef = useRef(true);
@@ -569,24 +571,30 @@ export default function RecordPageClient({
     }
   }, [countBalls, countStrikes, draftPitchLog.length]);
 
-  /** Derive count / pitch totals from pitch-by-pitch log (+ inferred final `in_play` when Result is a batted ball). */
+  /** Derive count / pitch totals from pitch log (+ coach rows) and inferred terminal pitch when Outcome is set. */
+  const draftPitchSequenceSummary = useMemo(
+    () =>
+      recordDraftPitchSequenceSummary(
+        draftPitchLog.map(({ balls_before, strikes_before, outcome }) => ({
+          balls_before,
+          strikes_before,
+          outcome,
+        })),
+        coachRowsThisAb,
+        result
+      ),
+    [draftPitchLog, coachRowsThisAb, result]
+  );
+
   useEffect(() => {
-    if (draftPitchLog.length === 0) return;
-    const entries: PitchSequenceEntry[] = draftPitchLog.map(
-      ({ balls_before, strikes_before, outcome }) => ({
-        balls_before,
-        strikes_before,
-        outcome,
-      })
-    );
-    const s = summarizePitchSequence(withInferredTerminalOutcomePitches(entries, result));
-    setPitchesSeen(s.pitches_seen);
-    setStrikesThrown(s.strikes_thrown);
-    setCountBalls(s.finalBalls);
-    setCountStrikes(s.finalStrikes);
-    const f = s.first_pitch_strike;
+    if (!draftPitchSequenceSummary) return;
+    setPitchesSeen(draftPitchSequenceSummary.pitches_seen);
+    setStrikesThrown(draftPitchSequenceSummary.strikes_thrown);
+    setCountBalls(draftPitchSequenceSummary.finalBalls);
+    setCountStrikes(draftPitchSequenceSummary.finalStrikes);
+    const f = draftPitchSequenceSummary.first_pitch_strike;
     setFirstCountFromZero(f === true ? "strike" : f === false ? "ball" : null);
-  }, [draftPitchLog, result]);
+  }, [draftPitchSequenceSummary]);
 
   const prevDraftPitchLenRef = useRef(0);
   useEffect(() => {
@@ -602,30 +610,17 @@ export default function RecordPageClient({
   }, [draftPitchLog.length]);
 
   /**
-   * No pitch-by-pitch log: choosing a batted-ball result (1B–HR, out, sac, etc.) assumes at least one pitch.
-   * Default to 1 pitch / 1 strike (first-pitch swing/contact → FPS yes) so quick saves don't require typing totals.
-   * Clear that default when switching to a non–batted-ball result if totals are still 1/1.
+   * No pitch-by-pitch log: clear 1/1 quick defaults when leaving a terminal outcome that auto-filled totals.
+   * (Logged sequences use {@link draftPitchSequenceSummary} instead.)
    */
   const prevResultForBipDefaultsRef = useRef<PAResult | null>(null);
   useEffect(() => {
-    if (draftPitchLog.length > 0) {
+    if (draftPitchLog.length > 0 || draftPitchSequenceSummary != null) {
       prevResultForBipDefaultsRef.current = result;
       return;
     }
     const prev = prevResultForBipDefaultsRef.current;
-    if (result != null && resultImpliesBattedBallInPlay(result)) {
-      const pitchesEff = pitchesSeen === "" ? 1 : pitchesSeen;
-      if (pitchesSeen === "") setPitchesSeen(1);
-      setStrikesThrown((s) => {
-        // Number inputs often store 0 instead of ""; 0 strikes + 1 pitch makes FPS infer "Ball".
-        // For the one-pitch BIP quick path, default to 1 strike (typical swing/contact).
-        if (typeof pitchesEff === "number" && pitchesEff === 1 && (s === "" || s === 0)) return 1;
-        return s;
-      });
-    } else if (result != null && isWalkOrHbpResult(result)) {
-      if (pitchesSeen === "") setPitchesSeen(1);
-      setStrikesThrown((s) => (s === "" || s === 0 ? 0 : s));
-    } else if (
+    if (
       prev != null &&
       resultImpliesBattedBallInPlay(prev) &&
       (result === null || !resultImpliesBattedBallInPlay(result))
@@ -637,18 +632,18 @@ export default function RecordPageClient({
       setStrikesThrown((s) => (s === 0 || s === "" ? "" : s));
     }
     prevResultForBipDefaultsRef.current = result;
-  }, [result, draftPitchLog.length]);
+  }, [result, draftPitchLog.length, draftPitchSequenceSummary]);
 
   useEffect(() => {
     if (result == null) return;
     if (result === "reached_on_error") return;
     if (result === "hr") {
-      setErrorFielderId(null);
+      setErrorFielderIds([]);
       return;
     }
     if (RESULT_ALLOWS_OPTIONAL_ERROR_ON_HIT.has(result)) return;
     if (!hasRunnersOnBaseForm(baseState)) {
-      setErrorFielderId(null);
+      setErrorFielderIds([]);
     }
   }, [result, baseState]);
 
@@ -796,11 +791,26 @@ export default function RecordPageClient({
 
   const playerIdsReachedOnError = useMemo(
     () =>
-      playerIdsWhoReachedOnErrorFromPas(
+      playerIdsReachedOnErrorOnCurrentTrip(
         allPAsForGame,
-        result === "reached_on_error" ? batterId : null
+        selectedGameId ?? "",
+        inning,
+        inningHalf,
+        result === "reached_on_error" ? batterId : null,
+        occupiedRunnerIdsFromForm(baseState, runnerOn1bId, runnerOn2bId, runnerOn3bId)
       ),
-    [allPAsForGame, result, batterId]
+    [
+      allPAsForGame,
+      selectedGameId,
+      inning,
+      inningHalf,
+      result,
+      batterId,
+      baseState,
+      runnerOn1bId,
+      runnerOn2bId,
+      runnerOn3bId,
+    ]
   );
 
   const showEarnedUnearnedRunControls = useMemo(
@@ -812,7 +822,7 @@ export default function RecordPageClient({
         inning,
         inningHalf,
         result,
-        errorFielderId
+        errorFielderIds
       ),
     [
       selectedGameId,
@@ -820,7 +830,7 @@ export default function RecordPageClient({
       inning,
       inningHalf,
       result,
-      errorFielderId,
+      errorFielderIds,
     ]
   );
   /** Defense this half: who is on the mound (top → home pitches; bottom → away pitches). */
@@ -1064,32 +1074,19 @@ export default function RecordPageClient({
   const draftPaForPitchMix = useMemo<PlateAppearance | null>(() => {
     if (!selectedGameId || !pitcherId) return null;
 
-    let seqSummary: ReturnType<typeof summarizePitchSequence> | null = null;
-    if (draftPitchLog.length > 0) {
-      const entries: PitchSequenceEntry[] = draftPitchLog.map(
-        ({ balls_before, strikes_before, outcome }) => ({
-          balls_before,
-          strikes_before,
-          outcome,
-        })
-      );
-      seqSummary = summarizePitchSequence(
-        withInferredTerminalOutcomePitches(entries, result)
-      );
-    }
-
-    const fromLog = seqSummary != null && seqSummary.pitches_seen > 0;
+    const seqSummary = draftPitchSequenceSummary;
+    const fromSequence = seqSummary != null && seqSummary.pitches_seen > 0;
     const hasManual = pitchesSeen !== "" && pitchesSeen >= 0;
-    if (!fromLog && !hasManual) return null;
-    if (hasManual && !fromLog && strikesThrown === "") return null;
+    if (!fromSequence && !hasManual) return null;
+    if (hasManual && !fromSequence && strikesThrown === "") return null;
 
-    const pitchCount = fromLog ? seqSummary!.pitches_seen : (pitchesSeen as number);
-    const strikesCount = fromLog
+    const pitchCount = fromSequence ? seqSummary!.pitches_seen : (pitchesSeen as number);
+    const strikesCount = fromSequence
       ? seqSummary!.strikes_thrown
       : hasManual && strikesThrown !== ""
         ? (strikesThrown as number)
         : 0;
-    const inferredFirstPitch = fromLog
+    const inferredFirstPitch = fromSequence
       ? seqSummary!.first_pitch_strike
       : pitchCount > 0
         ? firstCountFromZero === null
@@ -1108,8 +1105,8 @@ export default function RecordPageClient({
       outs,
       base_state: baseState,
       score_diff: 0,
-      count_balls: fromLog ? seqSummary!.finalBalls : countBalls,
-      count_strikes: fromLog ? seqSummary!.finalStrikes : countStrikes,
+      count_balls: fromSequence ? seqSummary!.finalBalls : countBalls,
+      count_strikes: fromSequence ? seqSummary!.finalStrikes : countStrikes,
       result: result ?? "other",
       contact_quality: null,
       hit_direction:
@@ -1132,7 +1129,7 @@ export default function RecordPageClient({
   }, [
     selectedGameId,
     pitcherId,
-    draftPitchLog,
+    draftPitchSequenceSummary,
     result,
     pitchesSeen,
     strikesThrown,
@@ -1176,17 +1173,31 @@ export default function RecordPageClient({
     liveAbPaId,
   ]);
   const pitchEventsBaseForMix = useMemo(() => {
-    if (!draftPaForPitchMix || draftPitchLog.length === 0) return gamePitchEvents;
-    const synthetic = pitchEventsFromDraftPitchLogWithTerminal(
-      "__draft_pitch_mix__",
-      draftPitchLog,
+    if (!draftPaForPitchMix) return gamePitchEvents;
+    const sequence = recordDraftPitchSequenceWithTerminal(
+      draftPitchLog.map(({ balls_before, strikes_before, outcome }) => ({
+        balls_before,
+        strikes_before,
+        outcome,
+      })),
+      coachRowsThisAb,
       result
     );
+    if (sequence.length === 0) return gamePitchEvents;
+    const synthetic = sequence.map((row, i) => ({
+      id: `__draft_pe___draft_pitch_mix__${i}`,
+      pa_id: "__draft_pitch_mix__",
+      pitch_index: i + 1,
+      balls_before: row.balls_before,
+      strikes_before: row.strikes_before,
+      outcome: row.outcome,
+      pitch_type: null,
+    }));
     return [
       ...gamePitchEvents.filter((e) => e.pa_id !== "__draft_pitch_mix__"),
       ...synthetic,
     ];
-  }, [gamePitchEvents, draftPaForPitchMix, draftPitchLog, result]);
+  }, [gamePitchEvents, draftPaForPitchMix, draftPitchLog, coachRowsThisAb, result]);
   const mergedGamePitchEvents = useMemo(() => {
     const live =
       hasLiveCoachTrackerActivity && coachRowsThisAb.length > 0
@@ -1229,6 +1240,9 @@ export default function RecordPageClient({
   }, [distributionPitchEventsForPitchMixCard, pasForCurrentBatterPitchData]);
 
   const [statPitchType, setStatPitchType] = useState<PitchTrackerPitchType | null>(null);
+  const [pitchesByInningModalPitcherId, setPitchesByInningModalPitcherId] = useState<string | null>(
+    null
+  );
 
   const statPitchTypeDetail = useMemo(() => {
     if (!statPitchType || !pitcherId) return null;
@@ -1253,6 +1267,27 @@ export default function RecordPageClient({
     if (!pitcherId) return "Pitcher";
     return players.find((p) => p.id === pitcherId)?.name?.trim() || "Pitcher";
   }, [pitcherId, players]);
+
+  const pitchesByInningRows = useMemo(() => {
+    if (!pitchesByInningModalPitcherId) return [];
+    return pitchesByInningForPitcher(
+      pasForPitchMixUnderPitchingTable,
+      pitchEventsForPitchMixCard,
+      pitchesByInningModalPitcherId
+    );
+  }, [pitchesByInningModalPitcherId, pasForPitchMixUnderPitchingTable, pitchEventsForPitchMixCard]);
+
+  const pitchesByInningTotal = useMemo(
+    () => pitchesByInningRows.reduce((sum, row) => sum + row.pitches, 0),
+    [pitchesByInningRows]
+  );
+
+  const pitchesByInningModalPitcherName = useMemo(() => {
+    if (!pitchesByInningModalPitcherId) return "Pitcher";
+    return (
+      players.find((p) => p.id === pitchesByInningModalPitcherId)?.name?.trim() || "Pitcher"
+    );
+  }, [pitchesByInningModalPitcherId, players]);
 
   const currentBatterPitchDataName = useMemo(() => {
     if (!selectedBatter) return "Select batter";
@@ -1391,6 +1426,11 @@ export default function RecordPageClient({
     return pool.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
   }, [selectedGame, pitchingSide, lineupAway, lineupHome, players, pitcherId]);
 
+  const errorFielderDisplayNames = useMemo(
+    () => errorFielderIds.map((id) => players.find((p) => p.id === id)?.name ?? "?"),
+    [errorFielderIds, players]
+  );
+
   /** Lineup slots + mound pitcher as P when not in saved lineup (same card treatment as C). */
   const positionByPlayerIdForRoeModal = useMemo(() => {
     const base =
@@ -1405,13 +1445,13 @@ export default function RecordPageClient({
   const handleErrorFielderModalCancel = useCallback(() => {
     if (errorFielderModalMode === "roe") {
       setResult(prevResultBeforeRoeModalRef.current);
-      setErrorFielderId(prevErrorFielderIdBeforeRoeModalRef.current);
+      setErrorFielderIds(prevErrorFielderIdsBeforeRoeModalRef.current);
     }
     setErrorFielderModalMode(null);
   }, [errorFielderModalMode]);
 
-  const handleErrorFielderModalConfirm = useCallback((fielderId: string) => {
-    setErrorFielderId(fielderId);
+  const handleErrorFielderModalConfirm = useCallback((fielderIds: string[]) => {
+    setErrorFielderIds(fielderIds);
     setErrorFielderModalMode(null);
   }, []);
 
@@ -1674,7 +1714,7 @@ export default function RecordPageClient({
       firstCountFromZero,
       playNote,
       notes,
-      errorFielderId,
+      errorFielderIds,
       nextBatterIndexBySide,
       battingTablePeekOther,
       draftPitchLogRows: draftPitchLog.map(({ balls_before, strikes_before, outcome }) => ({
@@ -1719,7 +1759,7 @@ export default function RecordPageClient({
     firstCountFromZero,
     playNote,
     notes,
-    errorFielderId,
+    errorFielderIds,
     nextBatterIndexBySide,
     battingTablePeekOther,
     draftPitchLog,
@@ -2162,14 +2202,15 @@ export default function RecordPageClient({
       );
       return;
     }
-    const sequenceBase: PitchSequenceEntry[] = draftPitchLog.map(
-      ({ balls_before, strikes_before, outcome }) => ({
+    const sequenceForSave = recordDraftPitchSequenceWithTerminal(
+      draftPitchLog.map(({ balls_before, strikes_before, outcome }) => ({
         balls_before,
         strikes_before,
         outcome,
-      })
+      })),
+      coachRowsThisAb,
+      result
     );
-    const sequenceForSave = withInferredTerminalOutcomePitches(sequenceBase, result);
     const coachTypesForSave = mapCoachPitchTypesToSequence(sequenceForSave, coachRowsThisAb);
     const pitchLogForSave: PitchEventDraft[] | undefined =
       sequenceForSave.length > 0
@@ -2262,22 +2303,30 @@ export default function RecordPageClient({
       return;
     }
     if (result === "reached_on_error") {
-      if (!errorFielderId) {
-        showMsg("error", "Select which fielder charged the error.");
+      if (errorFielderIds.length === 0) {
+        showMsg("error", "Select which fielder(s) charged the error.");
         return;
       }
-      if (!fieldersForErrorPicker.some((p) => p.id === errorFielderId)) {
+      const invalidRoe = errorFielderIds.find(
+        (id) => !fieldersForErrorPicker.some((p) => p.id === id)
+      );
+      if (invalidRoe) {
         showMsg("error", "Chosen fielder is not on the defensive team — pick again.");
         return;
       }
     }
-    if (errorFielderId && !fieldersForErrorPicker.some((p) => p.id === errorFielderId)) {
-      showMsg("error", "Chosen fielder is not on the defensive team — pick again.");
-      return;
+    if (errorFielderIds.length > 0) {
+      const invalid = errorFielderIds.find(
+        (id) => !fieldersForErrorPicker.some((p) => p.id === id)
+      );
+      if (invalid) {
+        showMsg("error", "Chosen fielder is not on the defensive team — pick again.");
+        return;
+      }
     }
-    if (result != null && errorFielderId) {
-      const persistedErr = persistPlateAppearanceErrorFielderId(result, baseState, errorFielderId);
-      if (persistedErr === null) {
+    if (result != null && errorFielderIds.length > 0) {
+      const persistedErr = persistPlateAppearanceErrorFielders(result, baseState, errorFielderIds);
+      if (persistedErr.error_fielder_ids.length === 0) {
         showMsg(
           "error",
           "Fielding error doesn't match this outcome and bases — add a runner on base or clear the error."
@@ -2301,13 +2350,17 @@ export default function RecordPageClient({
             inning,
             inningHalf,
         result,
-            errorFielderId
+            errorFielderIds
           ));
       const unearnedScorerIds = unearnedScorerIdsForSave(
         runsScoredIds,
-        playerIdsWhoReachedOnErrorFromPas(
+        playerIdsReachedOnErrorOnCurrentTrip(
           allPAsForGame,
-          result === "reached_on_error" ? batterId : null
+          selectedGameId,
+          inning,
+          inningHalf,
+          result === "reached_on_error" ? batterId : null,
+          occupiedRunnerIdsFromForm(baseState, runnerOn1bId, runnerOn2bId, runnerOn3bId)
         ),
         persistUnearned,
         unearnedRunsScoredPlayerIds
@@ -2338,6 +2391,10 @@ export default function RecordPageClient({
                 : null
               : firstCountFromZero === "strike"
           : null;
+      const persistedErrFields =
+        result != null
+          ? persistPlateAppearanceErrorFielders(result, baseState, errorFielderIds)
+          : { error_fielder_id: null, error_fielder_ids: [] as string[] };
       const pa: Omit<PlateAppearance, "id" | "created_at"> = {
         game_id: selectedGameId,
         batter_id: batterId,
@@ -2360,8 +2417,8 @@ export default function RecordPageClient({
         runs_scored_charged_pitcher_by_scorer: runs_scored_charged_pitcher_by_scorer ?? {},
         pitcher_hand: pitcherHandFromThrows,
         pitcher_id: pitcherId,
-        error_fielder_id:
-          result != null ? persistPlateAppearanceErrorFielderId(result, baseState, errorFielderId) : null,
+        error_fielder_id: persistedErrFields.error_fielder_id,
+        error_fielder_ids: persistedErrFields.error_fielder_ids,
         inning_half: inningHalf ?? "top",
         notes: notesCombined,
       };
@@ -2413,10 +2470,9 @@ export default function RecordPageClient({
             : hitDirection === "opposite_field"
               ? "Oppo"
               : null;
-      const persistedErrId =
-        result != null ? persistPlateAppearanceErrorFielderId(result, baseState, errorFielderId) : null;
-      const errorFielderName =
-        persistedErrId != null ? players.find((p) => p.id === persistedErrId)?.name ?? "?" : null;
+      const errorFielderNames = persistedErrFields.error_fielder_ids.map(
+        (id) => players.find((p) => p.id === id)?.name ?? "?"
+      );
       setLastSavedPaSummary({
         inning,
         inningHalf: inningHalf ?? null,
@@ -2429,7 +2485,8 @@ export default function RecordPageClient({
             ? `${pitchCount} pitches · ${strikesThrownSave} strikes`
             : "0 pitches",
         hitDirectionLabel,
-        errorFielderName,
+        errorFielderName: errorFielderNames[0] ?? null,
+        errorFielderNames,
         notes: notesCombined,
         rbi,
         runsScoredNames: scorerNames,
@@ -2482,7 +2539,7 @@ export default function RecordPageClient({
           runnerIds: nextIds,
         };
       });
-      setErrorFielderId(null);
+      setErrorFielderIds([]);
       setHitDirection(null);
       setBattedBallType(null);
       setPitchesSeen("");
@@ -2871,7 +2928,7 @@ export default function RecordPageClient({
     (result != null && RESULT_IS_HIT.has(result) && hitDirection === null) ||
     (result != null && RESULT_ALLOWS_HIT_DIRECTION.has(result) && battedBallType === null) ||
     (result != null && requiresRunnerOnBaseForResult(result) && baseState === "000") ||
-    (result === "reached_on_error" && !errorFielderId) ||
+    (result === "reached_on_error" && errorFielderIds.length === 0) ||
     (result === "hr" && runsScoredPlayerIds.length === 0) ||
     saving;
 
@@ -2921,31 +2978,11 @@ export default function RecordPageClient({
     return (strikesThrown as number) > 0 ? "strike" : "ball";
   }, [firstCountFromZero, countBalls, countStrikes, pitchesSeen, strikesThrown]);
 
-  /** Same frame as `draftPitchLog` updates (effect sync can lag one paint). */
-  const livePitchSequenceSummary = useMemo(() => {
-    if (draftPitchLog.length === 0) return null;
-    const entries: PitchSequenceEntry[] = draftPitchLog.map(
-      ({ balls_before, strikes_before, outcome }) => ({
-        balls_before,
-        strikes_before,
-        outcome,
-      })
-    );
-    return summarizePitchSequence(withInferredTerminalOutcomePitches(entries, result));
-  }, [draftPitchLog, result]);
-
   const pitchSequenceListRowCount = useMemo(() => {
-    let rows = mergedSequenceLength;
-    if (
-      result != null &&
-      draftPitchLog.length > 0 &&
-      livePitchSequenceSummary != null &&
-      livePitchSequenceSummary.pitches_seen > draftPitchLog.length
-    ) {
-      rows += 1;
-    }
-    return rows;
-  }, [mergedSequenceLength, result, draftPitchLog.length, livePitchSequenceSummary]);
+    const loggedRows = mergedSequenceLength;
+    const totalFromSummary = draftPitchSequenceSummary?.pitches_seen ?? 0;
+    return Math.max(loggedRows, totalFromSummary);
+  }, [mergedSequenceLength, draftPitchSequenceSummary]);
 
   const pitchSequenceListScrollable =
     pitchSequenceListRowCount > PITCH_SEQUENCE_VISIBLE_ROWS;
@@ -2965,8 +3002,8 @@ export default function RecordPageClient({
     return () => cancelAnimationFrame(raf);
   }, [pitchSequenceListRowCount, pitchSequenceListScrollable]);
 
-  const displayCountBalls = livePitchSequenceSummary?.finalBalls ?? countBalls;
-  const displayCountStrikes = livePitchSequenceSummary?.finalStrikes ?? countStrikes;
+  const displayCountBalls = draftPitchSequenceSummary?.finalBalls ?? countBalls;
+  const displayCountStrikes = draftPitchSequenceSummary?.finalStrikes ?? countStrikes;
 
   /** Coach pad reads `games.pitch_tracker_*` — must match PA form display (incl. pitch-log totals). */
   useEffect(() => {
@@ -2978,23 +3015,23 @@ export default function RecordPageClient({
   }, [selectedGameId, displayCountBalls, displayCountStrikes, recordLocked]);
 
   const displayPitchesSeen =
-    livePitchSequenceSummary != null
-      ? livePitchSequenceSummary.pitches_seen
+    draftPitchSequenceSummary != null
+      ? draftPitchSequenceSummary.pitches_seen
       : pitchesSeen === ""
         ? null
         : pitchesSeen;
   const displayStrikesThrown =
-    livePitchSequenceSummary != null
-      ? livePitchSequenceSummary.strikes_thrown
+    draftPitchSequenceSummary != null
+      ? draftPitchSequenceSummary.strikes_thrown
       : strikesThrown === ""
         ? null
         : strikesThrown;
 
-  const pitchTotalsFromLog = draftPitchLog.length > 0;
+  const pitchTotalsFromLog = draftPitchSequenceSummary != null;
 
   const displayFirstPitchStrikeLabel = useMemo(() => {
-    if (livePitchSequenceSummary != null && livePitchSequenceSummary.pitches_seen > 0) {
-      const f = livePitchSequenceSummary.first_pitch_strike;
+    if (draftPitchSequenceSummary != null && draftPitchSequenceSummary.pitches_seen > 0) {
+      const f = draftPitchSequenceSummary.first_pitch_strike;
       if (f === true) return "Strike";
       if (f === false) return "Ball";
       return "—";
@@ -3002,7 +3039,7 @@ export default function RecordPageClient({
     if (inferredFirstPitchFromZero === "strike") return "Strike";
     if (inferredFirstPitchFromZero === "ball") return "Ball";
     return "—";
-  }, [livePitchSequenceSummary, inferredFirstPitchFromZero]);
+  }, [draftPitchSequenceSummary, inferredFirstPitchFromZero]);
 
   const outcomeCountGateRef = useRef({ balls: 0, strikes: 0 });
   outcomeCountGateRef.current = { balls: displayCountBalls, strikes: displayCountStrikes };
@@ -3019,7 +3056,7 @@ export default function RecordPageClient({
     if (pitchesSeen !== "" || strikesThrown !== "") return true;
     if (firstCountFromZero != null) return true;
     if (hitDirection != null || battedBallType != null) return true;
-    if (errorFielderId != null) return true;
+    if (errorFielderIds.length > 0) return true;
     if (
       inheritedForPriorPitcher.runnerIds.length > 0 ||
       inheritedForPriorPitcher.chargeId != null
@@ -3043,7 +3080,7 @@ export default function RecordPageClient({
     firstCountFromZero,
     hitDirection,
     battedBallType,
-    errorFielderId,
+    errorFielderIds,
     inheritedForPriorPitcher.runnerIds.length,
     inheritedForPriorPitcher.chargeId,
   ]);
@@ -3131,14 +3168,14 @@ export default function RecordPageClient({
     setBattedBallType(null);
     if (rep.result === "reached_on_error") {
       prevResultBeforeRoeModalRef.current = result;
-      prevErrorFielderIdBeforeRoeModalRef.current = errorFielderId;
+      prevErrorFielderIdsBeforeRoeModalRef.current = errorFielderIds;
       setResult("reached_on_error");
       setErrorFielderModalMode("roe");
     } else {
-      setErrorFielderId(null);
+      setErrorFielderIds([]);
       setResult(rep.result);
     }
-  }, [showMsg, result, errorFielderId]);
+  }, [showMsg, result, errorFielderIds]);
 
   const handleSaveRef = useRef(handleSave);
   handleSaveRef.current = handleSave;
@@ -3152,7 +3189,7 @@ export default function RecordPageClient({
     recordLocked,
     batterId,
     result,
-    errorFielderId,
+    errorFielderIds,
     substitutionModalOpen,
     pitcherChangeModalOpen,
     finalizeModalOpen,
@@ -3166,7 +3203,7 @@ export default function RecordPageClient({
     batterSelectRef,
     outcomeCountGateRef,
     prevResultBeforeRoeModalRef,
-    prevErrorFielderIdBeforeRoeModalRef,
+    prevErrorFielderIdsBeforeRoeModalRef,
     handleSaveRef,
     advanceToNextLineupBatterRef,
     repeatLastSavedOutcomeRef,
@@ -3175,7 +3212,7 @@ export default function RecordPageClient({
     setSubstitutionModalOpen,
     setPitcherChangeModalOpen,
     setResult,
-    setErrorFielderId,
+    setErrorFielderIds,
     setHitDirection,
     setBattedBallType,
     setErrorFielderModalMode,
@@ -3320,6 +3357,7 @@ export default function RecordPageClient({
                 inning={inning}
                 inningHalf={inningHalf}
                 onPitchTypeClick={setStatPitchType}
+                onPitchesByInningClick={setPitchesByInningModalPitcherId}
                 hideTypeMix={!isOurPitcherOnMound}
               />
             </div>
@@ -3829,7 +3867,7 @@ export default function RecordPageClient({
                         : ""
                     }`}
                   >
-                  {mergedSequenceLength > 0 ? (
+                  {pitchSequenceListRowCount > 0 ? (
                     <ul className="space-y-1 [direction:ltr]">
                       {Array.from({ length: mergedSequenceLength }, (_, i) => {
                         const draftRow = draftPitchLog[i];
@@ -3906,9 +3944,8 @@ export default function RecordPageClient({
                         return null;
                       })}
                       {result != null &&
-                        draftPitchLog.length > 0 &&
-                        livePitchSequenceSummary != null &&
-                        livePitchSequenceSummary.pitches_seen > draftPitchLog.length && (
+                        draftPitchSequenceSummary != null &&
+                        draftPitchSequenceSummary.pitches_seen > mergedSequenceLength && (
                           <li>
                             <div
                               className={`${PITCH_SEQUENCE_ROW_CLASS} gap-1.5 border border-dashed border-[var(--accent)]/45 bg-[var(--accent-dim)]/10 text-[10px] text-[var(--text-muted)]`}
@@ -4023,18 +4060,18 @@ export default function RecordPageClient({
                                     if (opt.value === "reached_on_error") {
                                       if (result === "reached_on_error") {
                                         setResult(null);
-                                        setErrorFielderId(null);
+                                        setErrorFielderIds([]);
                                         setHitDirection(null);
                                         setBattedBallType(null);
                                         return;
                                       }
                                       prevResultBeforeRoeModalRef.current = result;
-                                      prevErrorFielderIdBeforeRoeModalRef.current = errorFielderId;
+                                      prevErrorFielderIdsBeforeRoeModalRef.current = errorFielderIds;
                                       setResult("reached_on_error");
                                       setErrorFielderModalMode("roe");
                                     } else if (result === opt.value) {
                                       setResult(null);
-                                      setErrorFielderId(null);
+                                      setErrorFielderIds([]);
                                       setHitDirection(null);
                                       setBattedBallType(null);
                                     } else {
@@ -4057,8 +4094,8 @@ export default function RecordPageClient({
                               <button
                                 type="button"
                                 title={
-                                  errorFielderId
-                                    ? `Fielding error: ${players.find((p) => p.id === errorFielderId)?.name ?? "?"}. Tap to change.`
+                                  errorFielderIds.length > 0
+                                    ? `Fielding error${errorFielderIds.length > 1 ? "s" : ""}: ${errorFielderDisplayNames.join(", ")}. Tap to change.`
                                     : result == null
                                       ? "Charge a fielding error on this play (pick outcome if needed; save checks that error matches result and bases)."
                                       : RESULT_ALLOWS_OPTIONAL_ERROR_ON_HIT.has(result)
@@ -4069,21 +4106,21 @@ export default function RecordPageClient({
                                   setErrorFielderModalMode("hit");
                                 }}
                                 className={`min-h-[42px] w-full rounded-lg border-2 px-2 py-2 text-center text-xs font-semibold transition duration-200 touch-manipulation sm:min-h-[44px] sm:px-2.5 sm:text-sm ${
-                                  errorFielderId
+                                  errorFielderIds.length > 0
                                     ? "cursor-pointer border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-base)] hover:opacity-90"
                                     : "cursor-pointer border-[var(--border)] bg-[var(--bg-input)] text-[var(--text)] hover:border-[var(--accent)] hover:bg-[var(--bg-elevated)]"
                                 }`}
                               >
-                                Error
+                                Error{errorFielderIds.length > 1 ? ` (${errorFielderIds.length})` : ""}
                               </button>
                             ) : null}
                             </div>
-                          {label === "Other" && errorFielderId ? (
+                          {label === "Other" && errorFielderIds.length > 0 ? (
                             <p className="mt-2 text-[10px] leading-snug text-[var(--text-muted)]">
-                              E: {players.find((p) => p.id === errorFielderId)?.name ?? "?"}
+                              E: {errorFielderDisplayNames.join(", ")}
                               <button
                                 type="button"
-                                onClick={() => setErrorFielderId(null)}
+                                onClick={() => setErrorFielderIds([])}
                                 className="ml-2 font-medium text-[var(--text)] underline decoration-[var(--border)] underline-offset-2 hover:text-[var(--danger)] touch-manipulation"
                               >
                                 Clear
@@ -4531,6 +4568,17 @@ export default function RecordPageClient({
         />
       ) : null}
 
+      {pitchesByInningModalPitcherId ? (
+        <PitchesByInningModal
+          open
+          pitcherName={pitchesByInningModalPitcherName}
+          rows={pitchesByInningRows}
+          totalPitches={pitchesByInningTotal}
+          highlightInning={pitchesByInningModalPitcherId === pitcherId ? inning : undefined}
+          onClose={() => setPitchesByInningModalPitcherId(null)}
+        />
+      ) : null}
+
       <ConfirmDeleteDialog
         open={destructiveConfirm !== null}
         onClose={() => !destructivePending && setDestructiveConfirm(null)}
@@ -4556,11 +4604,12 @@ export default function RecordPageClient({
           fielders={fieldersForErrorPicker}
           positionByPlayerId={positionByPlayerIdForRoeModal}
           moundPitcherId={pitcherId}
-          initialFielderId={errorFielderId}
+          initialFielderIds={errorFielderIds}
+          requireAtLeastOne={errorFielderModalMode === "roe"}
           title={errorFielderModalMode === "hit" ? "Error on the bases" : undefined}
           description={
             errorFielderModalMode === "hit"
-              ? `The batter still gets credit for the hit (${RESULT_OPTIONS.find((o) => o.value === result)?.label ?? "1B–3B"}). Choose the ${livePitchingTeamName} fielder charged with the error (e.g. misplay or bad throw for an extra base).`
+              ? `The batter still gets credit for the hit (${RESULT_OPTIONS.find((o) => o.value === result)?.label ?? "1B–3B"}). Choose the ${livePitchingTeamName} fielder(s) charged with the error (tap multiple if needed).`
               : undefined
           }
           onCancel={handleErrorFielderModalCancel}

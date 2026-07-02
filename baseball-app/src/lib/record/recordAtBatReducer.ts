@@ -1,6 +1,7 @@
 import { MAX_SELECTABLE_INNING } from "@/lib/leagueConfig";
 import { RESULT_ALLOWS_OPTIONAL_ERROR_ON_HIT } from "@/lib/record/recordPageConstants";
 import { parsePersistedBattedBallType } from "@/lib/record/recordBattedBall";
+import { normalizeErrorFielderIds } from "@/lib/record/recordPaFielding";
 import {
   hasRunnersOnBaseForm,
   occupiedRunnerIdsFromForm,
@@ -24,7 +25,7 @@ export type RecordAtBatState = {
   runsScoredPlayerIds: string[];
   unearnedRunsScoredPlayerIds: string[];
   inheritedForPriorPitcher: InheritedForPriorPitcher;
-  errorFielderId: string | null;
+  errorFielderIds: string[];
   hitDirection: HitDirection | null;
   battedBallType: BattedBallType | null;
   pitcherId: string | null;
@@ -73,7 +74,7 @@ export function createInitialRecordAtBatState(initialBatterId: string | null): R
     runsScoredPlayerIds: [],
     unearnedRunsScoredPlayerIds: [],
     inheritedForPriorPitcher: { chargeId: null, runnerIds: [] },
-    errorFielderId: null,
+    errorFielderIds: [],
     hitDirection: null,
     battedBallType: null,
     pitcherId: null,
@@ -165,16 +166,23 @@ function applyPersistedToState(saved: PersistedRecordFormState): Partial<RecordA
     firstCountFromZero: saved.firstCountFromZero ?? null,
     playNote: saved.playNote ?? "",
     notes: saved.notes ?? "",
-    errorFielderId:
-      typeof saved.errorFielderId === "string" &&
-      saved.errorFielderId &&
-      saved.result !== "hr" &&
-      (saved.result == null ||
+    errorFielderIds: (() => {
+      const fromSaved = normalizeErrorFielderIds(saved.errorFielderIds);
+      const legacy =
+        typeof saved.errorFielderId === "string" && saved.errorFielderId ? [saved.errorFielderId] : [];
+      const ids = fromSaved.length > 0 ? fromSaved : legacy;
+      if (ids.length === 0) return [];
+      if (saved.result === "hr") return [];
+      if (
+        saved.result == null ||
         saved.result === "reached_on_error" ||
         RESULT_ALLOWS_OPTIONAL_ERROR_ON_HIT.has(saved.result) ||
-        hasRunnersOnBaseForm(String(saved.baseState ?? "000")))
-        ? saved.errorFielderId
-        : null,
+        hasRunnersOnBaseForm(String(saved.baseState ?? "000"))
+      ) {
+        return ids;
+      }
+      return [];
+    })(),
     nextBatterIndexBySide: saved.nextBatterIndexBySide ?? { away: 0, home: 0 },
     battingTablePeekOther: saved.battingTablePeekOther ?? false,
     draftPitchLog,
@@ -213,7 +221,7 @@ export function recordAtBatReducer(state: RecordAtBatState, action: RecordAtBatA
         firstCountFromZero: null,
         playNote: "",
         notes: "",
-        errorFielderId: null,
+        errorFielderIds: [],
         draftPitchLog: [],
         inheritedForPriorPitcher: { chargeId: null, runnerIds: [] },
       };

@@ -37,10 +37,12 @@ export function getRunnerIdsAfterResult(
     return [batterId, next2, next3];
   }
   if (result === "sac_fly" || result === "sac") {
-    return [runner1b, runner2b, null];
+    // Batter out; runner(s) may score — mark scorers and bases manually if needed.
+    return [runner1b, runner2b, runner3b];
   }
   if (result === "sac_bunt") {
-    return [batterId, runner1b, runner2b ?? runner3b];
+    // Batter out; do not credit a reach — advance runners via scoring / base state if needed.
+    return [runner1b, runner2b, runner3b];
   }
   if (result === "gidp") {
     return [null, runner2b, runner3b];

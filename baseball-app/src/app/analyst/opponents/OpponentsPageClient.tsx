@@ -9,7 +9,7 @@ import { opponentNameKey } from "@/lib/opponentUtils";
 import {
   addTrackedOpponentAction,
   deleteTrackedOpponentAction,
-  updateTrackedOpponentAction,
+  renameOpponentAction,
 } from "./actions";
 
 function trackedRowForDisplayName(
@@ -30,17 +30,19 @@ export function OpponentsPageClient({
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+  const [editOriginalName, setEditOriginalName] = useState<string | null>(null);
   const [teamName, setTeamName] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isEdit = editId !== null;
+  const isEdit = editOriginalName !== null;
 
   function closeModal() {
     setModalOpen(false);
     setEditId(null);
+    setEditOriginalName(null);
     setTeamName("");
     setError(null);
     setDeleteConfirmOpen(false);
@@ -51,7 +53,7 @@ export function OpponentsPageClient({
     setSaving(true);
     setError(null);
     const result = isEdit
-      ? await updateTrackedOpponentAction(editId!, teamName)
+      ? await renameOpponentAction(editOriginalName!, teamName)
       : await addTrackedOpponentAction(teamName);
     setSaving(false);
     if (result.ok) {
@@ -90,6 +92,7 @@ export function OpponentsPageClient({
           type="button"
           onClick={() => {
             setEditId(null);
+            setEditOriginalName(null);
             setTeamName("");
             setError(null);
             setModalOpen(true);
@@ -120,20 +123,19 @@ export function OpponentsPageClient({
                 <div className="card-tech flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--border)] p-4">
                   <span className="min-w-0 font-semibold text-[var(--text)]">{name}</span>
                   <div className="flex shrink-0 flex-wrap items-center gap-2">
-                    {row && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditId(row.id);
-                          setTeamName(row.name);
-                          setError(null);
-                          setModalOpen(true);
-                        }}
-                        className="font-display inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-semibold tracking-wide text-[var(--text)] transition hover:bg-[var(--bg-elevated)]"
-                      >
-                        Edit
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditId(row?.id ?? null);
+                        setEditOriginalName(name);
+                        setTeamName(row?.name ?? name);
+                        setError(null);
+                        setModalOpen(true);
+                      }}
+                      className="font-display inline-flex items-center justify-center rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-semibold tracking-wide text-[var(--text)] transition hover:bg-[var(--bg-elevated)]"
+                    >
+                      Edit
+                    </button>
                     <Link
                       href={`/analyst/opponents/${slug}`}
                       className="font-display inline-flex items-center justify-center rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold tracking-wide text-[var(--bg-base)] transition hover:opacity-90"
@@ -190,7 +192,7 @@ export function OpponentsPageClient({
               <div
                 className={`flex flex-wrap items-center gap-2 pt-2 ${isEdit ? "justify-between" : "justify-end"}`}
               >
-                {isEdit && (
+                {isEdit && editId && (
                   <button
                     type="button"
                     onClick={openDeleteConfirm}

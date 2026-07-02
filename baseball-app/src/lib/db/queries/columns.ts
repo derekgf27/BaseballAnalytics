@@ -7,7 +7,7 @@ export const PLAYER_COLUMNS =
   "id, name, jersey, positions, primary_position, bats, throws, height_in, weight_lb, hometown, birth_date, opponent_team, roster_status, staff_notes, is_active, created_at";
 
 export const PLATE_APPEARANCE_COLUMNS =
-  "id, game_id, batter_id, inning, outs, base_state, score_diff, count_balls, count_strikes, result, contact_quality, hit_direction, batted_ball_type, pitches_seen, strikes_thrown, first_pitch_strike, rbi, runs_scored_player_ids, unearned_runs_scored_player_ids, runs_scored_charged_pitcher_by_scorer, stolen_bases, pitcher_hand, pitcher_id, error_fielder_id, inning_half, notes, created_at";
+  "id, game_id, batter_id, inning, outs, base_state, score_diff, count_balls, count_strikes, result, contact_quality, hit_direction, batted_ball_type, pitches_seen, strikes_thrown, first_pitch_strike, rbi, runs_scored_player_ids, unearned_runs_scored_player_ids, runs_scored_charged_pitcher_by_scorer, stolen_bases, pitcher_hand, pitcher_id, error_fielder_id, error_fielder_ids, inning_half, notes, created_at";
 
 export const BASERUNNING_EVENT_COLUMNS =
   "id, game_id, inning, inning_half, outs, runner_id, event_type, batter_id, from_base, created_at";

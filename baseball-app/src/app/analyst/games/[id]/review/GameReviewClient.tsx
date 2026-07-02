@@ -75,7 +75,7 @@ export function GameReviewClient({
 
   const [highlightedBatterId, setHighlightedBatterId] = useState<string | null>(null);
   const [batterExpandAll, setBatterExpandAll] = useState<boolean | null>(null);
-  const [pitcherCardsExpanded, setPitcherCardsExpanded] = useState(true);
+  const [pitcherExpandAll, setPitcherExpandAll] = useState<boolean | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [pdfReportMounted, setPdfReportMounted] = useState(false);
 
@@ -193,6 +193,10 @@ export function GameReviewClient({
     setBatterExpandAll((prev) => (prev === false ? true : false));
   }, []);
 
+  const togglePitcherExpandAll = useCallback(() => {
+    setPitcherExpandAll((prev) => (prev === false ? true : false));
+  }, []);
+
   const runDetailedReportExport = useCallback(async () => {
     setExportMenuOpen(false);
     setDetailedExportError(null);
@@ -291,8 +295,8 @@ export function GameReviewClient({
       onBatterRowClick={(playerId) => handleBatterRowClick(playerId, sectionPrefix)}
       batterExpandAll={batterExpandAll}
       onToggleBatterExpandAll={toggleBatterExpandAll}
-      pitcherCardsExpanded={pitcherCardsExpanded}
-      onTogglePitcherCardsExpanded={() => setPitcherCardsExpanded((v) => !v)}
+      pitcherExpandAll={pitcherExpandAll}
+      onTogglePitcherExpandAll={togglePitcherExpandAll}
       sectionIdPrefix={sectionPrefix}
     />
   );

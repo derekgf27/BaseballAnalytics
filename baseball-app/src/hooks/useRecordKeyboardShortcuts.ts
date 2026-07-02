@@ -14,7 +14,7 @@ export interface UseRecordKeyboardShortcutsOptions {
   recordLocked: boolean;
   batterId: string | null;
   result: PAResult | null;
-  errorFielderId: string | null;
+  errorFielderIds: string[];
   substitutionModalOpen: boolean;
   pitcherChangeModalOpen: boolean;
   finalizeModalOpen: boolean;
@@ -28,7 +28,7 @@ export interface UseRecordKeyboardShortcutsOptions {
   batterSelectRef: MutableRefObject<HTMLSelectElement | null>;
   outcomeCountGateRef: MutableRefObject<{ balls: number; strikes: number }>;
   prevResultBeforeRoeModalRef: MutableRefObject<PAResult | null>;
-  prevErrorFielderIdBeforeRoeModalRef: MutableRefObject<string | null>;
+  prevErrorFielderIdsBeforeRoeModalRef: MutableRefObject<string[]>;
   handleSaveRef: MutableRefObject<() => void>;
   advanceToNextLineupBatterRef: MutableRefObject<() => void>;
   repeatLastSavedOutcomeRef: MutableRefObject<() => void>;
@@ -37,7 +37,7 @@ export interface UseRecordKeyboardShortcutsOptions {
   setSubstitutionModalOpen: (open: boolean) => void;
   setPitcherChangeModalOpen: (open: boolean) => void;
   setResult: (value: PAResult | null) => void;
-  setErrorFielderId: (value: string | null) => void;
+  setErrorFielderIds: (value: string[]) => void;
   setHitDirection: (value: null) => void;
   setBattedBallType: (value: null) => void;
   setErrorFielderModalMode: (mode: null | "roe" | "hit") => void;
@@ -49,7 +49,7 @@ export function useRecordKeyboardShortcuts(options: UseRecordKeyboardShortcutsOp
     recordLocked,
     batterId,
     result,
-    errorFielderId,
+    errorFielderIds,
     substitutionModalOpen,
     pitcherChangeModalOpen,
     finalizeModalOpen,
@@ -63,7 +63,7 @@ export function useRecordKeyboardShortcuts(options: UseRecordKeyboardShortcutsOp
     batterSelectRef,
     outcomeCountGateRef,
     prevResultBeforeRoeModalRef,
-    prevErrorFielderIdBeforeRoeModalRef,
+    prevErrorFielderIdsBeforeRoeModalRef,
     handleSaveRef,
     advanceToNextLineupBatterRef,
     repeatLastSavedOutcomeRef,
@@ -72,7 +72,7 @@ export function useRecordKeyboardShortcuts(options: UseRecordKeyboardShortcutsOp
     setSubstitutionModalOpen,
     setPitcherChangeModalOpen,
     setResult,
-    setErrorFielderId,
+    setErrorFielderIds,
     setHitDirection,
     setBattedBallType,
     setErrorFielderModalMode,
@@ -153,7 +153,7 @@ export function useRecordKeyboardShortcuts(options: UseRecordKeyboardShortcutsOp
         const { balls, strikes } = outcomeCountGateRef.current;
         if (result === opt.value) {
           setResult(null);
-          setErrorFielderId(null);
+          setErrorFielderIds([]);
           setHitDirection(null);
           setBattedBallType(null);
           e.preventDefault();
@@ -162,7 +162,7 @@ export function useRecordKeyboardShortcuts(options: UseRecordKeyboardShortcutsOp
         if (resultBlockedByPitchCount(opt.value, balls, strikes)) return;
         if (opt.value === "reached_on_error") {
           prevResultBeforeRoeModalRef.current = result;
-          prevErrorFielderIdBeforeRoeModalRef.current = errorFielderId;
+          prevErrorFielderIdsBeforeRoeModalRef.current = errorFielderIds;
           setResult("reached_on_error");
           setErrorFielderModalMode("roe");
         } else {
@@ -178,7 +178,7 @@ export function useRecordKeyboardShortcuts(options: UseRecordKeyboardShortcutsOp
     recordLocked,
     batterId,
     result,
-    errorFielderId,
+    errorFielderIds,
     substitutionModalOpen,
     pitcherChangeModalOpen,
     finalizeModalOpen,
@@ -192,7 +192,7 @@ export function useRecordKeyboardShortcuts(options: UseRecordKeyboardShortcutsOp
     batterSelectRef,
     outcomeCountGateRef,
     prevResultBeforeRoeModalRef,
-    prevErrorFielderIdBeforeRoeModalRef,
+    prevErrorFielderIdsBeforeRoeModalRef,
     handleSaveRef,
     advanceToNextLineupBatterRef,
     repeatLastSavedOutcomeRef,
@@ -201,7 +201,7 @@ export function useRecordKeyboardShortcuts(options: UseRecordKeyboardShortcutsOp
     setSubstitutionModalOpen,
     setPitcherChangeModalOpen,
     setResult,
-    setErrorFielderId,
+    setErrorFielderIds,
     setHitDirection,
     setBattedBallType,
     setErrorFielderModalMode,

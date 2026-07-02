@@ -4,9 +4,14 @@ import { getCachedGames } from "@/lib/db/cachedQueries";
 import {
   deleteTrackedOpponent,
   insertTrackedOpponent,
+  renameOpponentAcrossData,
   updateTrackedOpponent,
 } from "@/lib/db/queries";
-import { revalidateTrackedOpponentsCache } from "@/lib/db/revalidateLists";
+import {
+  revalidateGamesListCache,
+  revalidatePlayersListCache,
+  revalidateTrackedOpponentsCache,
+} from "@/lib/db/revalidateLists";
 import { opponentNameKey, uniqueOpponentNames } from "@/lib/opponentUtils";
 import { requireAnalystAccess } from "@/lib/auth/requireRole";
 
@@ -49,5 +54,19 @@ export async function deleteTrackedOpponentAction(id: string): Promise<{ ok: boo
   await requireAnalystAccess();
   const result = await deleteTrackedOpponent(id);
   if (result.ok) revalidateTrackedOpponentsCache();
+  return result;
+}
+
+export async function renameOpponentAction(
+  originalName: string,
+  newName: string
+): Promise<{ ok: boolean; error?: string }> {
+  await requireAnalystAccess();
+  const result = await renameOpponentAcrossData(originalName, newName);
+  if (result.ok) {
+    revalidateGamesListCache();
+    revalidatePlayersListCache();
+    revalidateTrackedOpponentsCache();
+  }
   return result;
 }

@@ -12,6 +12,7 @@ import {
   totalRunsBottom,
   totalRunsTop,
 } from "@/lib/compute/boxScore";
+import { paErrorFielderIds } from "@/lib/record/recordPaFielding";
 import {
   computeGamePitchingBox,
   plateAppearancesForPitchingSide,
@@ -164,10 +165,11 @@ function pitchingFooterLines(
 
   const errorCounts = new Map<string, number>();
   for (const pa of pasAll) {
-    if (!pa.error_fielder_id) continue;
     if (pitchingDefenseSide(pa) !== side) continue;
     if (!paCountsAsDefensiveErrorForLinescore(pa)) continue;
-    errorCounts.set(pa.error_fielder_id, (errorCounts.get(pa.error_fielder_id) ?? 0) + 1);
+    for (const fid of paErrorFielderIds(pa)) {
+      errorCounts.set(fid, (errorCounts.get(fid) ?? 0) + 1);
+    }
   }
   const eLine =
     errorCounts.size === 0

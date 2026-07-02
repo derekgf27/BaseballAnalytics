@@ -1,4 +1,5 @@
 import { MAX_SELECTABLE_INNING } from "@/lib/leagueConfig";
+import { normalizeErrorFielderIds } from "@/lib/record/recordPaFielding";
 import { RESULT_ALLOWS_OPTIONAL_ERROR_ON_HIT } from "@/lib/record/recordPageConstants";
 import { parsePersistedBattedBallType } from "@/lib/record/recordBattedBall";
 import {
@@ -36,7 +37,7 @@ export type RecordFormSetters = {
   setFirstCountFromZero: Setter<"ball" | "strike" | null>;
   setPlayNote: Setter<string>;
   setNotes: Setter<string>;
-  setErrorFielderId: Setter<string | null>;
+  setErrorFielderIds: Setter<string[]>;
   setNextBatterIndexBySide: Setter<{ away: number; home: number }>;
   setBattingTablePeekOther: Setter<boolean>;
   setDraftPitchLog: Setter<DraftPitchRow[]>;
@@ -99,16 +100,24 @@ export function applyPersistedRecordFormState(saved: PersistedRecordFormState, s
   setters.setFirstCountFromZero(saved.firstCountFromZero ?? null);
   setters.setPlayNote(saved.playNote ?? "");
   setters.setNotes(saved.notes ?? "");
-  setters.setErrorFielderId(
-    typeof saved.errorFielderId === "string" &&
-      saved.errorFielderId &&
-      saved.result !== "hr" &&
-      (saved.result == null ||
+  setters.setErrorFielderIds(
+    (() => {
+      const fromSaved = normalizeErrorFielderIds(saved.errorFielderIds);
+      const legacy =
+        typeof saved.errorFielderId === "string" && saved.errorFielderId ? [saved.errorFielderId] : [];
+      const ids = fromSaved.length > 0 ? fromSaved : legacy;
+      if (ids.length === 0) return [];
+      if (saved.result === "hr") return [];
+      if (
+        saved.result == null ||
         saved.result === "reached_on_error" ||
         RESULT_ALLOWS_OPTIONAL_ERROR_ON_HIT.has(saved.result) ||
-        hasRunnersOnBaseForm(String(saved.baseState ?? "000")))
-      ? saved.errorFielderId
-      : null
+        hasRunnersOnBaseForm(String(saved.baseState ?? "000"))
+      ) {
+        return ids;
+      }
+      return [];
+    })()
   );
   setters.setNextBatterIndexBySide(saved.nextBatterIndexBySide ?? { away: 0, home: 0 });
   setters.setBattingTablePeekOther(saved.battingTablePeekOther ?? false);
@@ -148,5 +157,5 @@ export function resetRecordFormToEmpty(setters: RecordFormSetters) {
   setters.setUnearnedRunsScoredPlayerIds([]);
   setters.setInheritedForPriorPitcher({ chargeId: null, runnerIds: [] });
   setters.setDraftPitchLog([]);
-  setters.setErrorFielderId(null);
+  setters.setErrorFielderIds([]);
 }

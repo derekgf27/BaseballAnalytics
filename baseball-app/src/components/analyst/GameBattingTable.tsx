@@ -42,7 +42,7 @@ export function GameBatterPitchDetailStack({
   pasByBatterId?: Map<string, PlateAppearance[]>;
   pitchEventsByBatterId?: Map<string, PitchEvent[]>;
   highlightedBatterId?: string | null;
-  /** true = all expanded, false = all collapsed, null = auto (pinch hitters with ≤1 AB collapsed). */
+  /** true = all expanded, false = all collapsed, null = all collapsed. */
   expandAll?: boolean | null;
   cardIdPrefix?: string;
   compact?: boolean;
@@ -80,10 +80,8 @@ export function GameBatterPitchDetailStack({
     return map;
   }, [rows]);
 
-  function isCollapsed(row: GameBattingRow): boolean {
-    if (expandAll === true) return false;
-    if (expandAll === false) return true;
-    return row.isSubstitution && row.ab <= 1;
+  function isCollapsed(): boolean {
+    return expandAll !== true;
   }
 
   return (
@@ -111,7 +109,7 @@ export function GameBatterPitchDetailStack({
             batterPas={batterPas}
             batterPitchEvents={batterPitchEvents}
             compact={compact}
-            collapsed={isCollapsed(row)}
+            collapsed={isCollapsed()}
             isHighlighted={highlightedBatterId === row.playerId}
           />
         );

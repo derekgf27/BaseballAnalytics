@@ -1,4 +1,5 @@
 import { battingStatsFromPAs } from "@/lib/compute/battingStats";
+import { paErrorFielderIds } from "@/lib/record/recordPaFielding";
 import type { PAResult, PlateAppearance } from "@/lib/types";
 
 function paChronological(a: PlateAppearance, b: PlateAppearance): number {
@@ -56,7 +57,7 @@ function abbrevForPa(pa: PlateAppearance): string | null {
   const base = abbrevForResultCore(pa.result);
   if (!base) return null;
   const plusE =
-    pa.error_fielder_id &&
+    paErrorFielderIds(pa).length > 0 &&
     pa.result !== "reached_on_error" &&
     pa.result !== "hr";
   return plusE ? `${base}+E` : base;

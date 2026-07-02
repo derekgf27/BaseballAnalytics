@@ -10,9 +10,6 @@ export const RESULT_ALLOWS_HIT_DIRECTION = new Set<PAResult>([
   "foul_out",
   "gidp",
   "fielders_choice",
-  "sac",
-  "sac_fly",
-  "sac_bunt",
   "reached_on_error",
 ]);
 

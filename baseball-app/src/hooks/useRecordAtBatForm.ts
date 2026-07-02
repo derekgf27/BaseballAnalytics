@@ -40,7 +40,7 @@ function createSetters(dispatch: Dispatch<RecordAtBatAction>): RecordFormSetters
       dispatch({ type: "setField", key: "firstCountFromZero", value }),
     setPlayNote: (value) => dispatch({ type: "setField", key: "playNote", value }),
     setNotes: (value) => dispatch({ type: "setField", key: "notes", value }),
-    setErrorFielderId: (value) => dispatch({ type: "setField", key: "errorFielderId", value }),
+    setErrorFielderIds: (value) => dispatch({ type: "setField", key: "errorFielderIds", value }),
     setNextBatterIndexBySide: (value) =>
       dispatch({ type: "setField", key: "nextBatterIndexBySide", value }),
     setBattingTablePeekOther: (value) =>

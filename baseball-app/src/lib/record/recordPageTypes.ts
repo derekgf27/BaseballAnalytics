@@ -19,6 +19,7 @@ export type LastSavedPaSummary = {
   pitchLine: string;
   hitDirectionLabel: string | null;
   errorFielderName: string | null;
+  errorFielderNames: string[];
   notes: string | null;
   rbi: number;
   runsScoredNames: string[];
@@ -50,7 +51,8 @@ export type PersistedRecordFormState = {
   firstCountFromZero: "ball" | "strike" | null;
   playNote: string;
   notes: string;
-  errorFielderId: string | null;
+  errorFielderId?: string | null;
+  errorFielderIds?: string[];
   nextBatterIndexBySide: { away: number; home: number };
   battingTablePeekOther: boolean;
   draftPitchLogRows?: { balls_before: number; strikes_before: number; outcome: PitchOutcome }[];

@@ -251,6 +251,7 @@ export async function updateGameLogPlateAppearanceAction(
         | "batted_ball_type"
         | "hit_direction"
         | "error_fielder_id"
+        | "error_fielder_ids"
         | "base_state"
         | "unearned_runs_scored_player_ids"
       >
@@ -264,6 +265,7 @@ export async function updateGameLogPlateAppearanceAction(
         updates.hit_direction = null;
         if (patch.result !== "reached_on_error") {
           updates.error_fielder_id = null;
+          updates.error_fielder_ids = [];
         }
       }
     }

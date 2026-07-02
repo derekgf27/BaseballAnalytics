@@ -8,7 +8,7 @@ import type { Player } from "@/lib/types";
 const OF_SLOT_ORDER = ["LF", "CF", "RF"] as const;
 const IF_SLOT_ORDER = ["3B", "SS", "2B", "1B"] as const;
 
-/** One fielder tile — memoized so parent re-renders don’t recreate every button subtree when only another tile is selected. */
+/** One fielder tile — memoized so parent re-renders don't recreate every button subtree when only another tile is selected. */
 const FielderTile = memo(function FielderTile({
   player,
   pos,
@@ -24,16 +24,16 @@ const FielderTile = memo(function FielderTile({
   return (
     <button
       type="button"
-      role="radio"
+      role="checkbox"
       aria-checked={selected}
       aria-label={`${pos || "Field"} — ${player.name}${jersey ? ` number ${jersey}` : ""}${
-        selected ? ", selected" : ""
+        selected ? ", error charged" : ""
       }`}
       onClick={() => onPick(player.id)}
-      className={`flex w-full min-h-[64px] flex-col justify-center gap-1 rounded-lg border-2 px-4 py-3 text-left transition touch-manipulation sm:min-h-[72px] sm:px-5 sm:py-3.5 ${
+      className={`flex w-full min-h-[64px] flex-col justify-center gap-1 rounded-lg border-2 border-black px-4 py-3 text-left transition touch-manipulation sm:min-h-[72px] sm:px-5 sm:py-3.5 ${
         selected
-          ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-base)]"
-          : "border-transparent bg-[var(--bg-elevated)] text-[var(--text)] hover:border-[var(--accent)]/50"
+          ? "bg-[var(--accent)] text-[var(--bg-base)] ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[var(--bg-card)]"
+          : "bg-[var(--bg-elevated)] text-[var(--text)] hover:bg-[var(--bg-input)]"
       }`}
     >
       <span
@@ -42,6 +42,11 @@ const FielderTile = memo(function FielderTile({
         }`}
       >
         {pos || "—"}
+        {selected ? (
+          <span className="ml-1.5 text-[11px] font-bold normal-case tracking-normal sm:text-xs">
+            · E
+          </span>
+        ) : null}
       </span>
       <span className="text-sm font-semibold leading-snug sm:text-base">
         <span className="break-words">{player.name}</span>
@@ -61,36 +66,43 @@ const FielderTile = memo(function FielderTile({
 
 /**
  * Renders only while open (parent should mount conditionally) so Record page re-renders
- * don’t run grouping logic or portal work when the dialog is closed.
+ * don't run grouping logic or portal work when the dialog is closed.
  */
 export function ReachedOnErrorFielderModal({
   pitchingTeamName,
   fielders,
   positionByPlayerId,
-  initialFielderId,
+  initialFielderIds,
   moundPitcherId = null,
   title = "Error charged to",
   description,
+  requireAtLeastOne = false,
   onCancel,
   onConfirm,
 }: {
   pitchingTeamName: string;
   fielders: Player[];
   positionByPlayerId: Record<string, string>;
-  initialFielderId: string | null;
+  initialFielderIds: string[];
   /** Mound pitcher id (optional) — used so P shows when not in lineup `positionByPlayerId`. */
   moundPitcherId?: string | null;
   /** Dialog title (default: reached-on-error copy). */
   title?: string;
   /** Dialog body; default explains ROE. */
   description?: string;
+  /** When true, Confirm is disabled until at least one fielder is selected (ROE). */
+  requireAtLeastOne?: boolean;
   onCancel: () => void;
-  onConfirm: (fielderId: string) => void;
+  onConfirm: (fielderIds: string[]) => void;
 }) {
   const titleId = useId();
   const descId = useId();
   const dialogRef = useFocusTrap(true);
-  const [selectedId, setSelectedId] = useState(() => initialFielderId ?? "");
+  const [selectedIds, setSelectedIds] = useState<string[]>(() => initialFielderIds);
+
+  useEffect(() => {
+    setSelectedIds(initialFielderIds);
+  }, [initialFielderIds]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -101,7 +113,10 @@ export function ReachedOnErrorFielderModal({
   }, [onCancel]);
 
   const pick = useCallback((id: string) => {
-    setSelectedId(id);
+    setSelectedIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      return [...prev, id];
+    });
   }, []);
 
   const { outfielders, infielders, pitchers, catchers, others } = useMemo(() => {
@@ -150,16 +165,33 @@ export function ReachedOnErrorFielderModal({
 
   const descText =
     description ??
-    `Choose the defensive player (${pitchingTeamName}) charged with the error on this play.`;
+    `Choose the defensive player (${pitchingTeamName}) charged with the error on this play. Tap multiple players if more than one error occurred.`;
 
-  const confirmDisabled = !selectedId || !fielders.some((p) => p.id === selectedId);
+  const validSelected = selectedIds.filter((id) => fielders.some((p) => p.id === id));
+  const confirmDisabled =
+    (requireAtLeastOne && validSelected.length === 0) ||
+    (validSelected.length > 0 && validSelected.length !== selectedIds.length);
 
   const posFor = (p: Player) =>
     positionByPlayerId[p.id]?.trim() || (moundPitcherId && p.id === moundPitcherId ? "P" : "");
 
   const tile = (p: Player) => (
-    <FielderTile player={p} pos={posFor(p)} selected={selectedId === p.id} onPick={pick} />
+    <FielderTile
+      player={p}
+      pos={posFor(p)}
+      selected={selectedIds.includes(p.id)}
+      onPick={pick}
+    />
   );
+
+  const confirmLabel =
+    validSelected.length > 1
+      ? `Confirm (${validSelected.length} errors)`
+      : validSelected.length === 1
+        ? "Confirm"
+        : requireAtLeastOne
+          ? "Select fielder(s)"
+          : "Confirm (no errors)";
 
   return createPortal(
     <div
@@ -182,11 +214,19 @@ export function ReachedOnErrorFielderModal({
         <p id={descId} className="mt-3 text-base leading-relaxed text-[var(--text-muted)] sm:text-lg">
           {descText}
         </p>
+        {validSelected.length > 0 ? (
+          <p className="mt-2 text-sm font-medium text-[var(--accent)]">
+            {validSelected.length} error{validSelected.length === 1 ? "" : "s"} selected — tap again to
+            remove
+          </p>
+        ) : (
+          <p className="mt-2 text-sm text-[var(--text-muted)]">Tap each fielder charged with an error</p>
+        )}
         {fielders.length > 0 ? (
           <div
             className="mt-6 min-h-[min(42vh,28rem)] max-h-[min(68vh,40rem)] flex-1 overflow-y-auto overscroll-contain rounded-xl border border-[var(--border)] bg-[var(--bg-input)]/40 p-4 sm:p-5"
-            role="radiogroup"
-            aria-label="Defensive players"
+            role="group"
+            aria-label="Defensive players — select all charged with an error"
           >
             <div className="space-y-4">
               <div className="grid grid-cols-3 gap-3 sm:gap-4">
@@ -235,25 +275,32 @@ export function ReachedOnErrorFielderModal({
             No defensive roster or lineup — set a lineup or pitcher in Game state first.
           </p>
         )}
-        <div className="mt-8 flex flex-shrink-0 flex-wrap justify-end gap-3 border-t border-[var(--border)] pt-6">
+        <div className="mt-8 flex flex-shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] pt-6">
           <button
             type="button"
-            onClick={onCancel}
-            className="min-h-[48px] rounded-lg border border-[var(--border)] px-6 py-2.5 text-base font-medium text-[var(--text-muted)] transition hover:bg-[var(--bg-elevated)] sm:min-h-[52px] sm:px-8"
+            onClick={() => setSelectedIds([])}
+            disabled={selectedIds.length === 0}
+            className="min-h-[48px] rounded-lg border border-[var(--border)] px-4 py-2.5 text-sm font-medium text-[var(--text-muted)] transition hover:bg-[var(--bg-elevated)] disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-[52px]"
           >
-            Cancel
+            Clear selection
           </button>
-          <button
-            type="button"
-            disabled={confirmDisabled}
-            onClick={() => {
-              if (!selectedId) return;
-              onConfirm(selectedId);
-            }}
-            className="min-h-[48px] rounded-lg bg-[var(--accent)] px-6 py-2.5 text-base font-semibold text-[var(--bg-base)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-[52px] sm:px-8"
-          >
-            Confirm
-          </button>
+          <div className="flex flex-wrap justify-end gap-3">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="min-h-[48px] rounded-lg border border-[var(--border)] px-6 py-2.5 text-base font-medium text-[var(--text-muted)] transition hover:bg-[var(--bg-elevated)] sm:min-h-[52px] sm:px-8"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={confirmDisabled}
+              onClick={() => onConfirm(validSelected)}
+              className="min-h-[48px] rounded-lg bg-[var(--accent)] px-6 py-2.5 text-base font-semibold text-[var(--bg-base)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-[52px] sm:px-8"
+            >
+              {confirmLabel}
+            </button>
+          </div>
         </div>
       </div>
     </div>,

@@ -18,10 +18,12 @@ export function RecordLastPaSummary({ summary }: { summary: LastSavedPaSummary }
           <span className="font-semibold">Result:</span>{" "}
           <span className="text-[var(--accent)]">{summary.resultLabel}</span>
         </span>
-        {summary.errorFielderName != null && (
+        {summary.errorFielderNames.length > 0 && (
           <span className="text-[var(--text)]">
-            <span className="font-semibold">Error charged to:</span>{" "}
-            <span className="text-[var(--accent)]">{summary.errorFielderName}</span>
+            <span className="font-semibold">
+              Error{summary.errorFielderNames.length > 1 ? "s" : ""} charged to:
+            </span>{" "}
+            <span className="text-[var(--accent)]">{summary.errorFielderNames.join(", ")}</span>
           </span>
         )}
         <span className="text-[var(--text)]">

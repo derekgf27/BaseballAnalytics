@@ -3,6 +3,7 @@
  */
 
 import { pitchOutcomeStrikesThrownIncrement } from "@/lib/compute/pitchSequence";
+import { paErrorFielderIds } from "@/lib/record/recordPaFielding";
 import type { BattingStats, PAResult, PitchEvent, PlateAppearance } from "@/lib/types";
 
 function countByResult(pas: PlateAppearance[], result: PAResult): number {
@@ -41,13 +42,13 @@ export function isRisp(baseState: string | null | undefined): boolean {
   return b[1] === "1" || b[2] === "1";
 }
 
-/** Count defensive errors charged per player (`error_fielder_id`), including ROE and hit + extra-base errors. */
+/** Count defensive errors charged per player, including ROE and hit + extra-base errors. */
 export function fieldingErrorsByPlayerFromPas(pas: PlateAppearance[]): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const pa of pas) {
-    const fid = pa.error_fielder_id;
-    if (!fid) continue;
-    counts[fid] = (counts[fid] ?? 0) + 1;
+    for (const fid of paErrorFielderIds(pa)) {
+      counts[fid] = (counts[fid] ?? 0) + 1;
+    }
   }
   return counts;
 }
