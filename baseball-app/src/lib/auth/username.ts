@@ -15,6 +15,11 @@ export function usernameValidationMessage(): string {
   return "Username must be 3–32 characters: letters, numbers, dots, or underscores.";
 }
 
+/** Username as shown in the UI (no leading @). */
+export function displayUsername(username: string): string {
+  return username.trim().replace(/^@+/, "");
+}
+
 export function authEmailForUsername(username: string): string {
   return `${normalizeUsername(username)}@${LOGIN_EMAIL_DOMAIN}`;
 }

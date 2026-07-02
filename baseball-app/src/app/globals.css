@@ -40,6 +40,7 @@
   --border-focus: var(--neo-border-focus);
   --accent: var(--neo-accent);
   --accent-dim: var(--neo-accent-dim);
+  --accent-fg: #000000;
   --accent-coach: var(--neo-accent);
   --accent-coach-dim: var(--neo-accent-dim);
   --text: var(--neo-text);
@@ -52,6 +53,17 @@
   --warning-dim: rgba(255, 216, 111, 0.15);
   --danger: var(--neo-secondary);
   --danger-dim: var(--neo-secondary-dim);
+  --overlay-bg: rgba(0, 0, 0, 0.62);
+  --shadow-accent-sm: 0 0 16px rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.12);
+  --shadow-accent-md: 0 0 16px rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.2);
+  --shadow-accent-lg: 0 0 12px rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.25);
+  --shadow-accent-glow: 0 0 48px -12px rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.22);
+  --shadow-toast: 0 12px 40px rgba(0, 0, 0, 0.35);
+  --toast-success-bg: #0a1f18;
+  --toast-error-bg: #1a1014;
+  --toast-warning-bg: #1f1810;
+  --toast-error-fg: #fecdd3;
+  --toast-warning-fg: #fff8e8;
   /* Decision-first coach UI */
   --decision-green: var(--neo-success);
   --decision-green-dim: rgba(138, 255, 193, 0.2);
@@ -83,14 +95,15 @@
   --text-2xl--line-height: 2rem;
   --text-3xl: 1.875rem;
   --text-3xl--line-height: 2.25rem;
+  color-scheme: dark;
 }
 
-/* Light mode — inverted surfaces + darker gold accent for contrast on white */
+/* Light mode — inverted surfaces + orange accent (dark mode keeps gold) */
 :root[data-theme="light"] {
-  --neo-accent-r: 161;
-  --neo-accent-g: 98;
-  --neo-accent-b: 7;
-  --neo-accent: #a16207;
+  --neo-accent-r: 234;
+  --neo-accent-g: 88;
+  --neo-accent-b: 12;
+  --neo-accent: #ea580c;
   --neo-bg-base: #e8edf3;
   --neo-bg-elevated: #ffffff;
   --neo-bg-card: #ffffff;
@@ -99,8 +112,11 @@
   --neo-text-muted: #475569;
   --neo-text-faint: #64748b;
   --neo-border: rgba(15, 23, 42, 0.12);
-  --neo-border-focus: rgba(161, 98, 7, 0.5);
-  --neo-accent-dim: rgba(161, 98, 7, 0.14);
+  --neo-border-focus: rgba(234, 88, 12, 0.5);
+  --neo-accent-dim: rgba(234, 88, 12, 0.14);
+  /** Accent-colored text on light surfaces — matches brand orange. */
+  --accent-text: var(--neo-accent);
+  --accent-fg: #000000;
   --neo-success: #15803d;
   --neo-warning: #b45309;
   --neo-secondary-dim: rgba(255, 76, 109, 0.1);
@@ -110,6 +126,13 @@
   --decision-green: #15803d;
   --decision-yellow: #b45309;
   --decision-gray-dim: rgba(15, 23, 42, 0.08);
+  --overlay-bg: rgba(15, 23, 42, 0.45);
+  --shadow-toast: 0 12px 40px rgba(15, 23, 42, 0.12);
+  --toast-success-bg: color-mix(in srgb, var(--success) 14%, var(--bg-card));
+  --toast-error-bg: color-mix(in srgb, var(--danger) 12%, var(--bg-card));
+  --toast-warning-bg: color-mix(in srgb, var(--warning) 16%, var(--bg-card));
+  --toast-error-fg: var(--danger);
+  --toast-warning-fg: #92400e;
   color-scheme: light;
 }
 
@@ -118,21 +141,65 @@
 }
 
 /*
- * Light mode: legacy `text-white` on cards/tables was authored for dark surfaces.
- * Remap to theme text; keep white on saturated button backgrounds.
+ * Light mode: legacy light-colored text authored for dark surfaces.
+ * Remap on light backgrounds; preserve on .dark-surface and saturated buttons.
  */
-:root[data-theme="light"] .text-white {
+:root[data-theme="light"] [class*="text-white"] {
   color: var(--text);
 }
-:root[data-theme="light"] [class*="bg-violet-4"].text-white,
-:root[data-theme="light"] [class*="bg-violet-5"].text-white,
-:root[data-theme="light"] [class*="bg-emerald-5"].text-white,
-:root[data-theme="light"] [class*="bg-emerald-6"].text-white,
-:root[data-theme="light"] [class*="bg-emerald-7"].text-white,
-:root[data-theme="light"] [class*="bg-red-"].text-white,
-:root[data-theme="light"] [class*="bg-[var(--danger)]"].text-white {
+:root[data-theme="light"] .dark-surface [class*="text-white"] {
   color: #ffffff !important;
 }
+:root[data-theme="light"] .dark-surface [class*="text-white/"] {
+  color: rgba(255, 255, 255, 0.55) !important;
+}
+:root[data-theme="light"] [class*="bg-violet-4"][class*="text-white"],
+:root[data-theme="light"] [class*="bg-violet-5"][class*="text-white"],
+:root[data-theme="light"] [class*="bg-emerald-5"][class*="text-white"],
+:root[data-theme="light"] [class*="bg-emerald-6"][class*="text-white"],
+:root[data-theme="light"] [class*="bg-emerald-7"][class*="text-white"],
+:root[data-theme="light"] [class*="bg-red-"][class*="text-white"],
+:root[data-theme="light"] [class*="bg-[var(--danger)]"][class*="text-white"],
+:root[data-theme="light"] [class*="bg-[#"][class*="text-white"] {
+  color: #ffffff !important;
+}
+
+/* Status badges & warning tints on light portal surfaces */
+:root[data-theme="light"] .analyst-portal [class*="text-emerald-2"],
+:root[data-theme="light"] .coach-portal [class*="text-emerald-2"],
+:root[data-theme="light"] .admin-portal [class*="text-emerald-2"],
+:root[data-theme="light"] .home-page [class*="text-emerald-2"] {
+  color: #047857;
+}
+:root[data-theme="light"] .analyst-portal [class*="text-amber-1"],
+:root[data-theme="light"] .analyst-portal [class*="text-amber-2"],
+:root[data-theme="light"] .coach-portal [class*="text-amber-1"],
+:root[data-theme="light"] .coach-portal [class*="text-amber-2"],
+:root[data-theme="light"] .admin-portal [class*="text-amber-1"],
+:root[data-theme="light"] .admin-portal [class*="text-amber-2"],
+:root[data-theme="light"] .home-page [class*="text-amber-1"],
+:root[data-theme="light"] .home-page [class*="text-amber-2"] {
+  color: #b45309;
+}
+:root[data-theme="light"] .analyst-portal [class*="text-amber-3"],
+:root[data-theme="light"] .coach-portal [class*="text-amber-3"],
+:root[data-theme="light"] .admin-portal [class*="text-amber-3"] {
+  color: #b45309;
+}
+:root[data-theme="light"] .analyst-portal [class*="text-slate-2"],
+:root[data-theme="light"] .coach-portal [class*="text-slate-2"],
+:root[data-theme="light"] .admin-portal [class*="text-slate-2"] {
+  color: #475569;
+}
+
+/* Admin portal — violet labels on light surfaces */
+:root[data-theme="light"] .admin-portal [class*="text-violet-1"],
+:root[data-theme="light"] .admin-portal [class*="text-violet-2"],
+:root[data-theme="light"] .admin-portal [class*="text-violet-3"] {
+  color: #5b21b6;
+}
+
+/* Intentional dark UIs keep their tint palette (coach pitch pad is theme-aware — see .coach-pitch-pad below) */
 
 :root[data-theme="light"] .players-watch-preview-note {
   color: #92400e;
@@ -141,15 +208,30 @@
   color: rgba(253, 230, 138, 0.9);
 }
 
-/* Buttons/elements with solid accent (gold) background: black text for contrast */
-[class*="bg-[var(--accent)]"]:not([class*="bg-[var(--accent)]/"]) {
-  color: #000 !important;
+/* Solid accent fills: black text on gold (dark) and on orange (light) */
+:root[data-theme="dark"] [class*="bg-[var(--accent)]"]:not([class*="bg-[var(--accent)]/"]),
+:root[data-theme="dark"] [class*="bg-[var(--neo-accent)]"]:not([class*="bg-[var(--neo-accent)]/"]),
+:root[data-theme="dark"] [class*="bg-[var(--accent-coach)]"] {
+  color: var(--accent-fg) !important;
 }
-[class*="bg-[var(--neo-accent)]"]:not([class*="bg-[var(--neo-accent)]/"]) {
-  color: #000 !important;
+:root[data-theme="light"] [class*="bg-[var(--accent)]"]:not([class*="bg-[var(--accent)]/"]),
+:root[data-theme="light"] [class*="bg-[var(--neo-accent)]"]:not([class*="bg-[var(--neo-accent)]/"]),
+:root[data-theme="light"] [class*="bg-[var(--accent-coach)]"] {
+  color: var(--accent-fg) !important;
 }
-[class*="bg-[var(--accent-coach)]"] {
-  color: #000 !important;
+
+/* Light mode: accent text uses true brand orange (same as --accent / --neo-accent). */
+:root[data-theme="light"] :where(.analyst-portal, .coach-portal, .home-page)
+  :is([class*="text-[var(--accent)]"], [class*="text-[var(--accent-coach)]"], [class*="text-[var(--neo-accent)]"]):not(
+    [class*="bg-[var(--accent)]"]:not([class*="bg-[var(--accent)]/"])
+  ):not([class*="bg-[var(--neo-accent)]"]:not([class*="bg-[var(--neo-accent)]/"])):not(
+    [class*="bg-[var(--accent-coach)]"]:not([class*="bg-[var(--accent-coach)]/"])
+  ) {
+  color: var(--accent) !important;
+}
+:root[data-theme="light"] .dark-surface
+  :is([class*="text-[var(--accent)]"], [class*="text-[var(--accent-coach)]"], [class*="text-[var(--neo-accent)]"]) {
+  color: var(--accent) !important;
 }
 
 @theme inline {
@@ -248,7 +330,7 @@ body {
   font-weight: 600;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: #fff;
+  color: var(--text);
 }
 /* Tables, stats, linescores: Plex Sans + tabular lining figures (easier to scan than Orbitron) */
 .font-display {
@@ -749,8 +831,8 @@ body {
 }
 :root[data-theme="light"] .home-mode-pane-analyst,
 :root[data-theme="light"] .home-mode-pane-coach {
-  border-color: rgba(161, 98, 7, 0.4);
-  background: linear-gradient(165deg, rgba(161, 98, 7, 0.12) 0%, #ffffff 58%);
+  border-color: rgba(234, 88, 12, 0.4);
+  background: linear-gradient(165deg, rgba(234, 88, 12, 0.12) 0%, #ffffff 58%);
 }
 :root[data-theme="light"] .home-mode-pane-admin {
   border-color: rgba(109, 40, 217, 0.35);
@@ -759,8 +841,8 @@ body {
 }
 :root[data-theme="light"] .home-mode-pane-analyst:hover,
 :root[data-theme="light"] .home-mode-pane-coach:hover {
-  border-color: rgba(161, 98, 7, 0.58);
-  background: linear-gradient(165deg, rgba(161, 98, 7, 0.18) 0%, #ffffff 52%);
+  border-color: rgba(234, 88, 12, 0.58);
+  background: linear-gradient(165deg, rgba(234, 88, 12, 0.18) 0%, #ffffff 52%);
   box-shadow: 0 8px 28px rgba(15, 23, 42, 0.1);
 }
 :root[data-theme="light"] .home-mode-pane-admin:hover {
@@ -885,6 +967,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .rdp-dark .rdp-button_previous:hover:not([disabled]) {
   color: var(--accent);
 }
+.rdp-dark .rdp-selected .rdp-day_button {
+  color: var(--accent-fg);
+}
 
 /* Month/year dropdowns — match dark UI */
 .rdp-dark .rdp-dropdown,
@@ -963,27 +1048,55 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   margin: 0 0.5rem;
   width: calc(100% - 1rem);
 }
-.sidebar-link-coach { color: #94a3b8; }
-.sidebar-link-coach:hover { background: rgba(255,255,255,0.06); color: var(--text); }
-.sidebar-link-coach[data-active="true"] { background: var(--accent-coach-dim); color: var(--accent-coach); }
-.sidebar-link-analyst { color: #94a3b8; }
-.sidebar-link-analyst:hover { background: rgba(255,255,255,0.06); color: var(--text); }
-.sidebar-link-analyst[data-active="true"] { background: var(--accent-dim); color: var(--accent); }
-.sidebar-link-admin { color: #94a3b8; }
-.sidebar-link-admin:hover { background: rgba(255,255,255,0.06); color: var(--text); }
-.sidebar-link-admin[data-active="true"] { background: rgba(139,92,246,0.18); color: #c4b5fd; }
+.sidebar-link-coach { color: #ffffff; }
+.sidebar-link-coach:hover { background: rgba(255,255,255,0.06); color: #ffffff; }
+.sidebar-link-coach[data-active="true"] { background: var(--accent-coach-dim); color: #ffffff; }
+.sidebar-link-analyst { color: #ffffff; }
+.sidebar-link-analyst:hover { background: rgba(255,255,255,0.06); color: #ffffff; }
+.sidebar-link-analyst[data-active="true"] { background: var(--accent-dim); color: #ffffff; }
+.sidebar-link-admin { color: #ffffff; }
+.sidebar-link-admin:hover { background: rgba(255,255,255,0.06); color: #ffffff; }
+.sidebar-link-admin[data-active="true"] { background: rgba(139,92,246,0.18); color: #ffffff; }
+.sidebar .sidebar-auth-exit,
+.sidebar .theme-toggle-sidebar,
+.sidebar .sidebar-auth .sidebar-label,
+.sidebar > div:first-child .sidebar-label {
+  color: #ffffff;
+}
+.sidebar > div:first-child button {
+  color: #ffffff;
+}
 
 :root[data-theme="light"] .sidebar-link-coach,
 :root[data-theme="light"] .sidebar-link-analyst,
-:root[data-theme="light"] .sidebar-link-admin {
-  color: #64748b;
+:root[data-theme="light"] .sidebar-link-admin,
+:root[data-theme="light"] .sidebar .sidebar-auth-exit,
+:root[data-theme="light"] .sidebar .theme-toggle-sidebar,
+:root[data-theme="light"] .sidebar .sidebar-auth .sidebar-label,
+:root[data-theme="light"] .sidebar > div:first-child .sidebar-label {
+  color: #000000;
+}
+:root[data-theme="light"] .sidebar > div:first-child button {
+  color: #000000;
+}
+:root[data-theme="light"] .sidebar > div:first-child button:hover {
+  background: rgba(15, 23, 42, 0.06);
+}
+:root[data-theme="light"] .sidebar {
+  background: var(--bg-card);
+  border-right-color: var(--border);
+}
+:root[data-theme="light"] .sidebar-link-coach[data-active="true"],
+:root[data-theme="light"] .sidebar-link-analyst[data-active="true"],
+:root[data-theme="light"] .sidebar-link-admin[data-active="true"] {
+  color: #000000;
 }
 :root[data-theme="light"] .sidebar-link-coach:hover,
 :root[data-theme="light"] .sidebar-link-analyst:hover,
 :root[data-theme="light"] .sidebar-link-admin:hover,
 :root[data-theme="light"] .theme-toggle-sidebar:hover {
   background: rgba(15, 23, 42, 0.06);
-  color: var(--text);
+  color: #000000;
 }
 :root[data-theme="light"] .sidebar button:hover {
   background: rgba(15, 23, 42, 0.06);
@@ -1043,6 +1156,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   --accent: var(--neo-accent);
   --accent-dim: var(--neo-accent-dim);
 }
+
 :root[data-theme="light"] .sidebar[data-collapsed="true"] .theme-toggle-sidebar .sidebar-label {
   display: none;
 }
@@ -1094,11 +1208,17 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   border: none;
   border-radius: 6px;
   padding: 0.5rem 0.75rem;
-  color: #94a3b8;
+  color: #ffffff;
 }
 .sidebar[data-collapsed="true"] .sidebar-auth-signout-btn:hover {
   background: rgba(255, 255, 255, 0.06);
-  color: var(--text);
+  color: #ffffff;
+}
+:root[data-theme="light"] .sidebar[data-collapsed="true"] .sidebar-auth-signout-btn {
+  color: #000000;
+}
+:root[data-theme="light"] .sidebar[data-collapsed="true"] .sidebar-auth-signout-btn:hover {
+  color: #000000;
 }
 .sidebar[data-collapsed="true"] .sidebar-auth {
   padding: 0.5rem 0;
@@ -1119,11 +1239,368 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   -moz-appearance: textfield;
 }
 
+/* Pitch mix cards — stat values use brand accent, not readable-accent remap */
+.pitch-mix-stat-value {
+  color: var(--accent);
+  font-weight: 700;
+}
+.pitch-mix-stat-value-sub {
+  color: var(--accent);
+  opacity: 0.85;
+  font-weight: 700;
+}
+.pitch-mix-name {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* Coach pitch pad — follows active light/dark theme */
+.coach-pitch-pad {
+  background: var(--bg-base);
+  color: var(--text);
+}
+.coach-pitch-pad .pitch-pad-surface {
+  background: var(--bg-card);
+  border-color: var(--border);
+}
+.coach-pitch-pad .pitch-pad-elevated {
+  background: var(--bg-elevated);
+  border-color: var(--border);
+}
+.coach-pitch-pad .pitch-pad-accent {
+  color: var(--accent);
+}
+:root[data-theme="light"] .coach-pitch-pad .pitch-pad-accent {
+  color: var(--accent);
+}
+.coach-pitch-pad .pitch-pad-at-bat {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: var(--accent-dim);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+.coach-pitch-pad .pitch-pad-on-deck {
+  border-color: var(--border);
+  background: var(--bg-elevated);
+}
+.coach-pitch-pad .pitch-pad-lineup-idle {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--bg-card) 72%, transparent);
+}
+.coach-pitch-pad .pitch-pad-matchup-panel {
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--bg-card) 92%, transparent),
+    var(--bg-base)
+  );
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.coach-pitch-pad .pitch-pad-sequence-aside {
+  background: color-mix(in srgb, var(--bg-card) 78%, transparent);
+  border-color: var(--border);
+}
+.coach-pitch-pad .pitch-pad-sequence-latest {
+  border-color: color-mix(in srgb, var(--accent) 65%, var(--border));
+  background: var(--accent-dim);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 32%, transparent);
+}
+.coach-pitch-pad .pitch-pad-sequence-row {
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
+  background: color-mix(in srgb, var(--bg-card) 55%, transparent);
+}
+.coach-pitch-pad .pitch-pad-count-chip {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+  background: color-mix(in srgb, var(--bg-card) 82%, var(--bg-base));
+}
+.coach-pitch-pad .pitch-pad-count-chip-after {
+  color: var(--accent);
+  font-weight: 700;
+}
+:root[data-theme="light"] .coach-pitch-pad .pitch-pad-count-chip-after {
+  color: var(--accent);
+}
+.coach-pitch-pad .pitch-pad-footer {
+  border-color: var(--border);
+  background: var(--bg-card);
+  box-shadow: 0 -10px 32px color-mix(in srgb, var(--bg-base) 45%, transparent);
+}
+.coach-pitch-pad .pitch-pad-btn-secondary {
+  border-color: var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+.coach-pitch-pad .pitch-pad-btn-secondary:hover {
+  background: color-mix(in srgb, var(--bg-elevated) 88%, var(--text));
+}
+.coach-pitch-pad .pitch-pad-btn-accent-outline {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: var(--accent-dim);
+  color: var(--text);
+}
+.coach-pitch-pad .pitch-pad-ab-badge {
+  background: color-mix(in srgb, var(--accent) 38%, transparent);
+  color: var(--accent-fg);
+}
+.coach-pitch-pad .pitch-pad-od-badge {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+.coach-pitch-pad .pitch-pad-banner-success {
+  border-color: color-mix(in srgb, var(--success) 45%, var(--border));
+  background: var(--success-dim);
+  color: var(--success);
+}
+.coach-pitch-pad .pitch-pad-banner-warning {
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--border));
+  background: var(--warning-dim);
+  color: var(--warning);
+}
+.coach-pitch-pad .pitch-pad-banner-error {
+  background: var(--danger-dim);
+  color: var(--danger);
+}
+.coach-pitch-pad .pitch-pad-banner-info {
+  border-color: color-mix(in srgb, #0ea5e9 42%, var(--border));
+  background: color-mix(in srgb, #0ea5e9 10%, var(--bg-card));
+  color: color-mix(in srgb, #0369a1 88%, var(--text));
+}
+.coach-pitch-pad .pitch-pad-banner-offense {
+  border-color: color-mix(in srgb, #8b5cf6 42%, var(--border));
+  background: color-mix(in srgb, #8b5cf6 10%, var(--bg-card));
+  color: color-mix(in srgb, #5b21b6 88%, var(--text));
+}
+.coach-pitch-pad .pitch-pad-banner-lock {
+  border-color: color-mix(in srgb, var(--warning) 50%, var(--border));
+  background: color-mix(in srgb, var(--warning) 18%, var(--bg-card));
+  color: var(--text);
+}
+.coach-pitch-pad .pitch-pad-game-card {
+  background: color-mix(in srgb, var(--bg-card) 88%, transparent);
+  border-color: var(--border);
+}
+.coach-pitch-pad .pitch-pad-game-card-featured {
+  background: var(--bg-card);
+  border-color: var(--border);
+  box-shadow: 0 4px 24px color-mix(in srgb, var(--bg-base) 35%, transparent);
+}
+:root[data-theme="light"] .coach-pitch-pad [class*="text-white"] {
+  color: var(--text);
+}
+:root[data-theme="light"] .coach-pitch-pad .pitch-pad-type-chip-muted {
+  color: var(--text-faint);
+}
+
+/* Modal / dialog backdrop */
+.modal-overlay {
+  background: var(--overlay-bg);
+}
+
+/* Record — batter dropdown */
+.record-batter-select,
+.record-batter-select-display {
+  background: var(--bg-card);
+  color: var(--text);
+}
+.record-batter-select-detail {
+  color: var(--text);
+}
+
+/* Native select list follows active theme when opened */
+.record-batter-select-native {
+  color: transparent;
+  background-color: transparent;
+  color-scheme: light dark;
+}
+:root[data-theme="dark"] .record-batter-select-native {
+  color-scheme: dark;
+}
+:root[data-theme="light"] .record-batter-select-native {
+  color-scheme: light;
+}
+.record-batter-select-native option {
+  color: var(--text);
+  background-color: var(--bg-card);
+}
+
+/* Record — toast variants */
+.record-toast-panel {
+  box-shadow: var(--shadow-toast);
+}
+.record-toast-panel--success {
+  border-color: var(--success);
+  background: var(--toast-success-bg);
+  color: var(--success);
+  --tw-ring-color: color-mix(in srgb, var(--success) 25%, transparent);
+}
+.record-toast-panel--destructive {
+  border-color: var(--danger);
+  background: var(--toast-error-bg);
+  color: var(--toast-error-fg);
+  --tw-ring-color: color-mix(in srgb, var(--danger) 35%, transparent);
+}
+.record-toast-panel--error {
+  border-color: #fbbf24;
+  background: var(--toast-warning-bg);
+  color: var(--toast-warning-fg);
+  --tw-ring-color: color-mix(in srgb, #f59e0b 35%, transparent);
+}
+.record-toast-dismiss {
+  transition: background-color 0.15s;
+}
+.record-toast-dismiss:hover {
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+/* Record — pitch log pad buttons (outcome + undo/clear) */
+.record-pitch-log-btn--ball {
+  border-color: rgba(4, 120, 87, 0.5);
+  background: rgba(2, 44, 34, 0.8);
+  color: #ecfdf5;
+}
+.record-pitch-log-btn--ball:hover {
+  border-color: rgba(5, 150, 105, 0.55);
+  background: rgba(6, 78, 59, 0.42);
+}
+.record-pitch-log-btn--called-strike {
+  border-color: rgba(109, 40, 217, 0.55);
+  background: rgba(46, 16, 101, 0.8);
+  color: #ede9fe;
+}
+.record-pitch-log-btn--called-strike:hover {
+  border-color: rgba(139, 92, 246, 0.58);
+  background: rgba(76, 29, 149, 0.45);
+}
+.record-pitch-log-btn--swinging-strike {
+  border-color: rgba(220, 38, 38, 0.5);
+  background: rgba(69, 10, 10, 0.8);
+  color: #fef2f2;
+}
+.record-pitch-log-btn--swinging-strike:hover {
+  border-color: rgba(239, 68, 68, 0.52);
+  background: rgba(127, 29, 29, 0.45);
+}
+.record-pitch-log-btn--foul {
+  border-color: rgba(30, 64, 175, 0.52);
+  background: rgba(23, 37, 84, 0.8);
+  color: #dbeafe;
+}
+.record-pitch-log-btn--foul:hover {
+  border-color: rgba(29, 78, 216, 0.52);
+  background: rgba(30, 58, 138, 0.4);
+}
+.record-pitch-log-btn--undo {
+  border-color: rgba(82, 82, 91, 0.35);
+  background: rgba(39, 39, 42, 0.45);
+  color: #d4d4d8;
+}
+.record-pitch-log-btn--undo:hover {
+  border-color: rgba(113, 113, 122, 0.4);
+  background: rgba(39, 39, 42, 0.68);
+}
+.record-pitch-log-btn--clear {
+  border-color: rgba(127, 29, 29, 0.42);
+  background: rgba(69, 10, 10, 0.38);
+  color: rgba(254, 205, 211, 0.85);
+}
+.record-pitch-log-btn--clear:hover {
+  border-color: rgba(153, 27, 27, 0.48);
+  background: rgba(69, 10, 10, 0.52);
+}
+
+:root[data-theme="light"] .record-pitch-log-btn--ball {
+  border-color: #047857;
+  background: #34d399;
+  color: #022c22;
+}
+:root[data-theme="light"] .record-pitch-log-btn--ball:hover {
+  border-color: #065f46;
+  background: #10b981;
+}
+:root[data-theme="light"] .record-pitch-log-btn--called-strike {
+  border-color: #7c3aed;
+  background: #c4b5fd;
+  color: #3b0764;
+}
+:root[data-theme="light"] .record-pitch-log-btn--called-strike:hover {
+  border-color: #6d28d9;
+  background: #a78bfa;
+}
+:root[data-theme="light"] .record-pitch-log-btn--swinging-strike {
+  border-color: #b91c1c;
+  background: #f87171;
+  color: #450a0a;
+}
+:root[data-theme="light"] .record-pitch-log-btn--swinging-strike:hover {
+  border-color: #991b1b;
+  background: #ef4444;
+}
+:root[data-theme="light"] .record-pitch-log-btn--foul {
+  border-color: #1d4ed8;
+  background: #60a5fa;
+  color: #172554;
+}
+:root[data-theme="light"] .record-pitch-log-btn--foul:hover {
+  border-color: #1e40af;
+  background: #3b82f6;
+}
+:root[data-theme="light"] .record-pitch-log-btn--undo {
+  border-color: #64748b;
+  background: #cbd5e1;
+  color: #0f172a;
+}
+:root[data-theme="light"] .record-pitch-log-btn--undo:hover {
+  border-color: #475569;
+  background: #94a3b8;
+  color: #020617;
+}
+:root[data-theme="light"] .record-pitch-log-btn--clear {
+  border-color: #dc2626;
+  background: #fca5a5;
+  color: #7f1d1d;
+}
+:root[data-theme="light"] .record-pitch-log-btn--clear:hover {
+  border-color: #b91c1c;
+  background: #f87171;
+  color: #450a0a;
+}
+
+.record-pitch-seq-border--ball {
+  border-color: rgba(4, 120, 87, 0.5);
+}
+.record-pitch-seq-border--called-strike {
+  border-color: rgba(109, 40, 217, 0.55);
+}
+.record-pitch-seq-border--swinging-strike {
+  border-color: rgba(220, 38, 38, 0.5);
+}
+.record-pitch-seq-border--foul {
+  border-color: rgba(30, 64, 175, 0.52);
+}
+:root[data-theme="light"] .record-pitch-seq-border--ball {
+  border-color: #047857;
+}
+:root[data-theme="light"] .record-pitch-seq-border--called-strike {
+  border-color: #7c3aed;
+}
+:root[data-theme="light"] .record-pitch-seq-border--swinging-strike {
+  border-color: #b91c1c;
+}
+:root[data-theme="light"] .record-pitch-seq-border--foul {
+  border-color: #1d4ed8;
+}
+.record-pitch-seq-border--default {
+  border-color: rgba(var(--neo-accent-r), var(--neo-accent-g), var(--neo-accent-b), 0.4);
+}
+
 /* Stepper buttons: hover only when device supports hover (avoids sticky hover on touch) */
 @media (hover: hover) {
   .record-pa-stepper-btn:hover {
     background: var(--accent) !important;
     color: var(--bg-base) !important;
+  }
+  :root[data-theme="light"] .record-pa-stepper-btn:hover {
+    color: var(--accent-fg) !important;
   }
 }
 

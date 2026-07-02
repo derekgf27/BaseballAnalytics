@@ -335,7 +335,7 @@ export function GameLogPageClient({
 
           {groups.map((g) => (
             <section key={g.key} className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)]">
-              <h2 className="border-b border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 font-display text-xs font-semibold uppercase tracking-wider text-white">
+              <h2 className="border-b border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 font-display text-xs font-semibold uppercase tracking-wider text-[var(--text)]">
                 {g.label}{" "}
                 <span className="font-normal normal-case text-[var(--text-muted)]">
                   ({g.items.length} PA{g.items.length === 1 ? "" : "s"})
@@ -345,37 +345,37 @@ export function GameLogPageClient({
                 <table className="w-full min-w-[920px] border-collapse text-left text-xs sm:text-sm">
                   <thead>
                     <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]/80">
-                      <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-white">
+                      <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-[var(--text)]">
                         Batter
                       </th>
-                      <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-white">
+                      <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-[var(--text)]">
                         Pitcher
                       </th>
-                      <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-white">
+                      <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-[var(--text)]">
                         Count
                       </th>
-                      <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-white">
+                      <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-[var(--text)]">
                         Pitches
                       </th>
-                      <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-white">
+                      <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-[var(--text)]">
                         Outs
                       </th>
-                      <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-white">
+                      <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-[var(--text)]">
                         Runners
                       </th>
-                      <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-white">
+                      <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-[var(--text)]">
                         Result
                       </th>
-                      <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-white">
+                      <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-[var(--text)]">
                         BIP
                       </th>
-                      <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-white">
+                      <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-[var(--text)]">
                         Dir
                       </th>
-                      <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-white">
+                      <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-[var(--text)]">
                         Runs
                       </th>
-                      <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-white">
+                      <th className="px-2 py-2 font-display font-semibold uppercase tracking-wider text-[var(--text)]">
                         RBI
                       </th>
                       {canEdit ? (
@@ -433,7 +433,7 @@ export function GameLogPageClient({
                             >
                               {batterName}
                               {batLtr != null ? (
-                                <span className="ml-2 font-normal text-white">{batLtr}</span>
+                                <span className="ml-2 font-normal text-[var(--text)]">{batLtr}</span>
                               ) : null}
                             </Link>
                           </td>
@@ -445,7 +445,7 @@ export function GameLogPageClient({
                               >
                                 {pitcherName}
                                 {pitLtr != null ? (
-                                  <span className="ml-2 text-white">{pitLtr}</span>
+                                  <span className="ml-2 text-[var(--text)]">{pitLtr}</span>
                                 ) : null}
                               </Link>
                             ) : (

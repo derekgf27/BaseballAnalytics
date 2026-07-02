@@ -70,9 +70,9 @@ export function CoachNav({ footer }: { footer?: ReactNode }) {
           href="/coach"
           title={showCollapsed ? "Open menu — tap again to go to Coach home" : undefined}
           onClick={(e) => guardNavUntilSidebarExpanded(e, showCollapsed, expandOnly)}
-          className="font-orbitron flex min-w-0 flex-1 items-center py-2 pl-0.5 text-sm font-semibold tracking-tight text-[var(--text)]"
+          className="font-orbitron flex min-w-0 flex-1 items-center py-2 pl-0.5 text-sm font-semibold tracking-tight"
         >
-          <span className="sidebar-label truncate text-[var(--accent-coach)]">Coach</span>
+          <span className="sidebar-label truncate">Coach</span>
         </Link>
       </div>
       <nav

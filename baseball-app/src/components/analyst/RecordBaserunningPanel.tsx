@@ -43,7 +43,7 @@ export function RecordBaserunningPanel({
       className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-3"
       aria-label="Stolen bases and caught stealing this game"
     >
-      <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-white">
+      <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-[var(--text)]">
         Stolen bases
       </h3>
       {baserunningEvents.length > 0 ? (

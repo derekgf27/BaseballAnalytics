@@ -52,6 +52,11 @@ function pitcherIdsInOrder(pas: PlateAppearance[]): string[] {
   return ids;
 }
 
+/** Stat numbers in pitch mix cards — always true accent (not `--accent-text` remap). */
+const PITCH_MIX_STAT_VAL = "pitch-mix-stat-value";
+const PITCH_MIX_STAT_VAL_SUB = "pitch-mix-stat-value-sub";
+const PITCH_MIX_NAME = "pitch-mix-name";
+
 /** Shared shell for the Record batter / pitcher pitch-data pair (equal padding, stretch in grid). */
 function pitchDataPairCardShellClass(
   compact: boolean,
@@ -88,7 +93,7 @@ function pitchDataCardNameClass(
           : compact
             ? "text-sm sm:text-base"
             : "text-base sm:text-lg";
-  return `truncate font-display font-semibold text-[var(--accent)] ${size}`;
+  return `truncate font-display font-bold ${PITCH_MIX_NAME} ${size}`;
 }
 
 function pitchDataCardHeaderStatClass(
@@ -126,20 +131,20 @@ function coachPadStatTypography(coachPadExpanded: boolean, tiles: CoachPadTileSc
     return {
       label:
         "shrink-0 font-display font-semibold uppercase tracking-wider text-white text-[9px] leading-none md:text-[10px]",
-      val: "tabular-nums font-bold leading-none text-[var(--accent)] text-xl md:text-2xl lg:text-3xl",
+      val: `tabular-nums font-bold leading-none ${PITCH_MIX_STAT_VAL} text-xl md:text-2xl lg:text-3xl`,
       missing:
         "tabular-nums font-medium leading-none text-white text-xl md:text-2xl lg:text-3xl",
-      sub: "tabular-nums font-semibold text-[var(--accent)]/85 text-xs leading-none md:text-sm",
+      sub: `tabular-nums font-bold ${PITCH_MIX_STAT_VAL_SUB} text-xs leading-none md:text-sm`,
     };
   }
   if (tiles === "md") {
     return {
       label:
         "shrink-0 font-display font-semibold uppercase tracking-wider text-white text-[9px] leading-none md:text-[10px]",
-      val: "tabular-nums font-bold leading-none text-[var(--accent)] text-lg md:text-xl",
+      val: `tabular-nums font-bold leading-none ${PITCH_MIX_STAT_VAL} text-lg md:text-xl`,
       missing:
         "tabular-nums font-medium leading-none text-white text-lg md:text-xl",
-      sub: "tabular-nums font-semibold text-[var(--accent)]/85 text-[10px] leading-none md:text-[11px]",
+      sub: `tabular-nums font-bold ${PITCH_MIX_STAT_VAL_SUB} text-[10px] leading-none md:text-[11px]`,
     };
   }
   return {
@@ -147,14 +152,14 @@ function coachPadStatTypography(coachPadExpanded: boolean, tiles: CoachPadTileSc
       ? "shrink-0 font-semibold text-white text-xs leading-none md:text-sm"
       : "shrink-0 font-semibold text-white",
     val: coachPadExpanded
-      ? "tabular-nums font-bold leading-none text-[var(--accent)] text-base md:text-lg"
-      : "tabular-nums font-semibold text-[var(--accent)]",
+      ? `tabular-nums font-bold leading-none ${PITCH_MIX_STAT_VAL} text-base md:text-lg`
+      : `tabular-nums font-bold ${PITCH_MIX_STAT_VAL}`,
     missing: coachPadExpanded
       ? "tabular-nums font-medium leading-none text-white text-base md:text-lg"
       : "tabular-nums font-medium text-white",
     sub: coachPadExpanded
-      ? "tabular-nums font-semibold text-[var(--accent)]/85 text-[10px] leading-none md:text-[11px]"
-      : "text-[var(--accent)]/85",
+      ? `tabular-nums font-bold ${PITCH_MIX_STAT_VAL_SUB} text-[10px] leading-none md:text-[11px]`
+      : `${PITCH_MIX_STAT_VAL_SUB} font-bold`,
   };
 }
 
@@ -353,7 +358,7 @@ function PitchMixDistributionBlock({
   /** Mix lists up to 7 types — values one step smaller than Rates/Contact on coach pad. */
   const valClass =
     coachPad && coachPadExpanded
-      ? "tabular-nums font-bold leading-none text-[var(--accent)] text-sm md:text-base"
+      ? `tabular-nums font-bold leading-none ${PITCH_MIX_STAT_VAL} text-sm md:text-base`
       : stat.val;
   if (dist.typedTotal <= 0 || dist.entries.length === 0) {
     return (
@@ -413,7 +418,7 @@ function PitchMixDistributionBlock({
               title={`${pitchTrackerAbbrev(e.type)} — ${pitchTrackerTypeLabel(e.type)}`}
             >
               {chip}
-              <span className={`tabular-nums font-bold leading-none text-[var(--accent)] ${pctClass}`}>
+              <span className={`tabular-nums font-bold leading-none ${PITCH_MIX_STAT_VAL} ${pctClass}`}>
                 {formatPct(e.pct)}
               </span>
               <span className={`tabular-nums font-semibold leading-none text-white ${countClass}`}>
@@ -1201,7 +1206,7 @@ export function MatchupPitchMixStrip({
   if (!row) return null;
 
   const nameClass =
-    "truncate font-display font-semibold text-[var(--accent)] " + (compact ? "text-xs" : "text-sm");
+    `truncate font-display font-bold ${PITCH_MIX_NAME} ` + (compact ? "text-xs" : "text-sm");
 
   return (
     <PitchMixRow
@@ -1433,7 +1438,7 @@ export function BattingPitchMixCard({
             >
               {primaryRow.name}
               {primaryRow.jersey ? (
-                <span className="font-semibold text-[var(--accent)]"> #{primaryRow.jersey}</span>
+                <span className={`font-bold ${PITCH_MIX_NAME}`}> #{primaryRow.jersey}</span>
               ) : null}
             </p>
             {pitchesThisInning != null ? (
@@ -1442,7 +1447,7 @@ export function BattingPitchMixCard({
                 title={`Pitches thrown by ${primaryRow.name} in ${inningHalf === "bottom" ? "bottom" : "top"} ${inning}`}
               >
                 <span className="font-medium text-white">Pitches this inning: </span>
-                <span className="font-semibold tabular-nums text-[var(--accent)]">
+                <span className={`font-bold tabular-nums ${PITCH_MIX_STAT_VAL}`}>
                   {pitchesThisInning}
                 </span>
               </p>

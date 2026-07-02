@@ -122,30 +122,30 @@ export function BoxScore({
         <thead>
           <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
             <th
-              className={`font-display ${teamHeadPad} ${headText} ${large ? "" : "font-semibold"} uppercase tracking-wider text-white ${teamColClass}`}
+              className={`font-display ${teamHeadPad} ${headText} ${large ? "" : "font-semibold"} uppercase tracking-wider text-[var(--text)] ${teamColClass}`}
             >
               Team
             </th>
             {innings.map((i) => (
               <th
                 key={i}
-                className={`font-display ${innW} ${headPad} text-center ${headText} ${large ? "" : "font-semibold"} uppercase tracking-wider text-white`}
+                className={`font-display ${innW} ${headPad} text-center ${headText} ${large ? "" : "font-semibold"} uppercase tracking-wider text-[var(--text)]`}
               >
                 {i}
               </th>
             ))}
             <th
-              className={`font-display ${rHEW} border-l border-[var(--border)] ${headPad} text-center ${headText} ${large ? "" : "font-semibold"} uppercase tracking-wider text-white`}
+              className={`font-display ${rHEW} border-l border-[var(--border)] ${headPad} text-center ${headText} ${large ? "" : "font-semibold"} uppercase tracking-wider text-[var(--text)]`}
             >
               R
             </th>
             <th
-              className={`font-display ${rHEW} ${headPad} text-center ${headText} ${large ? "" : "font-semibold"} uppercase tracking-wider text-white`}
+              className={`font-display ${rHEW} ${headPad} text-center ${headText} ${large ? "" : "font-semibold"} uppercase tracking-wider text-[var(--text)]`}
             >
               H
             </th>
             <th
-              className={`font-display ${rHEW} ${headPad} text-center ${headText} ${large ? "" : "font-semibold"} uppercase tracking-wider text-white`}
+              className={`font-display ${rHEW} ${headPad} text-center ${headText} ${large ? "" : "font-semibold"} uppercase tracking-wider text-[var(--text)]`}
             >
               E
             </th>

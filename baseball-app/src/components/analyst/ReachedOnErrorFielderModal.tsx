@@ -163,7 +163,7 @@ export function ReachedOnErrorFielderModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4 sm:p-8"
+      className="modal-overlay fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-8"
       onClick={() => onCancel()}
       role="presentation"
     >

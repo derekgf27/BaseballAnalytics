@@ -116,7 +116,7 @@ export function LineupCollectiveStatsBar({
       className={
         embedded
           ? "flex min-w-0 flex-1 flex-col gap-3 lg:border-l lg:border-[var(--neo-border)] lg:pl-6"
-          : "shrink-0 rounded-lg border border-[var(--neo-border)] bg-[#0f141a] px-3 py-2.5"
+          : "shrink-0 rounded-lg border border-[var(--neo-border)] bg-[var(--bg-card)] px-3 py-2.5"
       }
     >
       <div className="flex flex-col gap-2">
@@ -169,7 +169,7 @@ function DraggablePoolChip({
       {...listeners}
       {...attributes}
       onClick={onAdd}
-      className={`w-full touch-none select-none rounded border border-[var(--neo-border)] bg-[#151b21] px-3 py-2 text-left text-sm leading-snug text-[var(--neo-text)] transition hover:border-[var(--neo-accent)]/50 hover:bg-[var(--neo-accent-dim)] active:cursor-grabbing ${
+      className={`w-full touch-none select-none rounded border border-[var(--neo-border)] bg-[var(--bg-elevated)] px-3 py-2 text-left text-sm leading-snug text-[var(--neo-text)] transition hover:border-[var(--neo-accent)]/50 hover:bg-[var(--neo-accent-dim)] active:cursor-grabbing ${
         isDragging ? "opacity-40" : ""
       }`}
       title={`Add ${player.name} to lineup`}
@@ -222,7 +222,7 @@ export function PlayerPoolDropZone({
   return (
     <div
       ref={setNodeRef}
-      className={`flex min-h-[12rem] flex-col rounded-lg border border-dashed border-[var(--neo-border)] bg-[#0a0e12]/80 p-3 transition lg:min-h-0 ${className} ${
+      className={`flex min-h-[12rem] flex-col rounded-lg border border-dashed border-[var(--neo-border)] bg-[var(--bg-input)]/80 p-3 transition lg:min-h-0 ${className} ${
         isOver ? "border-[var(--neo-accent)] bg-[var(--neo-accent-dim)]" : ""
       }`}
     >
@@ -286,7 +286,7 @@ export function LineupOrderPanel({
       ) : null}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-[var(--neo-border)]">
         <div
-          className={`${LINEUP_ROW_GRID} shrink-0 border-b border-[var(--neo-border)] bg-[#151b21] text-[10px] font-medium uppercase text-[var(--neo-text-muted)]`}
+          className={`${LINEUP_ROW_GRID} shrink-0 border-b border-[var(--neo-border)] bg-[var(--bg-elevated)] text-[10px] font-medium uppercase text-[var(--neo-text-muted)]`}
         >
           <div className="px-1 py-1.5 text-center">#</div>
           <div className="py-1.5 text-center">Pos</div>
@@ -334,7 +334,7 @@ function LineupSlotRow({
     <div
       ref={setNodeRef}
       className={`${LINEUP_ROW_GRID} min-h-0 border-b border-[var(--neo-border)] last:border-0 ${
-        isOver ? "bg-[var(--neo-accent-dim)]" : slotIndex % 2 === 0 ? "bg-[#10151a]" : "bg-[#12181f]"
+        isOver ? "bg-[var(--neo-accent-dim)]" : slotIndex % 2 === 0 ? "bg-[var(--bg-card)]" : "bg-[var(--bg-elevated)]"
       }`}
     >
       <div className="flex h-full items-center justify-center px-1">
@@ -347,7 +347,7 @@ function LineupSlotRow({
           <select
             value={position && LINEUP_POSITIONS.includes(position as (typeof LINEUP_POSITIONS)[number]) ? position : LINEUP_POSITIONS[0]}
             onChange={(e) => onPositionChange(slotIndex, e.target.value)}
-            className="w-full min-w-0 rounded border border-[var(--neo-border)] bg-[#111619] px-0.5 py-1 text-center text-[10px] text-[var(--neo-text)]"
+            className="w-full min-w-0 rounded border border-[var(--neo-border)] bg-[var(--bg-input)] px-0.5 py-1 text-center text-[10px] text-[var(--neo-text)]"
             aria-label={`Position slot ${slotIndex + 1}`}
           >
             {LINEUP_POSITIONS.map((pos) => (
@@ -392,9 +392,9 @@ export function UnifiedRosterStatsTable({
   onRemovePlayer: (playerId: string) => void;
 }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-[var(--neo-border)] bg-[#0f141a]">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-[var(--neo-border)] bg-[var(--bg-card)]">
       <div
-        className={`${ROSTER_STATS_GRID} shrink-0 border-b border-[var(--neo-border)] bg-[#151b21]`}
+        className={`${ROSTER_STATS_GRID} shrink-0 border-b border-[var(--neo-border)] bg-[var(--bg-elevated)]`}
       >
         <div className="py-2.5 pl-2 pr-1 text-center text-[11px] font-medium uppercase tracking-wide text-[var(--neo-text-muted)]">
           #
@@ -433,7 +433,7 @@ export function UnifiedRosterStatsTable({
               <div
                 key={player.id}
                 className={`${ROSTER_STATS_GRID} min-h-0 text-sm ${
-                  inLineup ? "bg-[var(--neo-accent-dim)]/35" : "hover:bg-[#151b21]/80"
+                  inLineup ? "bg-[var(--neo-accent-dim)]/35" : "hover:bg-[var(--bg-elevated)]"
                 }`}
               >
                 <div className="flex h-full items-center justify-center pl-2 pr-1 text-center text-base font-semibold tabular-nums text-[var(--neo-accent)]">
@@ -446,7 +446,7 @@ export function UnifiedRosterStatsTable({
                   <button
                     type="button"
                     onClick={() => (inLineup ? onRemovePlayer(player.id) : onAddPlayer(player))}
-                    className="truncate text-left text-[15px] font-medium leading-snug text-[var(--text)] hover:text-[var(--neo-accent)]"
+                    className="truncate text-left text-[15px] font-medium leading-snug text-[var(--neo-accent)] hover:underline"
                     title={inLineup ? "Remove from lineup" : "Add to next open spot"}
                   >
                     {player.name}
@@ -635,7 +635,7 @@ export function LineupFooterTools({
               {initialSavedLineups.map((l) => (
                 <li
                   key={l.id}
-                  className="flex items-center gap-2 rounded border border-[var(--neo-border)] bg-[#10151a] px-2.5 py-1.5 text-xs"
+                  className="flex items-center gap-2 rounded border border-[var(--neo-border)] bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs"
                 >
                   <span className="font-medium text-[var(--neo-text)]">{l.name}</span>
                   <button

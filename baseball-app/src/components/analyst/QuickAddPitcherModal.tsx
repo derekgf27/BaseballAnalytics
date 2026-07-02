@@ -110,7 +110,7 @@ export function QuickAddPitcherModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4"
+      className="modal-overlay fixed inset-0 z-[60] flex items-end justify-center p-0 sm:items-center sm:p-4"
       onClick={() => !saving && onClose()}
       role="dialog"
       aria-modal="true"

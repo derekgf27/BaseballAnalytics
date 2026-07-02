@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { formatDateMMDDYYYY } from "@/lib/format";
 import { todayIsoDate } from "@/lib/coachGamePick";
 import { opponentTeamName, ourVenueLabel } from "@/lib/opponentUtils";
@@ -35,16 +36,18 @@ function PitchPadGameCard({
   if (featured) {
     const today = todayIsoDate();
     return (
-      <div className="rounded-2xl border border-zinc-700 bg-zinc-900/80 p-5 shadow-lg">
-        <p className="text-xs font-semibold uppercase tracking-wider text-emerald-400/90">
+      <div className="pitch-pad-game-card-featured rounded-2xl border p-5 shadow-lg">
+        <p className="pitch-pad-accent text-xs font-semibold uppercase tracking-wider">
           {featuredGameHeading(game, today)} · {venue}
         </p>
-        <p className="mt-2 font-orbitron text-2xl font-bold tracking-tight text-zinc-50">
+        <p className="mt-2 font-orbitron text-2xl font-bold tracking-tight text-[var(--text)]">
           vs {opponent}
         </p>
-        <p className="mt-1 text-sm text-zinc-400">{formatDateMMDDYYYY(game.date)}</p>
+        <p className="mt-1 text-sm text-[var(--text-muted)]">{formatDateMMDDYYYY(game.date)}</p>
         {sessionStarted ? (
-          <p className="mt-2 text-xs font-medium text-amber-300/90">Session started — tap to resume</p>
+          <p className="mt-2 text-xs font-medium text-[var(--warning)]">
+            Session started — tap to resume
+          </p>
         ) : null}
         <button
           type="button"
@@ -63,20 +66,20 @@ function PitchPadGameCard({
       type="button"
       disabled={disabled}
       onClick={() => onSelect(game.id)}
-      className="w-full rounded-xl border border-zinc-700 bg-zinc-900/60 px-4 py-4 text-left transition hover:border-emerald-600/50 hover:bg-zinc-900 active:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+      className="pitch-pad-game-card w-full rounded-xl border px-4 py-4 text-left transition hover:border-emerald-600/50 hover:bg-[var(--bg-elevated)] active:bg-[var(--bg-input)] disabled:cursor-not-allowed disabled:opacity-40"
     >
       <div className="flex items-start justify-between gap-3">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-faint)]">
           {venue}
         </span>
         {sessionStarted ? (
-          <span className="shrink-0 rounded-full bg-amber-950/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300/90">
+          <span className="shrink-0 rounded-full bg-[var(--warning-dim)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--warning)]">
             In progress
           </span>
         ) : null}
       </div>
-      <p className="mt-1.5 text-lg font-semibold text-zinc-100">vs {opponent}</p>
-      <p className="mt-0.5 text-sm text-zinc-400">{formatDateMMDDYYYY(game.date)}</p>
+      <p className="mt-1.5 text-lg font-semibold text-[var(--text)]">vs {opponent}</p>
+      <p className="mt-0.5 text-sm text-[var(--text-muted)]">{formatDateMMDDYYYY(game.date)}</p>
     </button>
   );
 }
@@ -103,22 +106,25 @@ export function PitchPadGamePicker({
   const singleGame = games.length === 1 && featuredGame;
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-zinc-950 px-4 py-8 text-zinc-100">
+    <div className="coach-pitch-pad flex min-h-[100dvh] flex-col bg-[var(--bg-base)] px-4 py-8 text-[var(--text)]">
       <div className="mx-auto w-full max-w-md space-y-6">
-        <Link
-          href="/coach"
-          className="touch-manipulation inline-flex h-11 items-center gap-1.5 rounded-lg border border-zinc-600 bg-zinc-800/90 px-3 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-700 active:bg-zinc-600"
-          aria-label="Back to coach home"
-        >
-          <span className="text-base leading-none" aria-hidden>
-            ←
-          </span>
-          <span>Coach home</span>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/coach"
+            className="pitch-pad-btn-secondary touch-manipulation inline-flex h-11 items-center gap-1.5 rounded-lg border px-3 text-sm font-semibold transition active:opacity-90"
+            aria-label="Back to coach home"
+          >
+            <span className="text-base leading-none" aria-hidden>
+              ←
+            </span>
+            <span>Coach home</span>
+          </Link>
+          <ThemeToggle variant="icon" className="!h-11 !w-11 shrink-0" />
+        </div>
 
         <div>
           <h1 className="font-orbitron text-2xl font-bold tracking-tight">Pitch pad</h1>
-          <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+          <p className="mt-2 text-sm leading-relaxed text-[var(--text-muted)]">
             Pick tonight&apos;s game to start tracking pitches. Batter, count, and outs update live with the
             scorekeeper.
           </p>
@@ -126,7 +132,7 @@ export function PitchPadGamePicker({
 
         {resolveError ? (
           <p
-            className="rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-sm text-red-200"
+            className="pitch-pad-banner-error rounded-lg border border-[var(--danger)]/40 px-3 py-2 text-sm"
             role="alert"
           >
             {resolveError}
@@ -135,13 +141,13 @@ export function PitchPadGamePicker({
 
         {gamesLoading ? (
           <div className="space-y-3" aria-busy="true" aria-label="Loading games">
-            <div className="h-40 animate-pulse rounded-2xl bg-zinc-900/80" />
-            <div className="h-20 animate-pulse rounded-xl bg-zinc-900/60" />
+            <div className="h-40 animate-pulse rounded-2xl bg-[var(--bg-card)]" />
+            <div className="h-20 animate-pulse rounded-xl bg-[var(--bg-elevated)]" />
           </div>
         ) : games.length === 0 ? (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-6 text-center">
-            <p className="text-sm font-medium text-zinc-200">No active games yet</p>
-            <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+          <div className="pitch-pad-surface rounded-xl border px-4 py-6 text-center">
+            <p className="text-sm font-medium text-[var(--text)]">No active games yet</p>
+            <p className="mt-2 text-sm leading-relaxed text-[var(--text-muted)]">
               Ask your analyst to create today&apos;s game in Analyst → Games, then come back here to open the
               pitch pad.
             </p>
@@ -169,7 +175,7 @@ export function PitchPadGamePicker({
                 <button
                   type="button"
                   onClick={() => setOtherExpanded((v) => !v)}
-                  className="flex w-full items-center justify-between rounded-lg px-1 py-2 text-left text-sm font-semibold text-zinc-400 transition hover:text-zinc-200"
+                  className="flex w-full items-center justify-between rounded-lg px-1 py-2 text-left text-sm font-semibold text-[var(--text-muted)] transition hover:text-[var(--text)]"
                   aria-expanded={otherExpanded}
                 >
                   <span>Other games ({otherGames.length})</span>

@@ -12,7 +12,7 @@ import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
 import { FlashMessage } from "@/components/shared/FlashMessage";
 import { useFlashMessage } from "@/hooks/useFlashMessage";
 import { roleBadgeClassName, roleLabel, type AppRole } from "@/lib/auth/roles";
-import { isValidUsername, usernameValidationMessage } from "@/lib/auth/username";
+import { displayUsername, isValidUsername, usernameValidationMessage } from "@/lib/auth/username";
 import {
   createAdminUserAction,
   deleteAdminUserAction,
@@ -77,7 +77,7 @@ function ModalShell({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px] sm:p-6"
+      className="modal-overlay fixed inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-[2px] sm:p-6"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -316,7 +316,7 @@ export function AdminUsersClient({
       showFlash({ type: "err", text: res.error });
       return;
     }
-    showFlash({ type: "ok", text: `Created @${username}` });
+    showFlash({ type: "ok", text: `Created ${displayUsername(username)}` });
     setCreateOpen(false);
     resetCreateForm({
       setCreateUsername,
@@ -355,7 +355,7 @@ export function AdminUsersClient({
       showFlash({ type: "err", text: res.error });
       return;
     }
-    showFlash({ type: "ok", text: `Updated @${editingUser.username}` });
+    showFlash({ type: "ok", text: `Updated ${displayUsername(editingUser.username)}` });
     closeEditForm();
     await refresh();
   }
@@ -369,7 +369,7 @@ export function AdminUsersClient({
       showFlash({ type: "err", text: res.error });
       return;
     }
-    showFlash({ type: "deleted", text: `Deleted @${deleteTarget.username}` });
+    showFlash({ type: "deleted", text: `Deleted ${displayUsername(deleteTarget.username)}` });
     setDeleteTarget(null);
     await refresh();
   }
@@ -675,7 +675,7 @@ export function AdminUsersClient({
                   <input
                     type="text"
                     readOnly
-                    value={`@${editingUser.username}`}
+                    value={displayUsername(editingUser.username)}
                     className={`${inputClass} cursor-default opacity-80`}
                   />
                 </label>
@@ -733,7 +733,7 @@ export function AdminUsersClient({
         <ConfirmDeleteDialog
           open={!!deleteTarget}
           onClose={() => !busy && setDeleteTarget(null)}
-          title={deleteTarget ? `Delete @${deleteTarget.username}?` : "Delete user?"}
+          title={deleteTarget ? `Delete ${displayUsername(deleteTarget.username)}?` : "Delete user?"}
           description="This cannot be undone. The user will lose access immediately."
           confirmLabel="Delete user"
           pendingLabel="Deleting…"
@@ -777,7 +777,7 @@ export function AdminUsersClient({
               ) : (
                 pageUsers.map((user) => (
                   <tr key={user.id} className="border-b border-[var(--neo-border)]/60">
-                    <td className="px-4 py-3 font-medium text-[var(--neo-text)]">@{user.username}</td>
+                    <td className="px-4 py-3 font-medium text-[var(--neo-text)]">{displayUsername(user.username)}</td>
                     <td className="px-4 py-3">
                       <span className={`${roleBadgeClassName(user.role)} inline-flex max-w-full truncate`}>
                         {roleLabel(user.role)}

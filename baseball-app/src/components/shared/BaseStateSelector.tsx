@@ -66,7 +66,7 @@ function SvgRunnerNameLabel({
         y={jersey != null ? y - 10 : y}
         textAnchor="middle"
         dominantBaseline="middle"
-        fill="var(--accent)"
+        fill="var(--accent-fg)"
         fontSize="22"
         fontWeight="800"
       >
@@ -78,7 +78,7 @@ function SvgRunnerNameLabel({
           y={y + 10}
           textAnchor="middle"
           dominantBaseline="middle"
-          fill="var(--accent)"
+          fill="var(--accent-fg)"
           fontSize="24"
           fontWeight="800"
         >
@@ -277,7 +277,7 @@ export function BaseStateSelector({
                 y={y - half}
                 width={BASE_SIZE}
                 height={BASE_SIZE}
-                fill={hasRunner ? "#000000" : isMoveTarget ? "var(--accent-dim)" : "#fafafa"}
+                fill={hasRunner ? "var(--accent)" : isMoveTarget ? "var(--accent-dim)" : "#fafafa"}
                 stroke={
                   isMoveSource
                     ? "var(--accent)"
@@ -313,7 +313,7 @@ export function BaseStateSelector({
             if (!runnerId) {
               return (
                 <div key={baseIdx} className="flex min-w-0 w-full flex-col items-stretch gap-1">
-                  <span className="text-[11px] font-medium uppercase tracking-wider text-white">
+                  <span className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
                     {BASE_LABELS[baseIdx]}
                   </span>
                   <select

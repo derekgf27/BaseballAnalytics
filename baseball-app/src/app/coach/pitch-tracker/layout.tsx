@@ -3,7 +3,7 @@
  */
 export default function CoachPitchTrackerLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-[400] flex flex-col overflow-hidden bg-zinc-950">
+    <div className="coach-pitch-pad fixed inset-0 z-[400] flex flex-col overflow-hidden bg-[var(--bg-base)]">
       {children}
     </div>
   );

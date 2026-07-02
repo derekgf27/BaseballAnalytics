@@ -61,9 +61,9 @@ export function AdminNav({ footer }: { footer?: ReactNode }) {
           href="/admin/users"
           title={showCollapsed ? "Open menu — tap again to go to Admin home" : undefined}
           onClick={(e) => guardNavUntilSidebarExpanded(e, showCollapsed, expandOnly)}
-          className="font-orbitron flex min-w-0 flex-1 items-center py-2 pl-0.5 text-sm font-semibold tracking-tight text-[var(--text)]"
+          className="font-orbitron flex min-w-0 flex-1 items-center py-2 pl-0.5 text-sm font-semibold tracking-tight"
         >
-          <span className="sidebar-label truncate text-violet-300">Admin</span>
+          <span className="sidebar-label truncate">Admin</span>
         </Link>
       </div>
       <nav

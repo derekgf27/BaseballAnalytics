@@ -94,7 +94,7 @@ export function OpponentsPageClient({
             setError(null);
             setModalOpen(true);
           }}
-          className="font-display inline-flex shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold tracking-wide text-[var(--bg-base)] transition hover:opacity-90"
+          className="font-orbitron inline-flex shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold tracking-wide text-[var(--bg-base)] transition hover:opacity-90"
         >
           Add opponent
         </button>
@@ -151,7 +151,7 @@ export function OpponentsPageClient({
 
       {modalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4"
           onClick={() => !saving && !deleting && !deleteConfirmOpen && closeModal()}
           role="dialog"
           aria-modal="true"

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { roleBadgeClassName, roleLabel, type AppRole } from "@/lib/auth/roles";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { SignOutButton } from "./SignOutButton";
 
 export type SidebarPortal = "coach" | "analyst" | "admin";
@@ -67,7 +68,7 @@ export function AuthSessionPanel({
         {showExit ? (
           <Link
             href="/"
-            className={`sidebar-link sidebar-auth-exit ${exitClass} opacity-70`}
+            className={`sidebar-link sidebar-auth-exit ${exitClass}`}
             title="Exit to home"
             aria-label="Exit to home"
           >
@@ -75,6 +76,8 @@ export function AuthSessionPanel({
             <span className="sidebar-label">Exit</span>
           </Link>
         ) : null}
+
+        <ThemeToggle linkClassName={`sidebar-link ${exitClass}`} />
 
         {(role || handle) ? (
           <div className="sidebar-auth-expanded flex min-w-0 items-center gap-2">
@@ -87,19 +90,13 @@ export function AuthSessionPanel({
             ) : null}
             {handle ? (
               <span
-                className="sidebar-label min-w-0 flex-1 truncate text-sm font-medium text-[var(--text)]"
+                className="sidebar-label min-w-0 flex-1 truncate text-sm font-medium"
                 title={handle}
               >
                 {handle}
               </span>
             ) : null}
           </div>
-        ) : null}
-        {showSignOut ? (
-          <SignOutButton
-            sidebar
-            className="sidebar-auth-signout w-full [&_button]:w-full [&_button]:justify-center"
-          />
         ) : null}
       </div>
     </div>

@@ -3159,6 +3159,9 @@ export default function RecordPageClient({
     destructiveConfirm,
     errorFielderModalMode,
     shortcutsHelpOpen,
+    quickAddPlayerOpen,
+    quickAddPitcherOpen,
+    canQuickAddOpponentPlayer,
     savePaDisabled,
     batterSelectRef,
     outcomeCountGateRef,
@@ -3168,6 +3171,7 @@ export default function RecordPageClient({
     advanceToNextLineupBatterRef,
     repeatLastSavedOutcomeRef,
     setShortcutsHelpOpen,
+    setQuickAddPlayerOpen,
     setSubstitutionModalOpen,
     setPitcherChangeModalOpen,
     setResult,
@@ -3331,7 +3335,7 @@ export default function RecordPageClient({
             >
               <h4
                 id="record-h-game-state"
-                className="font-display mb-1 text-[10px] font-semibold uppercase tracking-wider text-white"
+                className="font-display mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text)]"
               >
                 Game state
               </h4>
@@ -3499,7 +3503,7 @@ export default function RecordPageClient({
             >
               <h4
                 id="record-h-at-bat"
-                className="font-display mb-1 text-[10px] font-semibold uppercase tracking-wider text-white"
+                className="font-display mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text)]"
               >
                 At bat
               </h4>
@@ -3512,31 +3516,32 @@ export default function RecordPageClient({
                         type="button"
                         onClick={() => setQuickAddPlayerOpen(true)}
                         className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--accent)] underline decoration-dotted underline-offset-2 hover:opacity-90"
+                        title="Add opponent batter (A)"
                       >
                         + Add player
                       </button>
                     ) : null}
                   </div>
-                    <div className="relative h-10 w-full max-w-[min(100%,18rem)] overflow-hidden rounded-lg border border-[var(--border)] bg-black transition-[border-color,box-shadow] focus-within:border-[var(--accent)] focus-within:shadow-[0_0_0_3px_var(--accent-dim)]">
+                    <div className="record-batter-select relative h-10 w-full max-w-[min(100%,18rem)] overflow-hidden rounded-lg border border-[var(--border)] transition-[border-color,box-shadow] focus-within:border-[var(--accent)] focus-within:shadow-[0_0_0_3px_var(--accent-dim)]">
                       <div
-                        className="flex h-full min-w-0 items-center gap-1.5 overflow-hidden bg-black px-2 pr-8"
+                        className="record-batter-select-display flex h-full min-w-0 items-center gap-1.5 overflow-hidden px-2 pr-8"
                         aria-hidden
                       >
                         {selectedBatterEntry ? (
                           <>
-                            <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-[var(--text-muted)]">
+                            <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-[var(--accent)]">
                               {selectedBatterEntry.slot}.
                             </span>
-                            <span className="min-w-0 truncate text-sm font-medium text-[var(--accent)]">
+                            <span className="record-batter-select-detail min-w-0 truncate text-sm font-medium">
                               {selectedBatterEntry.name}
                             </span>
                             {selectedBatterEntry.jersey ? (
-                              <span className="shrink-0 text-sm font-semibold tabular-nums text-[var(--accent)]">
+                              <span className="record-batter-select-detail shrink-0 text-sm font-semibold tabular-nums">
                                 #{selectedBatterEntry.jersey}
                               </span>
                             ) : null}
                             {selectedBatterEntry.bats ? (
-                              <span className="shrink-0 text-sm font-semibold text-white">
+                              <span className="record-batter-select-detail shrink-0 text-sm font-semibold">
                                 {selectedBatterEntry.bats}
                               </span>
                             ) : null}
@@ -3565,7 +3570,7 @@ export default function RecordPageClient({
                             }
                           }
                         }}
-                        className="absolute inset-0 z-10 h-full w-full cursor-pointer bg-black opacity-0 touch-manipulation"
+                        className="record-batter-select-native absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 touch-manipulation"
                         aria-label={
                           selectedBatterEntry
                             ? `Batter ${selectedBatterEntry.slot}, ${selectedBatterEntry.name}`
@@ -3948,7 +3953,7 @@ export default function RecordPageClient({
             >
               <h4
                 id="record-h-outcome"
-                className="scroll-mt-20 font-display mb-2 text-[10px] font-semibold uppercase tracking-wider text-white"
+                className="scroll-mt-20 font-display mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text)]"
               >
                 Outcome
               </h4>
@@ -4093,7 +4098,7 @@ export default function RecordPageClient({
                 <div className="border-t border-[var(--border)]/55 pt-5">
                   <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-start sm:gap-6">
                     <div className="min-w-0 flex-1">
-                      <span className="block text-[11px] font-semibold uppercase tracking-wide text-white">
+                      <span className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--text)]">
                         Hit direction
                       </span>
                       <div className="mt-2 grid grid-cols-2 gap-2.5 sm:gap-3">
@@ -4128,7 +4133,7 @@ export default function RecordPageClient({
                       </div>
 
                     <div className="min-w-0 flex-1">
-                      <span className="block text-[11px] font-semibold uppercase tracking-wide text-white">
+                      <span className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--text)]">
                         Batted ball (GB / LD / FB / IFF)
                       </span>
                       <div className="mt-2 grid grid-cols-2 gap-2 sm:gap-2.5">
@@ -4430,7 +4435,7 @@ export default function RecordPageClient({
             </div>
               <div className="order-2 w-full max-w-[300px] shrink-0 self-start lg:order-1 lg:min-w-[260px]">
                 <section className="rounded border border-[var(--border)] bg-[var(--bg-elevated)] p-1.5">
-                  <h4 className="font-display mb-1 text-[10px] font-semibold uppercase tracking-wider text-white">
+                  <h4 className="font-display mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text)]">
                     Runners
                   </h4>
                   <div className="mt-0.5">

@@ -166,7 +166,7 @@ export function GamesPageClient({
           <button
             type="button"
             onClick={() => { setShowAddForm(true); setEditingGame(null); }}
-            className="font-display rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold tracking-wide text-[var(--bg-base)] transition hover:opacity-90"
+            className="font-orbitron rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold tracking-wide text-[var(--bg-base)] transition hover:opacity-90"
           >
             Add game
           </button>
@@ -183,7 +183,7 @@ export function GamesPageClient({
 
       {canEdit && isFormOpen && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px] sm:p-6"
+          className="modal-overlay fixed inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-[2px] sm:p-6"
           onClick={closeGameForm}
           role="dialog"
           aria-modal="true"
@@ -857,7 +857,7 @@ function GameForm({
           <button
             type="submit"
             disabled={saving}
-            className="font-orbitron rounded-lg bg-[var(--accent)] px-6 py-2.5 text-base font-semibold tracking-wide text-[var(--bg-base)] shadow-[0_0_16px_rgba(214,186,72,0.12)] transition hover:opacity-95 disabled:opacity-50"
+            className="font-orbitron rounded-lg bg-[var(--accent)] px-6 py-2.5 text-base font-semibold tracking-wide text-[var(--accent-fg)] shadow-[var(--shadow-accent-sm)] transition hover:opacity-95 disabled:opacity-50"
           >
             {saving ? "Saving…" : isEditing ? "Update game" : "Add game"}
           </button>

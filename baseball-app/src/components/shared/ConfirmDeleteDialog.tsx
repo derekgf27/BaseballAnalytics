@@ -34,7 +34,7 @@ export function ConfirmDeleteDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px]"
+      className="modal-overlay fixed inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-[2px]"
       onClick={() => !pending && onClose()}
       role="alertdialog"
       aria-modal="true"

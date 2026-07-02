@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { RosterPositionSelector } from "@/components/analyst/RosterPositionSelector";
 import { ROSTER_POSITION_CODES } from "@/lib/rosterPositions";
@@ -57,6 +57,7 @@ export function QuickAddPlayerModal({
   onCreated,
 }: QuickAddPlayerModalProps) {
   const dialogRef = useFocusTrap(open);
+  const submitRef = useRef<HTMLButtonElement>(null);
   const [name, setName] = useState("");
   const [jersey, setJersey] = useState("");
   const [bats, setBats] = useState<"L" | "R" | "S" | "">("");
@@ -206,7 +207,7 @@ export function QuickAddPlayerModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4"
+      className="modal-overlay fixed inset-0 z-[60] flex items-end justify-center p-0 sm:items-center sm:p-4"
       onClick={() => !saving && onClose()}
       role="dialog"
       aria-modal="true"
@@ -327,6 +328,7 @@ export function QuickAddPlayerModal({
                   primaryPosition={primaryPosition}
                   onSetPrimary={setPrimaryPosition}
                   disabled={saving}
+                  focusAfterPitcherRef={submitRef}
                 />
               </div>
               {isPitcherOnly ? (
@@ -400,6 +402,7 @@ export function QuickAddPlayerModal({
               Cancel
             </button>
             <button
+              ref={submitRef}
               type="submit"
               disabled={saving}
               className="font-orbitron rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--bg-base)] transition hover:opacity-95 disabled:opacity-50"

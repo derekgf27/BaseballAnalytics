@@ -5,6 +5,7 @@ import { parseAppRole, type AppRole } from "@/lib/auth/roles";
 import { requireAdminAccess } from "@/lib/auth/requireRole";
 import {
   authEmailForUsername,
+  displayUsername,
   isValidUsername,
   normalizeUsername,
   usernameValidationMessage,
@@ -162,7 +163,7 @@ export async function listAdminUsersAction(): Promise<ListSuccess | ListFailure>
           return {
             id: r.id,
             kind: "profile_only" as const,
-            label: r.username ? `@${r.username}` : r.id,
+            label: r.username ? displayUsername(r.username) : r.id,
           };
         }),
     ];

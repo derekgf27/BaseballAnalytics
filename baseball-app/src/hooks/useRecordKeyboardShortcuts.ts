@@ -21,6 +21,9 @@ export interface UseRecordKeyboardShortcutsOptions {
   destructiveConfirm: null | "undoLastPa" | "clearGamePas";
   errorFielderModalMode: string | null;
   shortcutsHelpOpen: boolean;
+  quickAddPlayerOpen: boolean;
+  quickAddPitcherOpen: boolean;
+  canQuickAddOpponentPlayer: boolean;
   savePaDisabled: boolean;
   batterSelectRef: MutableRefObject<HTMLSelectElement | null>;
   outcomeCountGateRef: MutableRefObject<{ balls: number; strikes: number }>;
@@ -30,6 +33,7 @@ export interface UseRecordKeyboardShortcutsOptions {
   advanceToNextLineupBatterRef: MutableRefObject<() => void>;
   repeatLastSavedOutcomeRef: MutableRefObject<() => void>;
   setShortcutsHelpOpen: (open: boolean) => void;
+  setQuickAddPlayerOpen: (open: boolean) => void;
   setSubstitutionModalOpen: (open: boolean) => void;
   setPitcherChangeModalOpen: (open: boolean) => void;
   setResult: (value: PAResult | null) => void;
@@ -52,6 +56,9 @@ export function useRecordKeyboardShortcuts(options: UseRecordKeyboardShortcutsOp
     destructiveConfirm,
     errorFielderModalMode,
     shortcutsHelpOpen,
+    quickAddPlayerOpen,
+    quickAddPitcherOpen,
+    canQuickAddOpponentPlayer,
     savePaDisabled,
     batterSelectRef,
     outcomeCountGateRef,
@@ -61,6 +68,7 @@ export function useRecordKeyboardShortcuts(options: UseRecordKeyboardShortcutsOp
     advanceToNextLineupBatterRef,
     repeatLastSavedOutcomeRef,
     setShortcutsHelpOpen,
+    setQuickAddPlayerOpen,
     setSubstitutionModalOpen,
     setPitcherChangeModalOpen,
     setResult,
@@ -78,7 +86,9 @@ export function useRecordKeyboardShortcuts(options: UseRecordKeyboardShortcutsOp
         pitcherChangeModalOpen ||
         finalizeModalOpen ||
         destructiveConfirm != null ||
-        errorFielderModalMode != null;
+        errorFielderModalMode != null ||
+        quickAddPlayerOpen ||
+        quickAddPitcherOpen;
       if (blockNavShortcuts) return;
       if (shortcutsHelpOpen) {
         if (e.key === "Escape") {
@@ -115,6 +125,12 @@ export function useRecordKeyboardShortcuts(options: UseRecordKeyboardShortcutsOp
         if (e.ctrlKey || e.altKey || e.metaKey) return;
         e.preventDefault();
         setPitcherChangeModalOpen(true);
+        return;
+      }
+      if ((e.key === "a" || e.key === "A") && canQuickAddOpponentPlayer) {
+        if (e.ctrlKey || e.altKey || e.metaKey) return;
+        e.preventDefault();
+        setQuickAddPlayerOpen(true);
         return;
       }
       if (e.key === "r" || e.key === "R") {
@@ -169,6 +185,9 @@ export function useRecordKeyboardShortcuts(options: UseRecordKeyboardShortcutsOp
     destructiveConfirm,
     errorFielderModalMode,
     shortcutsHelpOpen,
+    quickAddPlayerOpen,
+    quickAddPitcherOpen,
+    canQuickAddOpponentPlayer,
     savePaDisabled,
     batterSelectRef,
     outcomeCountGateRef,
@@ -178,6 +197,7 @@ export function useRecordKeyboardShortcuts(options: UseRecordKeyboardShortcutsOp
     advanceToNextLineupBatterRef,
     repeatLastSavedOutcomeRef,
     setShortcutsHelpOpen,
+    setQuickAddPlayerOpen,
     setSubstitutionModalOpen,
     setPitcherChangeModalOpen,
     setResult,

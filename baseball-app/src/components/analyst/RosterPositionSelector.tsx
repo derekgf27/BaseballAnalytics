@@ -1,5 +1,6 @@
 "use client";
 
+import type { RefObject } from "react";
 import { ROSTER_POSITION_CODES, type RosterPositionCode } from "@/lib/rosterPositions";
 
 export { ROSTER_POSITION_CODES, type RosterPositionCode };
@@ -12,6 +13,8 @@ export interface RosterPositionSelectorProps {
   onSetPrimary?: (position: string) => void;
   disabled?: boolean;
   size?: "default" | "large";
+  /** After P is selected, focus moves here so keyboard users skip the remaining position chips. */
+  focusAfterPitcherRef?: RefObject<HTMLButtonElement | null>;
 }
 
 export function RosterPositionSelector({
@@ -21,6 +24,7 @@ export function RosterPositionSelector({
   onSetPrimary,
   disabled,
   size = "default",
+  focusAfterPitcherRef,
 }: RosterPositionSelectorProps) {
   const large = size === "large";
 
@@ -42,7 +46,13 @@ export function RosterPositionSelector({
               disabled={disabled}
               aria-pressed={on}
               aria-label={`Position ${pos}`}
-              onClick={() => onToggle(pos)}
+              onClick={() => {
+                const selectingPitcher = pos === "P" && !on;
+                onToggle(pos);
+                if (selectingPitcher && focusAfterPitcherRef?.current) {
+                  requestAnimationFrame(() => focusAfterPitcherRef.current?.focus());
+                }
+              }}
               className={`font-display w-full rounded-lg border font-bold transition ${
                 large
                   ? "min-h-14 px-2 py-3 text-lg sm:min-h-[4.25rem] sm:text-xl"

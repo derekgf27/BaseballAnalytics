@@ -10,10 +10,10 @@ import {
   type ReactNode,
 } from "react";
 import {
+  applyThemeToDocument,
   DEFAULT_THEME,
-  isAppTheme,
+  resolveStoredTheme,
   THEME_STORAGE_KEY,
-  themeColorFor,
   type AppTheme,
 } from "@/lib/theme";
 
@@ -26,14 +26,6 @@ type ThemeContextValue = {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-function applyTheme(theme: AppTheme) {
-  document.documentElement.setAttribute("data-theme", theme);
-  document.documentElement.style.colorScheme = theme;
-
-  const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", themeColorFor(theme));
-}
-
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<AppTheme>(DEFAULT_THEME);
   const [ready, setReady] = useState(false);
@@ -41,11 +33,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       const stored = localStorage.getItem(THEME_STORAGE_KEY);
-      const initial = isAppTheme(stored) ? stored : DEFAULT_THEME;
+      const initial = resolveStoredTheme(stored);
+      if (stored == null) {
+        localStorage.setItem(THEME_STORAGE_KEY, DEFAULT_THEME);
+      }
       setThemeState(initial);
-      applyTheme(initial);
+      applyThemeToDocument(initial);
     } catch {
-      applyTheme(DEFAULT_THEME);
+      applyThemeToDocument(DEFAULT_THEME);
     }
     setReady(true);
   }, []);
@@ -57,7 +52,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     } catch {
       // ignore
     }
-    applyTheme(next);
+    applyThemeToDocument(next);
   }, []);
 
   const toggleTheme = useCallback(() => {
@@ -68,7 +63,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       } catch {
         // ignore
       }
-      applyTheme(next);
+      applyThemeToDocument(next);
       return next;
     });
   }, []);

@@ -13,6 +13,7 @@ const SHORTCUT_ROWS = [
   ["J", "Next batter in lineup (no save)"],
   ["S", "Open substitution"],
   ["P", "Open pitcher change"],
+  ["A", "Add opponent batter (when logging their lineup)"],
   ["R", "Repeat last saved result and count"],
   ["?", "Open this panel (Shift + /)"],
 ] as const;
@@ -33,7 +34,7 @@ export function RecordShortcutsHelpModal({ open, onClose }: { open: boolean; onC
 
   return (
     <div
-      className="fixed inset-0 z-[220] flex items-start justify-center overflow-y-auto bg-black/55 p-4 pt-[max(2rem,10vh)]"
+      className="modal-overlay fixed inset-0 z-[220] flex items-start justify-center overflow-y-auto p-4 pt-[max(2rem,10vh)]"
       role="presentation"
     >
       <button

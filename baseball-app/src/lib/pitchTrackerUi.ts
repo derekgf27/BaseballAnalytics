@@ -99,7 +99,7 @@ export function pitchTrackerAbbrev(t: PitchTrackerPitchType | null): string {
 /** Tailwind classes for pitch type chips / buttons. */
 export function pitchTrackerTypeChipClass(t: PitchTrackerPitchType | null): string {
   if (t == null) {
-    return "border-zinc-600 bg-zinc-800/70 text-zinc-500";
+    return "border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-faint)] pitch-pad-type-chip-muted";
   }
   switch (t) {
     case "fastball":

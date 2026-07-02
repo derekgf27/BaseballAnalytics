@@ -1,4 +1,5 @@
 import { fetchUserProfile, resolveUserRole } from "@/lib/auth/profile";
+import { displayUsername } from "@/lib/auth/username";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { AuthSessionPanel, type SidebarPortal } from "./AuthSessionPanel";
 
@@ -30,7 +31,7 @@ export async function SidebarAuthSession({
     const profile = await fetchUserProfile(supabase, user.id);
     const handle =
       (profile?.username
-        ? `@${profile.username}`
+        ? displayUsername(profile.username)
         : profile?.display_name ?? user.email) ?? null;
 
     return <AuthSessionPanel role={role} handle={handle} variant="bar" />;
@@ -38,7 +39,6 @@ export async function SidebarAuthSession({
 
   let role = null;
   let handle: string | null = null;
-  let showSignOut = false;
 
   if (isAuthEnforced()) {
     const supabase = await createSupabaseServerClient();
@@ -51,9 +51,8 @@ export async function SidebarAuthSession({
         const profile = await fetchUserProfile(supabase, user.id);
         handle =
           (profile?.username
-            ? `@${profile.username}`
+            ? displayUsername(profile.username)
             : profile?.display_name ?? user.email) ?? null;
-        showSignOut = true;
       }
     }
   }
@@ -64,7 +63,6 @@ export async function SidebarAuthSession({
       handle={handle}
       variant="sidebar"
       portal={portal}
-      showSignOut={showSignOut}
     />
   );
 }

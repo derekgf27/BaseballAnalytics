@@ -42,7 +42,7 @@ function RetroFinalScoreStrip({
 
   return (
     <div
-      className="rounded-lg border-2 border-zinc-600 bg-black p-4 sm:p-5"
+      className="dark-surface rounded-lg border-2 border-zinc-600 bg-black p-4 sm:p-5"
       style={{ backgroundImage: stripeBg }}
     >
       <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-x-2 sm:gap-x-4">
@@ -169,7 +169,7 @@ export function FinalizeGameModal({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px]"
+      className="modal-overlay fixed inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-[2px]"
       onClick={() => !pending && onClose()}
       role="dialog"
       aria-modal="true"

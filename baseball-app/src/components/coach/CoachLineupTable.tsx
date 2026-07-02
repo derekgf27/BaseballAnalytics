@@ -41,17 +41,17 @@ export function CoachLineupTable({ lineup }: CoachLineupTableProps) {
       <div className="overflow-x-auto px-4 pb-4 lg:px-5 lg:pb-5">
         <table className="w-full border-collapse text-left">
         <thead>
-          <tr className="bg-[#151b21]">
-            <th className="font-display border-b border-r border-black/40 px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
+          <tr className="bg-[var(--bg-elevated)]">
+            <th className="font-display border-b border-r border-[var(--border)] px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
               #
             </th>
-            <th className="font-display border-b border-r border-black/40 px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
+            <th className="font-display border-b border-r border-[var(--border)] px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
               POS
             </th>
-            <th className="font-display border-b border-r border-black/40 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
+            <th className="font-display border-b border-r border-[var(--border)] px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
               Player
             </th>
-            <th className="font-display border-b border-black/40 px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
+            <th className="font-display border-b border-[var(--border)] px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
               Bats
             </th>
           </tr>
@@ -60,16 +60,16 @@ export function CoachLineupTable({ lineup }: CoachLineupTableProps) {
           {lineup.map((slot, i) => (
             <tr
               key={slot.order}
-              className={`border-b border-black/40 last:border-b-0 ${
-                i % 2 === 0 ? "bg-[#10151a]" : "bg-[#12181f]"
+              className={`border-b border-[var(--border)] last:border-b-0 ${
+                i % 2 === 0 ? "bg-[var(--bg-card)]" : "bg-[var(--bg-elevated)]"
               }`}
             >
               <td className="w-12 border-r border-[var(--border)] px-3 py-2 text-center">
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded bg-[var(--neo-accent)] text-sm font-bold text-[var(--bg-base)] shadow-[0_0_18px_rgba(214,186,72,0.6)]">
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded bg-[var(--neo-accent)] text-sm font-bold text-[var(--accent-fg)] shadow-[var(--shadow-accent-md)]">
                   {slot.order}
                 </span>
               </td>
-              <td className="min-w-[5.5rem] w-24 border-r border-black/40 bg-black/20 px-2 py-2 text-center text-sm font-medium text-[var(--neo-text)]">
+              <td className="min-w-[5.5rem] w-24 border-r border-[var(--border)] bg-[var(--bg-input)] px-2 py-2 text-center text-sm font-medium text-[var(--text)]">
                 {slot.position || "—"}
               </td>
               <td className="min-w-0 px-3 py-2">
@@ -80,7 +80,7 @@ export function CoachLineupTable({ lineup }: CoachLineupTableProps) {
                   {slot.playerName}
                 </Link>
               </td>
-              <td className="w-12 border-l border-black/40 px-3 py-2 text-center text-sm font-semibold text-[var(--neo-text)]">
+              <td className="w-12 border-l border-[var(--border)] px-3 py-2 text-center text-sm font-semibold text-[var(--text)]">
                 {slot.bats ?? "—"}
               </td>
             </tr>

@@ -40,7 +40,7 @@ export default async function ForbiddenPage({
         ) : null}
         <Link
           href={homeHref}
-          className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-lg border border-[var(--neo-border)] bg-[var(--neo-bg-base)] px-5 text-sm font-semibold text-[var(--neo-accent)] transition hover:bg-[#151b21]"
+          className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-lg border border-[var(--neo-border)] bg-[var(--neo-bg-base)] px-5 text-sm font-semibold text-[var(--neo-accent)] transition hover:bg-[var(--bg-elevated)]"
         >
           {session ? "Go to your portal" : "Sign in"}
         </Link>

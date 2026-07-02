@@ -58,9 +58,9 @@ export function AnalystNav({ footer }: { footer?: ReactNode }) {
           href="/analyst"
           title={showCollapsed ? "Open menu — tap again to go to Analyst home" : undefined}
           onClick={(e) => guardNavUntilSidebarExpanded(e, showCollapsed, expandOnly)}
-          className="font-orbitron flex min-w-0 flex-1 items-center gap-2 py-2 pl-0.5 text-sm font-semibold tracking-tight text-[var(--text)]"
+          className="font-orbitron flex min-w-0 flex-1 items-center gap-2 py-2 pl-0.5 text-sm font-semibold tracking-tight"
         >
-          <span className="sidebar-label truncate text-[var(--accent)]">Analyst</span>
+          <span className="sidebar-label truncate">Analyst</span>
         </Link>
       </div>
       <nav

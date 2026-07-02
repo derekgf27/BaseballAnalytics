@@ -130,7 +130,7 @@ export function RecordBoxScoreSection({
     return (
       <>
         <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-x-4 gap-y-2">
-          <h2 className="font-display min-w-0 text-sm font-semibold uppercase tracking-wider text-white">
+          <h2 className="font-display min-w-0 text-sm font-semibold uppercase tracking-wider text-[var(--text)]">
             Batters – {battingTeamName}
           </h2>
           <button
@@ -140,7 +140,7 @@ export function RecordBoxScoreSection({
           >
             {toggleLabel}
           </button>
-          <h2 className="font-display min-w-0 text-right text-sm font-semibold uppercase tracking-wider text-white">
+          <h2 className="font-display min-w-0 text-right text-sm font-semibold uppercase tracking-wider text-[var(--text)]">
             Pitchers – {pitchingTeamName}
           </h2>
         </div>

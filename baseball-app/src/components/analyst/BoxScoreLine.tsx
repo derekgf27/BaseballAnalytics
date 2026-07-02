@@ -28,12 +28,12 @@ export interface BoxScoreLineProps {
 function Cell({ value }: { value: number | null }) {
   if (value === null) {
     return (
-      <span className="text-white/55 tabular-nums" aria-label="Not played">
+      <span className="text-[var(--text-muted)] tabular-nums opacity-70" aria-label="Not played">
         —
       </span>
     );
   }
-  return <span className="tabular-nums text-white">{value}</span>;
+  return <span className="tabular-nums text-[var(--text)]">{value}</span>;
 }
 
 export const BoxScoreLine = memo(function BoxScoreLine({
@@ -66,19 +66,19 @@ export const BoxScoreLine = memo(function BoxScoreLine({
         </h3>
       ) : null}
       <div
-        className="overflow-x-auto rounded-lg border border-[var(--border)] bg-[#0a0d12]"
+        className="overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--bg-card)]"
         role="table"
         aria-label="Linescore by inning"
       >
         <div
-          className="grid min-w-[min(100%,520px)] gap-x-1 gap-y-0 px-2 py-2 text-[11px] text-white sm:text-xs"
+          className="grid min-w-[min(100%,520px)] gap-x-1 gap-y-0 px-2 py-2 text-[11px] text-[var(--text)] sm:text-xs"
           style={{
             gridTemplateColumns: `minmax(5.5rem,1fr) repeat(${nCols}, minmax(1.75rem,1fr)) minmax(1.5rem,auto) minmax(1.5rem,auto) minmax(1.5rem,auto)`,
           }}
         >
           {/* Header row */}
           <div
-            className="border-b border-[var(--border)]/60 py-1.5 pr-1 font-semibold uppercase tracking-wide text-white"
+            className="border-b border-[var(--border)]/60 bg-[var(--bg-elevated)] py-1.5 pr-1 font-semibold uppercase tracking-wide text-[var(--text)]"
             role="columnheader"
           >
             Team
@@ -86,8 +86,8 @@ export const BoxScoreLine = memo(function BoxScoreLine({
           {innings.map((inn) => (
             <div
               key={`h-${inn}`}
-              className={`border-b border-[var(--border)]/60 py-1.5 text-center font-semibold tabular-nums ${
-                inn === liveInning ? "text-[var(--accent)]" : "text-white"
+              className={`border-b border-[var(--border)]/60 bg-[var(--bg-elevated)] py-1.5 text-center font-semibold tabular-nums ${
+                inn === liveInning ? "text-[var(--accent)]" : "text-[var(--text)]"
               }`}
               role="columnheader"
             >
@@ -95,19 +95,19 @@ export const BoxScoreLine = memo(function BoxScoreLine({
             </div>
           ))}
           <div
-            className="border-b border-l border-[var(--border)]/60 py-1.5 text-center font-semibold text-white"
+            className="border-b border-l border-[var(--border)]/60 bg-[var(--bg-elevated)] py-1.5 text-center font-semibold text-[var(--text)]"
             role="columnheader"
           >
             R
           </div>
           <div
-            className="border-b border-[var(--border)]/60 py-1.5 text-center font-semibold text-white"
+            className="border-b border-[var(--border)]/60 bg-[var(--bg-elevated)] py-1.5 text-center font-semibold text-[var(--text)]"
             role="columnheader"
           >
             H
           </div>
           <div
-            className="border-b border-[var(--border)]/60 py-1.5 text-center font-semibold text-white"
+            className="border-b border-[var(--border)]/60 bg-[var(--bg-elevated)] py-1.5 text-center font-semibold text-[var(--text)]"
             role="columnheader"
           >
             E
@@ -115,7 +115,7 @@ export const BoxScoreLine = memo(function BoxScoreLine({
 
           {/* Away */}
           <div
-            className="border-b border-[var(--border)]/40 py-2 pr-1 text-left font-medium leading-tight text-white"
+            className="border-b border-[var(--border)]/40 py-2 pr-1 text-left font-medium leading-tight text-[var(--text)]"
             role="rowheader"
           >
             <span className="truncate">{awayName}</span>
@@ -166,15 +166,15 @@ export const BoxScoreLine = memo(function BoxScoreLine({
             </div>
           ))}
           <div
-            className="border-l border-[var(--border)]/40 py-2 text-center font-mono font-semibold tabular-nums text-white"
+            className="border-l border-[var(--border)]/40 py-2 text-center font-mono font-semibold tabular-nums text-[var(--text)]"
             role="cell"
           >
             {rHome}
           </div>
-          <div className="py-2 text-center font-mono font-semibold tabular-nums text-white" role="cell">
+          <div className="py-2 text-center font-mono font-semibold tabular-nums text-[var(--text)]" role="cell">
             {hHome}
           </div>
-          <div className="py-2 text-center font-mono font-semibold tabular-nums text-white" role="cell">
+          <div className="py-2 text-center font-mono font-semibold tabular-nums text-[var(--text)]" role="cell">
             {eHome}
           </div>
         </div>

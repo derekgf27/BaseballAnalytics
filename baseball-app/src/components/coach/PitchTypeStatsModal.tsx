@@ -31,20 +31,20 @@ type PitchTypeStatRow = { label: string; value: ReactNode; title?: string };
 function PitchTypeStatSheetSection({ title, rows }: { title: string; rows: PitchTypeStatRow[] }) {
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label={title}>
-      <h3 className="mb-1.5 shrink-0 border-l-4 border-amber-500 pl-2 font-display text-[11px] font-bold uppercase leading-tight tracking-wide text-amber-200/95 sm:text-xs md:mb-2 md:pl-2.5 md:text-sm xl:mb-1.5 xl:pl-2 xl:text-xs">
+      <h3 className="pitch-pad-accent mb-1.5 shrink-0 border-l-4 border-[var(--accent)] pl-2 font-display text-[11px] font-bold uppercase leading-tight tracking-wide sm:text-xs md:mb-2 md:pl-2.5 md:text-sm xl:mb-1.5 xl:pl-2 xl:text-xs">
         {title}
       </h3>
-      <dl className="min-h-0 flex-1 divide-y divide-zinc-800/90 rounded-lg bg-zinc-950/50 ring-1 ring-zinc-800/60">
+      <dl className="pitch-pad-surface min-h-0 flex-1 divide-y divide-[var(--border)] rounded-lg ring-1 ring-[var(--border)]">
         {rows.map((row) => (
           <div
             key={row.label}
             className="flex flex-col gap-0.5 px-2 py-1.5 sm:px-2.5 sm:py-2 md:gap-1 md:px-3 md:py-2.5 xl:gap-0.5 xl:px-2.5 xl:py-2"
             title={row.title}
           >
-            <dt className="min-w-0 text-[11px] font-medium leading-snug text-zinc-400 sm:text-xs md:text-sm xl:text-xs">
+            <dt className="min-w-0 text-[11px] font-medium leading-snug text-[var(--text-muted)] sm:text-xs md:text-sm xl:text-xs">
               {row.label}
             </dt>
-            <dd className="tabular-nums text-sm font-bold leading-none text-amber-400 sm:text-base md:text-lg xl:text-base">
+            <dd className="pitch-pad-accent tabular-nums text-sm font-bold leading-none sm:text-base md:text-lg xl:text-base">
               {row.value}
             </dd>
           </div>
@@ -83,30 +83,30 @@ export function PitchTypeStatsModal({
     >
       <button
         type="button"
-        className="absolute inset-0 cursor-pointer bg-black/75 backdrop-blur-sm"
+        className="modal-overlay absolute inset-0 cursor-pointer backdrop-blur-sm"
         onClick={onClose}
         aria-label="Close pitch type stats"
       />
-      <div className="relative flex max-h-[min(88dvh,44rem)] w-[min(98vw,88rem)] flex-col overflow-hidden rounded-2xl border-2 border-amber-500/25 bg-zinc-900 shadow-[0_0_60px_rgba(0,0,0,0.55)] ring-1 ring-amber-400/10 md:max-h-[96dvh] md:min-h-[86dvh] md:w-[99vw] lg:max-h-[96dvh] lg:min-h-[88dvh] xl:max-h-[min(88dvh,44rem)] xl:min-h-0 xl:w-[min(94vw,88rem)]">
-        <div className="flex shrink-0 items-center gap-3 border-b border-amber-500/20 bg-gradient-to-r from-zinc-900 via-zinc-900 to-zinc-950 px-4 py-3.5 sm:px-5 sm:py-4 md:gap-4 md:px-6 md:py-4 xl:px-5 xl:py-4">
+      <div className="coach-pitch-pad relative flex max-h-[min(88dvh,44rem)] w-[min(98vw,88rem)] flex-col overflow-hidden rounded-2xl border-2 border-[color-mix(in_srgb,var(--accent)_28%,var(--border))] bg-[var(--bg-card)] shadow-[var(--shadow-toast)] ring-1 ring-[color-mix(in_srgb,var(--accent)_12%,transparent)] md:max-h-[96dvh] md:min-h-[86dvh] md:w-[99vw] lg:max-h-[96dvh] lg:min-h-[88dvh] xl:max-h-[min(88dvh,44rem)] xl:min-h-0 xl:w-[min(94vw,88rem)]">
+        <div className="flex shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3.5 sm:px-5 sm:py-4 md:gap-4 md:px-6 md:py-4 xl:px-5 xl:py-4">
           <span
             className={`inline-flex h-10 w-14 shrink-0 items-center justify-center rounded-lg border-2 text-sm font-bold shadow-md sm:h-11 sm:w-16 sm:text-base md:h-12 md:w-[4.5rem] md:text-lg xl:h-11 xl:w-16 xl:text-base ${pitchTrackerTypeChipClass(d.type)}`}
           >
             {pitchTrackerAbbrev(d.type)}
           </span>
           <div className="min-w-0 flex-1">
-            <h2 className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 font-display text-xl font-bold leading-tight text-zinc-50 sm:text-2xl md:text-3xl xl:text-2xl">
+            <h2 className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 font-display text-xl font-bold leading-tight text-[var(--text)] sm:text-2xl md:text-3xl xl:text-2xl">
               <span className="shrink-0">{pitchTrackerTypeLabel(d.type)}</span>
-              <span className="shrink-0 font-normal text-zinc-500" aria-hidden>
+              <span className="shrink-0 font-normal text-[var(--text-faint)]" aria-hidden>
                 ·
               </span>
-              <span className="min-w-0 truncate text-white">{pitcherName}</span>
+              <span className="min-w-0 truncate text-[var(--text)]">{pitcherName}</span>
             </h2>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="touch-manipulation inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full border border-zinc-600 bg-zinc-800/90 text-lg font-bold leading-none text-zinc-200 transition hover:border-amber-500/40 hover:bg-zinc-700 active:bg-zinc-600 md:h-12 md:w-12 xl:h-10 xl:w-10"
+            className="pitch-pad-btn-secondary touch-manipulation inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full border text-lg font-bold leading-none transition active:opacity-90 md:h-12 md:w-12 xl:h-10 xl:w-10"
             aria-label="Close"
           >
             ✕
@@ -115,7 +115,7 @@ export function PitchTypeStatsModal({
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5 sm:py-5 md:px-6 md:py-5 xl:px-5 xl:py-5">
           {d.thrown === 0 ? (
-            <p className="py-8 text-center text-sm text-zinc-400">
+            <p className="py-8 text-center text-sm text-[var(--text-muted)]">
               No {pitchTrackerTypeLabel(d.type).toLowerCase()} logged for {pitcherName} yet this
               game.
             </p>

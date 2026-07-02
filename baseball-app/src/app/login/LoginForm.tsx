@@ -70,7 +70,7 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
       <button
         type="submit"
         disabled={status === "submitting"}
-        className="flex h-14 w-full items-center justify-center rounded-lg bg-[var(--neo-accent)] text-base font-bold text-[#0d1218] transition hover:brightness-110 disabled:opacity-50"
+        className="flex h-14 w-full items-center justify-center rounded-lg bg-[var(--neo-accent)] text-base font-bold text-[var(--accent-fg)] transition hover:brightness-110 disabled:opacity-50"
       >
         {status === "submitting" ? "Signing in…" : "Sign in"}
       </button>

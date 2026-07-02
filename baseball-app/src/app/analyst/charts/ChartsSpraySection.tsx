@@ -35,15 +35,15 @@ function SprayCard({
   const { pas, data, hits, outs } = split;
   return (
     <section className="card-tech rounded-lg border border-[var(--border)] p-5">
-      <h3 className="font-display text-sm font-semibold uppercase tracking-wider text-white">{title}</h3>
+      <h3 className="font-display text-sm font-semibold uppercase tracking-wider text-[var(--text)]">{title}</h3>
       <p className="charts-spray-card-desc mt-1 text-xs text-[var(--text-muted)]">{description}</p>
       <p className="mt-1 text-xs tabular-nums">
         <span className="text-[var(--accent)]">{pas.length}</span>
-        <span className="text-white"> BIP · </span>
+        <span className="text-[var(--text-muted)]"> BIP · </span>
         <span className="text-[var(--accent)]">{hits}</span>
-        <span className="text-white"> hits · </span>
+        <span className="text-[var(--text-muted)]"> hits · </span>
         <span className="text-[var(--accent)]">{outs}</span>
-        <span className="text-white"> outs</span>
+        <span className="text-[var(--text-muted)]"> outs</span>
       </p>
       {pas.length < CHARTS_SAMPLE_WARNING_BIP && pas.length > 0 && (
         <p className="mt-2 text-xs text-amber-300">Small sample ({pas.length} BIP).</p>
@@ -66,7 +66,7 @@ export function ChartsSpraySection({
   return (
     <>
       <div id="charts-spray-batter" data-pdf-avoid-break className="charts-pdf-block scroll-mt-28 space-y-3">
-        <h2 className="font-display text-xs font-semibold uppercase tracking-wider text-[var(--text-white)]">
+        <h2 className="font-display text-xs font-semibold uppercase tracking-wider text-[var(--text)]">
           Team batter — balls in play ({sprayResultLabel(spray)})
         </h2>
         <div className="grid gap-6 lg:grid-cols-2">
@@ -86,7 +86,7 @@ export function ChartsSpraySection({
       </div>
 
       <div id="charts-spray-pitching" data-pdf-avoid-break className="charts-pdf-block scroll-mt-28 space-y-3">
-        <h2 className="font-display text-xs font-semibold uppercase tracking-wider text-[var(--text-white)]">
+        <h2 className="font-display text-xs font-semibold uppercase tracking-wider text-[var(--text)]">
           Team pitching — balls in play allowed ({sprayResultLabel(spray)})
         </h2>
         <p className="charts-spray-card-desc text-xs text-[var(--text-muted)]">

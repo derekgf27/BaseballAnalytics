@@ -24,7 +24,7 @@ export default async function LoginPage({
       <LoginStadiumLights />
 
       <div className="login-form-reveal relative z-10 w-full max-w-xl">
-        <div className="login-night-card neo-card border border-[var(--neo-border)]/80 p-10 sm:p-12 shadow-[0_0_48px_-12px_rgba(214,186,72,0.22)] backdrop-blur-sm">
+        <div className="login-night-card neo-card border border-[var(--neo-border)]/80 p-10 sm:p-12 shadow-[var(--shadow-accent-glow)] backdrop-blur-sm">
           <div className="text-center">
             <h1 className="home-title-glow font-display text-4xl font-semibold normal-case tracking-wider text-[var(--neo-text)] sm:text-[2.75rem]">
               {APP_NAME}

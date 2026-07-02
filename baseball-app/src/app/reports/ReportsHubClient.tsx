@@ -67,7 +67,7 @@ function PreGameReportSkeleton() {
 }
 
 const btnPrimary =
-  "font-orbitron inline-flex min-h-[44px] items-center justify-center rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold tracking-wide text-[var(--bg-base)] shadow-[0_0_12px_rgba(214,186,72,0.25)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
+  "font-orbitron inline-flex min-h-[44px] items-center justify-center rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold tracking-wide text-[var(--accent-fg)] shadow-[var(--shadow-accent-lg)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
 const btnSecondary =
   "font-orbitron inline-flex min-h-[44px] items-center justify-center rounded-lg border-2 border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-2 text-sm font-semibold tracking-wide text-[var(--text)] transition hover:border-[var(--accent)]/60 hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50";
 
@@ -422,7 +422,7 @@ export function ReportsHubClient({
               onClick={() => setTab(id)}
               className={`font-orbitron min-h-[44px] shrink-0 rounded-lg border-2 px-4 py-2 text-sm font-semibold tracking-wide transition ${
                 active
-                  ? "border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)] shadow-[0_0_16px_rgba(214,186,72,0.2)]"
+                  ? "border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)] shadow-[var(--shadow-accent-md)]"
                   : "border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:border-[var(--accent)]/45 hover:text-[var(--text)]"
               }`}
             >

@@ -11,6 +11,7 @@ import {
 } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import {
   COACH_LIVE_AB_PA_ID,
   displayCountFromPitchTrackerRows,
@@ -159,7 +160,7 @@ function batsHandChipClass(
   if (b === "L") return `${size} text-rose-400`;
   if (b === "R") return `${size} text-sky-400`;
   if (b === "S") return `${size} text-violet-400`;
-  return `${size} text-zinc-500`;
+  return `${size} text-[var(--text-faint)]`;
 }
 
 /** Lineup spot as ordinal so it reads differently from jersey `#n` (e.g. 2nd vs #2). */
@@ -175,7 +176,7 @@ function battingOrderOrdinal(spot: number): string {
 /** Scale batter name down in the narrow lineup column so the full name stays visible (no ellipsis). */
 function lineupBatterNameClass(name: string): string {
   const n = name.trim().length;
-  const base = "min-w-0 font-semibold text-zinc-100";
+  const base = "min-w-0 font-semibold text-[var(--text)]";
   if (n <= 10) return `${base} text-sm leading-tight md:text-base`;
   if (n <= 14) return `${base} text-xs leading-tight md:text-sm`;
   if (n <= 18) return `${base} text-[11px] leading-tight md:text-xs`;
@@ -390,12 +391,12 @@ function CoachPitchCountTransition({
 }) {
   const tail = after == null ? "—" : `${after.balls}-${after.strikes}`;
   return (
-    <span className="inline-flex shrink-0 items-center gap-x-1.5 rounded-md border border-amber-500/40 bg-zinc-950/80 px-2 py-1 tabular-nums leading-none md:gap-x-2 md:px-2.5 md:py-1.5">
-      <span className="text-xs text-white sm:text-sm">{beforeBalls}-{beforeStrikes}</span>
-      <span className="text-xs text-white sm:text-sm" aria-hidden>
+    <span className="pitch-pad-count-chip inline-flex shrink-0 items-center gap-x-1.5 rounded-md border px-2 py-1 tabular-nums leading-none md:gap-x-2 md:px-2.5 md:py-1.5">
+      <span className="text-xs text-[var(--text)] sm:text-sm">{beforeBalls}-{beforeStrikes}</span>
+      <span className="text-xs text-[var(--text-muted)] sm:text-sm" aria-hidden>
         →
       </span>
-      <span className="text-xs font-bold text-amber-400 sm:text-sm">{tail}</span>
+      <span className="pitch-pad-count-chip-after text-xs sm:text-sm">{tail}</span>
     </span>
   );
 }
@@ -1527,7 +1528,7 @@ function CoachPitchPad({
             : "min-h-[3.25rem] min-w-[4.5rem] sm:min-h-[3.5rem] sm:min-w-[5rem] md:min-h-[3.75rem] md:min-w-[5.5rem]"
         } sm:px-2.5 sm:py-2.5 ${
           flashed && !motionSafe
-            ? "ring-2 ring-white/80 ring-offset-2 ring-offset-zinc-950 sm:ring-offset-2"
+            ? "ring-2 ring-[var(--accent)]/80 ring-offset-2 ring-offset-[var(--bg-base)] sm:ring-offset-2"
             : flashed && motionSafe
               ? "brightness-110"
               : ""
@@ -1542,17 +1543,17 @@ function CoachPitchPad({
 
   if (!supabase) {
     return (
-      <div className="flex min-h-[100dvh] items-center justify-center bg-zinc-950 px-4 text-center text-lg text-zinc-300">
+      <div className="coach-pitch-pad flex min-h-[100dvh] items-center justify-center bg-[var(--bg-base)] px-4 text-center text-lg text-[var(--text-muted)]">
         Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.
       </div>
     );
   }
 
   return (
-    <div className="coach-pitch-pad flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-zinc-950 text-zinc-100">
+    <div className="coach-pitch-pad flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-[var(--bg-base)] text-[var(--text)]">
       {toast ? (
         <p
-          className="shrink-0 border-b border-emerald-900/50 bg-emerald-950/90 px-3 py-2 text-center text-sm font-medium text-emerald-200"
+          className="pitch-pad-banner-success shrink-0 border-b px-3 py-2 text-center text-sm font-medium"
           role="status"
         >
           {toast}
@@ -1560,24 +1561,24 @@ function CoachPitchPad({
       ) : null}
 
       {error ? (
-        <p className="shrink-0 bg-red-950/80 px-4 py-2 text-center text-sm text-red-200">{error}</p>
+        <p className="pitch-pad-banner-error shrink-0 px-4 py-2 text-center text-sm">{error}</p>
       ) : null}
 
       {!networkOnline ? (
-        <p className="shrink-0 border-b border-amber-900/40 bg-amber-950/95 px-4 py-2 text-center text-sm font-medium text-amber-100" role="status">
+        <p className="pitch-pad-banner-warning shrink-0 border-b px-4 py-2 text-center text-sm font-medium" role="status">
           Offline — logging may fail until you&apos;re back on Wi‑Fi or cellular. What you tap might not save.
         </p>
       ) : null}
 
       {networkOnline && !pitchesRealtimeOk ? (
-        <p className="shrink-0 border-b border-zinc-700 bg-zinc-800/95 px-4 py-2 text-center text-sm leading-snug text-zinc-200" role="status">
+        <p className="pitch-pad-surface shrink-0 border-b px-4 py-2 text-center text-sm leading-snug text-[var(--text)]" role="status">
           Live pitch sync paused — check connectivity or keep Record open; this pad will retry every few seconds. You can still use Undo / Reset on this device.
         </p>
       ) : null}
 
       {batterMissingFromActiveLineup ? (
         <p
-          className="shrink-0 border-b border-sky-800 bg-sky-950/80 px-4 py-2 text-center text-sm leading-snug text-sky-100"
+          className="pitch-pad-banner-info shrink-0 border-b px-4 py-2 text-center text-sm leading-snug"
           role="status"
         >
           Sync note — Record&apos;s batter isn&apos;t on the {isOurTeamBatting ? "our" : "opposing"} lineup card.
@@ -1586,13 +1587,13 @@ function CoachPitchPad({
       ) : null}
 
       {showLandscapeTip ? (
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-emerald-900/50 bg-emerald-950/85 px-3 py-2 text-emerald-50">
+        <div className="pitch-pad-banner-success flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
           <p className="min-w-0 flex-1 text-xs leading-snug sm:text-sm">
             This pitch pad is laid out for <strong className="font-semibold">iPad landscape</strong> — rotate for the widest matchup + sequence columns.
           </p>
           <button
             type="button"
-            className="touch-manipulation shrink-0 rounded-md border border-emerald-600/60 bg-emerald-900/50 px-3 py-1.5 text-xs font-semibold text-emerald-100 active:bg-emerald-900/80"
+            className="pitch-pad-btn-secondary touch-manipulation shrink-0 rounded-md border px-3 py-1.5 text-xs font-semibold active:opacity-90"
             onClick={() => {
               try {
                 window.localStorage.setItem(COACH_LANDSCAPE_TIP_KEY, "1");
@@ -1619,23 +1620,23 @@ function CoachPitchPad({
           {lineupCollapsed ? (
             <button
               type="button"
-              className="touch-manipulation hidden h-full min-h-0 w-11 flex-col items-center justify-center gap-2 self-stretch rounded-xl border border-zinc-700/80 bg-zinc-900/50 py-3 active:bg-zinc-800/80 md:flex"
+              className="pitch-pad-surface touch-manipulation hidden h-full min-h-0 w-11 flex-col items-center justify-center gap-2 self-stretch rounded-xl border py-3 active:opacity-90 md:flex"
               onClick={() => setLineupPanelCollapsed(false)}
               aria-label={isOurTeamBatting ? "Show our lineup" : "Show opposing lineup"}
               title="Show lineup"
             >
-              <span className="text-lg font-bold leading-none text-amber-400/90" aria-hidden>
+              <span className="pitch-pad-accent text-lg font-bold leading-none" aria-hidden>
                 ›
               </span>
               <span
-                className="text-[10px] font-bold uppercase tracking-wide text-amber-400/80 [writing-mode:vertical-rl]"
+                className="pitch-pad-accent text-[10px] font-bold uppercase tracking-wide [writing-mode:vertical-rl]"
                 aria-hidden
               >
                 Lineup
               </span>
               {batterId && activeLineupBoard.ordered.some((r) => r.playerId === batterId) ? (
                 <span
-                  className="mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-500"
+                  className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[var(--accent)]"
                   title="Batter at plate"
                   aria-hidden
                 />
@@ -1643,17 +1644,17 @@ function CoachPitchPad({
             </button>
           ) : (
             <section
-              className="flex min-h-0 flex-1 flex-col overflow-hidden border-b border-zinc-800 px-2 py-2 md:max-h-none md:self-stretch md:rounded-xl md:border md:border-zinc-700/80 md:bg-zinc-900/50 md:px-2 md:py-2"
+              className="pitch-pad-surface flex min-h-0 flex-1 flex-col overflow-hidden border-b px-2 py-2 md:max-h-none md:self-stretch md:rounded-xl md:border md:px-2 md:py-2"
               aria-label={activeLineupLabel}
             >
               <div className="mb-1.5 flex items-center justify-between gap-1">
-                <h2 className="text-[10px] font-bold uppercase tracking-wide text-amber-400/90 sm:text-xs">
+                <h2 className="pitch-pad-accent text-[10px] font-bold uppercase tracking-wide sm:text-xs">
                   {activeLineupLabel}
                 </h2>
                 <div className="flex shrink-0 items-center">
                   <button
                     type="button"
-                    className="touch-manipulation inline-flex h-7 w-7 items-center justify-center rounded-md border border-zinc-600/80 bg-zinc-800/90 text-sm font-bold leading-none text-zinc-300 active:bg-zinc-700 md:h-8 md:w-8"
+                    className="pitch-pad-btn-secondary touch-manipulation inline-flex h-7 w-7 items-center justify-center rounded-md border text-sm font-bold leading-none active:opacity-90 md:h-8 md:w-8"
                     onClick={() => setLineupPanelCollapsed(true)}
                     aria-label="Hide lineup"
                     title="Hide lineup"
@@ -1668,9 +1669,9 @@ function CoachPitchPad({
                 </div>
               </div>
               {opponentLineupLoading ? (
-                <p className="text-xs text-zinc-500">Loading…</p>
+                <p className="text-xs text-[var(--text-faint)]">Loading…</p>
               ) : activeLineupBoard.ordered.length === 0 ? (
-                <p className="text-xs text-zinc-500">Set the lineup on Record.</p>
+                <p className="text-xs text-[var(--text-faint)]">Set the lineup on Record.</p>
               ) : (
                 <ul className="grid min-h-0 flex-1 grid-cols-2 gap-x-1 gap-y-1.5 overflow-y-auto overscroll-contain sm:gap-x-1.5 sm:gap-y-2 md:flex md:flex-col md:gap-1.5">
                   {activeLineupBoard.ordered.map((row) => {
@@ -1685,31 +1686,31 @@ function CoachPitchPad({
                         key={row.playerId}
                         className={`flex min-h-0 min-w-0 items-center gap-2 rounded-lg border px-1.5 py-1.5 text-sm md:flex-1 md:gap-2.5 md:px-2.5 md:py-2 md:text-base ${
                           atBat
-                            ? "border-amber-500/60 bg-amber-950/55 ring-1 ring-amber-500/30"
+                            ? "pitch-pad-at-bat"
                             : onDeck
-                              ? "border-zinc-500/50 bg-zinc-800/90"
-                              : "border-zinc-700/50 bg-zinc-900/70"
+                              ? "pitch-pad-on-deck"
+                              : "pitch-pad-lineup-idle"
                         }`}
                       >
-                        <span className="w-6 shrink-0 text-center text-sm font-bold tabular-nums text-amber-400 md:w-8 md:text-base">
+                        <span className="pitch-pad-accent w-6 shrink-0 text-center text-sm font-bold tabular-nums md:w-8 md:text-base">
                           {battingOrderOrdinal(row.slot)}
                         </span>
                         <div className="min-w-0 flex-1 leading-snug md:leading-normal">
                           <p className={lineupBatterNameClass(row.name)} title={row.name}>
                             {row.name}
                           </p>
-                          <p className="truncate text-xs text-white md:text-sm">
+                          <p className="truncate text-xs text-[var(--text)] md:text-sm">
                             {jerseyStr}{" "}
                             <span className={batsHandChipClass(row.bats, "compact")}>{batsHandLabel(row.bats)}</span>
                           </p>
                         </div>
                         <div className="shrink-0">
                           {atBat ? (
-                            <span className="rounded-md bg-amber-600/40 px-1 py-0.5 text-[10px] font-bold uppercase leading-none text-amber-100 md:px-1.5 md:py-1 md:text-xs">
+                            <span className="pitch-pad-ab-badge rounded-md px-1 py-0.5 text-[10px] font-bold uppercase leading-none md:px-1.5 md:py-1 md:text-xs">
                               AB
                             </span>
                           ) : onDeck ? (
-                            <span className="rounded-md bg-zinc-600 px-1 py-0.5 text-[10px] font-bold uppercase leading-none text-zinc-200 md:px-1.5 md:py-1 md:text-xs">
+                            <span className="pitch-pad-od-badge rounded-md px-1 py-0.5 text-[10px] font-bold uppercase leading-none md:px-1.5 md:py-1 md:text-xs">
                               OD
                             </span>
                           ) : null}
@@ -1726,14 +1727,14 @@ function CoachPitchPad({
         {lineupCollapsed ? (
           <button
             type="button"
-            className="touch-manipulation flex shrink-0 items-center justify-center gap-2 border-b border-zinc-800 bg-zinc-900/80 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-amber-400/90 active:bg-zinc-800 md:hidden"
+            className="pitch-pad-surface touch-manipulation flex shrink-0 items-center justify-center gap-2 border-b px-3 py-2 text-xs font-semibold uppercase tracking-wide pitch-pad-accent active:opacity-90 md:hidden"
             onClick={() => setLineupPanelCollapsed(false)}
             aria-label={isOurTeamBatting ? "Show our lineup" : "Show opposing lineup"}
           >
             <span aria-hidden>▼</span>
             Show lineup
             {batterId && activeLineupBoard.ordered.some((r) => r.playerId === batterId) ? (
-              <span className="rounded bg-amber-600/40 px-1.5 py-0.5 text-[10px] font-bold text-amber-100">AB</span>
+              <span className="pitch-pad-ab-badge rounded px-1.5 py-0.5 text-[10px] font-bold">AB</span>
             ) : null}
           </button>
         ) : null}
@@ -1742,7 +1743,7 @@ function CoachPitchPad({
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden p-2 pb-1 md:p-0 md:pb-0">
           {lineupGuardLoading ? (
             <p
-              className="shrink-0 rounded-lg border border-sky-700/50 bg-sky-950/30 px-3 py-2 text-center text-sm leading-snug text-sky-100/95"
+              className="pitch-pad-banner-info shrink-0 rounded-lg border px-3 py-2 text-center text-sm leading-snug"
               role="status"
             >
               Loading lineups… Pitch buttons stay off until we know who is at bat.
@@ -1750,7 +1751,7 @@ function CoachPitchPad({
           ) : null}
           {!lineupGuardLoading && isOurTeamBatting ? (
             <p
-              className="shrink-0 rounded-lg border border-violet-700/50 bg-violet-950/35 px-3 py-2 text-center text-sm leading-snug text-violet-100/95"
+              className="pitch-pad-banner-offense shrink-0 rounded-lg border px-3 py-2 text-center text-sm leading-snug"
               role="status"
             >
               We&apos;re hitting — tap <strong className="font-semibold">Fastball</strong>,{" "}
@@ -1762,7 +1763,7 @@ function CoachPitchPad({
           {/* Overlay (not in flow): appearing mid-AB must not squeeze the full-game panel below it. */}
           {pitchTypesLocked && !pitchButtonsBlocked ? (
             <p
-              className="absolute left-1/2 top-1 z-30 w-[min(44rem,calc(100%-1rem))] -translate-x-1/2 rounded-lg border border-amber-600/60 bg-amber-950/95 px-3 py-2 text-center text-sm leading-snug text-amber-100/95 shadow-lg shadow-black/40 md:top-0"
+              className="pitch-pad-banner-lock absolute left-1/2 top-1 z-30 w-[min(44rem,calc(100%-1rem))] -translate-x-1/2 rounded-lg border px-3 py-2 text-center text-sm leading-snug shadow-lg md:top-0"
               role="status"
             >
               {pitchTypeBlockReason === "strikes"
@@ -1779,22 +1780,22 @@ function CoachPitchPad({
             >
               <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden md:gap-2">
                 <div
-                  className="shrink-0 border-b border-zinc-800/80 pb-2"
+                  className="shrink-0 border-b border-[var(--border)] pb-2"
                   aria-label="Pitcher game line from Record"
                 >
                   {pitchSnapLoading ? (
-                    <p className="text-center text-sm text-zinc-500 md:text-left">Loading pitcher…</p>
+                    <p className="text-center text-sm text-[var(--text-faint)] md:text-left">Loading pitcher…</p>
                   ) : pitchSnap ? (
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3 md:gap-4">
                       <div className="flex shrink-0 flex-wrap items-baseline justify-center gap-x-2 gap-y-0.5 sm:justify-start">
-                        <p className="text-base font-bold leading-tight text-zinc-100 sm:text-lg">
+                        <p className="text-base font-bold leading-tight text-[var(--text)] sm:text-lg">
                           {pitchSnap.name}
                         </p>
-                        <span className="text-sm font-semibold tabular-nums text-white sm:text-base">
+                        <span className="text-sm font-semibold tabular-nums text-[var(--text)] sm:text-base">
                           {pitchSnap.jersey != null ? `#${pitchSnap.jersey}` : "—"}
                         </span>
                         <span
-                          className="text-sm font-semibold tabular-nums text-amber-200/95 sm:text-base"
+                          className="pitch-pad-accent text-sm font-semibold tabular-nums sm:text-base"
                           title="Pitches thrown in the current half-inning (saved PAs + live AB)"
                         >
                           {pitcherGameIntelLoading
@@ -1803,7 +1804,7 @@ function CoachPitchPad({
                         </span>
                       </div>
                       {pitchSnap.line1 ? (
-                        <p className="min-w-0 flex-1 text-center text-sm font-semibold leading-snug text-zinc-200 sm:text-left sm:text-base">
+                        <p className="min-w-0 flex-1 text-center text-sm font-semibold leading-snug text-[var(--text-muted)] sm:text-left sm:text-base">
                           {pitchSnap.line1}
                         </p>
                       ) : null}
@@ -1811,7 +1812,7 @@ function CoachPitchPad({
                   ) : null}
                 </div>
                 {pitcherGameIntelLoading ? (
-                  <p className="text-xs text-zinc-500">Loading pitch mix…</p>
+                  <p className="text-xs text-[var(--text-faint)]">Loading pitch mix…</p>
                 ) : (
                   <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                     <MatchupPitchMixStrip
@@ -1835,26 +1836,26 @@ function CoachPitchPad({
           {/* Fixed-height row at every breakpoint — long pitch sequences scroll inside, never resize the page */}
           <div className="flex h-[min(32dvh,17rem)] max-h-[min(32dvh,17rem)] min-h-0 w-full shrink-0 grow-0 flex-col gap-1.5 overflow-hidden pt-1.5 md:h-[min(42dvh,23rem)] md:max-h-[min(42dvh,23rem)] md:flex-row md:gap-2 md:pt-0 lg:h-[min(40dvh,21rem)] lg:max-h-[min(40dvh,21rem)] xl:gap-3">
             <section
-              className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border-2 border-amber-600/35 bg-gradient-to-b from-zinc-900/90 to-zinc-950/95 p-1.5 shadow-[0_0_0_1px_rgba(251,191,36,0.12)] md:min-w-0 md:flex-1 md:p-1.5 xl:p-2.5"
+              className="pitch-pad-matchup-panel flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border-2 p-1.5 md:min-w-0 md:flex-1 md:p-1.5 xl:p-2.5"
               aria-label="This game: batter vs current pitcher"
             >
-              <div className="shrink-0 border-b border-amber-600/25 pb-1">
-                <h3 className="text-center text-xs font-bold uppercase tracking-wide text-amber-200/95 sm:text-sm">
+              <div className="shrink-0 border-b border-[color-mix(in_srgb,var(--accent)_25%,var(--border))] pb-1">
+                <h3 className="pitch-pad-accent text-center text-xs font-bold uppercase tracking-wide sm:text-sm">
                   {isOurTeamBatting
                     ? `Batter · pitch mix seen today`
                     : `Matchup · vs ${pitchSnapLoading ? "…" : (pitchSnap?.name ?? "pitcher")}`}
                 </h3>
               </div>
               {!batterId ? (
-                <p className="mt-3 text-center text-sm text-zinc-500">
+                <p className="mt-3 text-center text-sm text-[var(--text-faint)]">
                   Set the batter on Record to see how this hitter has done against your pitcher today.
                 </p>
               ) : !panelPitcherId ? (
-                <p className="mt-3 text-center text-sm text-zinc-500">
+                <p className="mt-3 text-center text-sm text-[var(--text-faint)]">
                   Set the pitcher on Record (mound pitcher on the PA form).
                 </p>
               ) : batterIntelLoading ? (
-                <p className="mt-3 text-center text-sm text-zinc-500">Loading matchup…</p>
+                <p className="mt-3 text-center text-sm text-[var(--text-faint)]">Loading matchup…</p>
               ) : (
                 <div className="mt-1 flex min-h-0 flex-1 flex-col overflow-hidden md:mt-1.5">
                   <CurrentBatterPitchDataCard
@@ -1872,12 +1873,12 @@ function CoachPitchPad({
             </section>
 
             <aside
-              className="flex h-full max-h-full min-h-0 w-full shrink-0 grow-0 flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900/70 md:w-80 md:max-w-[32vw]"
+              className="pitch-pad-sequence-aside flex h-full max-h-full min-h-0 w-full shrink-0 grow-0 flex-col overflow-hidden rounded-xl border md:w-80 md:max-w-[32vw]"
               aria-label="This at-bat pitch sequence"
             >
-              <div className="shrink-0 border-b border-zinc-700 px-2 py-1 sm:px-2.5 md:py-1.5 xl:py-2.5">
+              <div className="shrink-0 border-b border-[var(--border)] px-2 py-1 sm:px-2.5 md:py-1.5 xl:py-2.5">
                 <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-1">
-                  <h2 className="text-xs font-bold uppercase tracking-wide text-white sm:text-sm">
+                  <h2 className="pitch-pad-accent text-xs font-bold uppercase tracking-wide sm:text-sm">
                     This AB
                   </h2>
                   <div
@@ -1885,21 +1886,21 @@ function CoachPitchPad({
                     aria-label={`Count ${headerCountBalls} and ${headerCountStrikes}, ${outs} out${outs === 1 ? "" : "s"}`}
                   >
                     <div className="flex items-baseline gap-1.5">
-                      <span className="text-[9px] font-semibold uppercase tracking-wide text-white sm:text-[10px]">
+                      <span className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-muted)] sm:text-[10px]">
                         Count
                       </span>
-                      <span className="font-mono text-3xl font-bold tabular-nums leading-none text-white sm:text-4xl">
+                      <span className="font-mono text-3xl font-bold tabular-nums leading-none text-[var(--text)] sm:text-4xl">
                         {headerCountBalls}-{headerCountStrikes}
                       </span>
                     </div>
-                    <span className="text-xs font-semibold tabular-nums text-white sm:text-sm">
+                    <span className="text-xs font-semibold tabular-nums text-[var(--text)] sm:text-sm">
                       {outs} out{outs === 1 ? "" : "s"}
                     </span>
                   </div>
                 </div>
               </div>
               {sequenceRowsThisBatter.length === 0 ? (
-                <p className="px-3 py-3 text-center text-sm leading-snug text-zinc-500">
+                <p className="px-3 py-3 text-center text-sm leading-snug text-[var(--text-faint)]">
                   {pitchButtonsBlocked
                     ? "…"
                     : isOurTeamBatting
@@ -1934,16 +1935,14 @@ function CoachPitchPad({
                         <li
                           key={r.id}
                           className={`rounded-lg border px-2.5 py-2 sm:px-3 ${
-                            isLatest
-                              ? "border-amber-400/70 bg-amber-950/40 shadow-[0_0_0_1px_rgba(251,191,36,0.35)] ring-1 ring-amber-400/25"
-                              : "border-amber-500/25 bg-zinc-950/50"
+                            isLatest ? "pitch-pad-sequence-latest" : "pitch-pad-sequence-row"
                           }`}
                         >
                         <div className="flex items-center gap-2 sm:gap-2.5">
-                          <span className="w-6 shrink-0 text-xs font-semibold tabular-nums text-white sm:w-7 sm:text-sm">
+                          <span className="w-6 shrink-0 text-xs font-semibold tabular-nums text-[var(--text)] sm:w-7 sm:text-sm">
                             #{r.pitch_number}
                           </span>
-                          <span className="w-[3.75rem] shrink-0 whitespace-nowrap text-sm font-semibold text-zinc-100 sm:w-[4.25rem]">
+                          <span className="w-[3.75rem] shrink-0 whitespace-nowrap text-sm font-semibold text-[var(--text)] sm:w-[4.25rem]">
                             {resultLabel}
                           </span>
                           <div className="min-w-0 flex-1">
@@ -1982,12 +1981,14 @@ function CoachPitchPad({
         </div>
       </main>
 
-      <footer className="relative z-20 shrink-0 border-t-2 border-zinc-700 bg-zinc-900 px-2 py-3 shadow-[0_-14px_48px_rgba(0,0,0,0.55)] sm:px-4 sm:py-3.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <footer className="pitch-pad-footer relative z-20 shrink-0 border-t-2 px-2 py-3 sm:px-4 sm:py-3.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         {/* Overlay status so the footer never changes height (a growing footer squeezes the full-game panel above). */}
         {pitchLogBusy || pitchTypeCooldown ? (
           <p
             className={`pointer-events-none absolute inset-x-0 -top-6 mx-auto w-fit rounded-t-md px-3 py-1 text-center text-xs font-medium sm:text-sm ${
-              pitchLogBusy ? "bg-zinc-900/95 text-amber-200" : "bg-zinc-900/95 text-zinc-400"
+              pitchLogBusy
+                ? "bg-[var(--bg-card)] text-[var(--accent)]"
+                : "bg-[var(--bg-card)] text-[var(--text-muted)]"
             }`}
             role="status"
           >
@@ -1995,16 +1996,19 @@ function CoachPitchPad({
           </p>
         ) : null}
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-          <Link
-            href="/coach"
-            className="touch-manipulation inline-flex h-11 shrink-0 items-center justify-center gap-1.5 self-center rounded-lg border border-zinc-600 bg-zinc-800 px-4 text-sm font-semibold text-zinc-100 transition hover:bg-zinc-700 active:bg-zinc-600 sm:min-h-[44px] sm:self-auto"
-            aria-label="Back to coach home"
-          >
-            <span className="text-base leading-none" aria-hidden>
-              ←
-            </span>
-            <span>Back</span>
-          </Link>
+          <div className="flex shrink-0 items-center justify-center gap-2 self-center sm:self-auto">
+            <Link
+              href="/coach"
+              className="pitch-pad-btn-secondary touch-manipulation inline-flex h-11 items-center justify-center gap-1.5 rounded-lg border px-4 text-sm font-semibold transition active:opacity-90 sm:min-h-[44px]"
+              aria-label="Back to coach home"
+            >
+              <span className="text-base leading-none" aria-hidden>
+                ←
+              </span>
+              <span>Back</span>
+            </Link>
+            <ThemeToggle variant="icon" className="!h-11 !w-11 shrink-0" />
+          </div>
           <div
             className="flex min-w-0 flex-1 flex-wrap items-center justify-center gap-4 sm:gap-5"
             role="group"
@@ -2019,7 +2023,7 @@ function CoachPitchPad({
                 pitchLogBusy || !supabase || !groupId || sequenceRowsThisBatter.length === 0
               }
               onClick={() => void undoLast()}
-              className="touch-manipulation min-h-[44px] min-w-[5.75rem] rounded-lg border border-zinc-600 bg-zinc-800 px-4 text-sm font-semibold text-zinc-100 active:bg-zinc-700 disabled:opacity-35"
+              className="pitch-pad-btn-secondary touch-manipulation min-h-[44px] min-w-[5.75rem] rounded-lg border px-4 text-sm font-semibold active:opacity-90 disabled:opacity-35"
             >
               Undo
             </button>
@@ -2029,7 +2033,7 @@ function CoachPitchPad({
                 pitchLogBusy || !supabase || !groupId || sequenceRowsThisBatter.length === 0
               }
               onClick={() => void resetAtBat()}
-              className="touch-manipulation min-h-[44px] min-w-[5.75rem] rounded-lg border border-amber-600/70 bg-amber-950/50 px-4 text-sm font-semibold text-amber-100 active:bg-amber-950/80 disabled:opacity-35"
+              className="pitch-pad-btn-accent-outline touch-manipulation min-h-[44px] min-w-[5.75rem] rounded-lg border px-4 text-sm font-semibold active:opacity-90 disabled:opacity-35"
             >
               Reset
             </button>
@@ -2274,7 +2278,7 @@ export default function CoachPitchTrackerClient({
 
   if (!supabase) {
     return (
-      <div className="flex min-h-[100dvh] items-center justify-center bg-zinc-950 px-4 text-center text-lg text-zinc-300">
+      <div className="coach-pitch-pad flex min-h-[100dvh] items-center justify-center bg-[var(--bg-base)] px-4 text-center text-lg text-[var(--text-muted)]">
         Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.
       </div>
     );
@@ -2282,9 +2286,9 @@ export default function CoachPitchTrackerClient({
 
   if (resolving) {
     return (
-      <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 bg-zinc-950 px-4 text-center">
-        <p className="text-zinc-300">Loading pitch pad…</p>
-        {resolveError ? <p className="max-w-md text-sm text-red-300">{resolveError}</p> : null}
+      <div className="coach-pitch-pad flex min-h-[100dvh] flex-col items-center justify-center gap-3 bg-[var(--bg-base)] px-4 text-center">
+        <p className="text-[var(--text-muted)]">Loading pitch pad…</p>
+        {resolveError ? <p className="max-w-md text-sm text-[var(--danger)]">{resolveError}</p> : null}
       </div>
     );
   }

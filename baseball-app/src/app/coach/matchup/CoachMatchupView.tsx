@@ -140,7 +140,7 @@ function PitchMixTable({ rows }: { rows: PreGamePitchMixRow[] }) {
     <div className="overflow-x-auto rounded-lg border border-[var(--neo-border)]">
       <table className="w-full border-collapse text-sm">
         <thead>
-          <tr className="border-b border-[var(--neo-border)] bg-[#10161d] text-[10px] font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
+          <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)] text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
             <th className="px-3 py-2 text-left">Pitch</th>
             <th className="px-3 py-2 text-right">Use</th>
             <th className="px-3 py-2 text-right">Str%</th>
@@ -214,7 +214,7 @@ function LineupTable({ rows, vsHandLabel }: { rows: LineupRow[]; vsHandLabel: st
     <div className="overflow-x-auto rounded-lg border border-[var(--neo-border)]">
       <table className="w-full min-w-[20rem] border-collapse text-sm">
         <thead>
-          <tr className="border-b border-[var(--neo-border)] bg-[#10161d] text-[10px] font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
+          <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)] text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
             <th className="w-10 px-2 py-2 text-center">#</th>
             <th className="px-2 py-2 text-left">Player</th>
             <th className="w-12 px-2 py-2 text-center">Pos</th>
@@ -327,7 +327,7 @@ function OpponentThreatsTable({ rows }: { rows: ThreatRow[] }) {
     <div className="overflow-x-auto rounded-lg border border-[var(--neo-border)]">
       <table className="w-full min-w-[28rem] border-collapse text-sm">
         <thead>
-          <tr className="border-b border-[var(--neo-border)] bg-[#10161d] text-[10px] font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
+          <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)] text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
             <th className="px-3 py-2 text-left">Player</th>
             <th className="px-2 py-2 text-right">PA</th>
             <th className="px-2 py-2 text-right">OPS</th>
@@ -391,7 +391,7 @@ function TrendStatTable({
     <div className="overflow-x-auto rounded-lg border border-[var(--neo-border)]">
       <table className="w-full border-collapse text-sm">
         <thead>
-          <tr className="border-b border-[var(--neo-border)] bg-[#10161d] text-[10px] font-semibold uppercase tracking-wider text-[var(--neo-text-muted)]">
+          <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)] text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
             <th className="px-3 py-2 text-left">Player</th>
             <th className="px-2 py-2 text-right">Recent OPS</th>
             <th className="px-2 py-2 text-right">K%</th>

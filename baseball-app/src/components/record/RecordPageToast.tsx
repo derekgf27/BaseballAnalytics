@@ -13,6 +13,12 @@ type RecordPageToastProps = {
   onDismiss: () => void;
 };
 
+const TOAST_PANEL_CLASS: Record<RecordToastMessage["type"], string> = {
+  success: "record-toast-panel record-toast-panel--success ring-2 ring-[var(--success)]/25",
+  destructive: "record-toast-panel record-toast-panel--destructive ring-2 ring-[var(--danger)]/35",
+  error: "record-toast-panel record-toast-panel--error ring-2 ring-amber-500/35",
+};
+
 /** Lightweight toast (CSS only — avoids framer-motion on the Record bundle). */
 export function RecordPageToast({ mounted, message, onDismiss }: RecordPageToastProps) {
   if (!mounted || !message || typeof document === "undefined") return null;
@@ -28,13 +34,7 @@ export function RecordPageToast({ mounted, message, onDismiss }: RecordPageToast
       className="record-toast-enter pointer-events-none fixed inset-x-0 top-0 z-[200] flex justify-center p-3 sm:p-4"
     >
       <div
-        className={`pointer-events-auto flex w-full max-w-xl items-start gap-3 rounded-xl border-2 px-4 py-3 shadow-[0_12px_40px_rgba(0,0,0,0.55)] sm:gap-4 sm:px-5 sm:py-4 ${
-          message.type === "success"
-            ? "border-[var(--success)] bg-[#0a1f18] text-[var(--success)] ring-2 ring-[var(--success)]/25"
-            : message.type === "destructive"
-              ? "border-[var(--danger)] bg-[#1a1014] text-[#fecdd3] ring-2 ring-[var(--danger)]/35"
-              : "border-amber-400 bg-[#1f1810] text-[#fff8e8] ring-2 ring-amber-500/35"
-        }`}
+        className={`pointer-events-auto flex w-full max-w-xl items-start gap-3 rounded-xl border-2 px-4 py-3 sm:gap-4 sm:px-5 sm:py-4 ${TOAST_PANEL_CLASS[message.type]}`}
       >
         {message.type === "error" ? (
           <span
@@ -64,13 +64,7 @@ export function RecordPageToast({ mounted, message, onDismiss }: RecordPageToast
         <button
           type="button"
           onClick={onDismiss}
-          className={`shrink-0 rounded-lg px-2 py-1 text-sm font-semibold transition hover:bg-white/10 ${
-            message.type === "success"
-              ? "text-[var(--success)]"
-              : message.type === "destructive"
-                ? "text-[#fecdd3]"
-                : "text-amber-200"
-          }`}
+          className="record-toast-dismiss shrink-0 rounded-lg px-2 py-1 text-sm font-semibold opacity-90 hover:opacity-100"
           aria-label="Dismiss notification"
         >
           ×
