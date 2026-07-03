@@ -107,6 +107,7 @@ import type {
 } from "@/lib/types";
 import { PitchPadCountTransition } from "@/components/record/PitchPadCountTransition";
 import { RecordPageToast } from "@/components/record/RecordPageToast";
+import { useFullscreen } from "@/hooks/useFullscreen";
 
 const FinalizeGameModal = dynamic(
   () => import("@/app/analyst/record/FinalizeGameModal").then((m) => ({ default: m.FinalizeGameModal })),
@@ -303,6 +304,7 @@ export default function RecordPageClient({
   linkPitchTrackerGroupToPa,
 }: RecordPageClientProps) {
   const router = useRouter();
+  const { isFullscreen, toggleFullscreen } = useFullscreen();
   const [players, setPlayers] = useState(initialPlayers);
   useEffect(() => {
     setPlayers(initialPlayers);
@@ -3237,16 +3239,35 @@ export default function RecordPageClient({
           ) : null}
         </div>
         {selectedGameId && !recordLocked ? (
-          <button
-            type="button"
-            data-record-shortcuts-ignore
-            className="font-display flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border-2 border-[var(--border)] bg-[var(--bg-card)] text-base font-semibold text-[var(--text)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
-            aria-label="Keyboard shortcuts"
-            title="Keyboard shortcuts (?)"
-            onClick={() => setShortcutsHelpOpen(true)}
-          >
-            ?
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              data-record-shortcuts-ignore
+              className="font-display inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg border-2 border-[var(--border)] bg-[var(--bg-card)] px-3 text-xs font-semibold tracking-wide text-[var(--text)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              title={
+                isFullscreen
+                  ? "Exit fullscreen (Esc)"
+                  : "Fullscreen — hide browser bar and taskbar"
+              }
+              onClick={() => void toggleFullscreen()}
+            >
+              <span aria-hidden className="text-sm leading-none">
+                {isFullscreen ? "⤓" : "⤢"}
+              </span>
+              <span className="hidden sm:inline">{isFullscreen ? "Exit" : "Fullscreen"}</span>
+            </button>
+            <button
+              type="button"
+              data-record-shortcuts-ignore
+              className="font-display flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border-2 border-[var(--border)] bg-[var(--bg-card)] text-base font-semibold text-[var(--text)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              aria-label="Keyboard shortcuts"
+              title="Keyboard shortcuts (?)"
+              onClick={() => setShortcutsHelpOpen(true)}
+            >
+              ?
+            </button>
+          </div>
         ) : null}
       </header>
 
