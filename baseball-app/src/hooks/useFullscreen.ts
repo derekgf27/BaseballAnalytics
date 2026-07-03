@@ -2,17 +2,22 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+type FullscreenDocument = Document & {
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => Promise<void> | void;
+};
+
+type FullscreenElement = Element & {
+  webkitRequestFullscreen?: () => Promise<void> | void;
+};
+
 function getFullscreenElement(): Element | null {
-  const doc = document as Document & {
-    webkitFullscreenElement?: Element | null;
-  };
+  const doc = document as FullscreenDocument;
   return document.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
 }
 
 async function requestFullscreen(el: Element): Promise<void> {
-  const target = el as Element & {
-    webkitRequestFullscreen?: () => Promise<void> | void;
-  };
+  const target = el as FullscreenElement;
   if (typeof el.requestFullscreen === "function") {
     await el.requestFullscreen();
     return;
@@ -23,9 +28,7 @@ async function requestFullscreen(el: Element): Promise<void> {
 }
 
 async function exitFullscreen(): Promise<void> {
-  const doc = document as Document & {
-    webkitExitFullscreen?: () => Promise<void> | void;
-  };
+  const doc = document as FullscreenDocument;
   if (typeof document.exitFullscreen === "function" && document.fullscreenElement) {
     await document.exitFullscreen();
     return;
