@@ -3308,7 +3308,7 @@ export default function RecordPageClient({
       )}
 
       {selectedGameId && selectedGame && !recordLocked && isDemoMode() && (
-        <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+        <div className="mb-4 rounded-lg border border-amber-600/35 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
           Portfolio demo — explore the Record UI; saves are disabled.
         </div>
       )}
