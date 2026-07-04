@@ -3,10 +3,10 @@
 import { deletePlayer, getPlayerDeletionPreview, insertPlayer, updatePlayer } from "@/lib/db/queries";
 import { revalidatePlayersListCache } from "@/lib/db/revalidateLists";
 import type { Player, PlayerDeletionPreview } from "@/lib/types";
-import { requireAnalystAccess } from "@/lib/auth/requireRole";
+import { requireWritableAnalystAccess } from "@/lib/auth/requireRole";
 
 export async function insertPlayerAction(player: Omit<Player, "id" | "created_at">): Promise<Player | null> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   const created = await insertPlayer(player);
   if (created) revalidatePlayersListCache();
   return created;
@@ -16,7 +16,7 @@ export async function updatePlayerAction(
   id: string,
   updates: Partial<Omit<Player, "id" | "created_at">>
 ): Promise<Player | null> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   const updated = await updatePlayer(id, updates);
   if (updated) revalidatePlayersListCache();
   return updated;
@@ -27,7 +27,7 @@ export async function getPlayerDeletionPreviewAction(playerId: string): Promise<
 }
 
 export async function deletePlayerAction(playerId: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   const result = await deletePlayer(playerId);
   if (result.ok) revalidatePlayersListCache();
   return result;
@@ -36,7 +36,7 @@ export async function deletePlayerAction(playerId: string): Promise<{ ok: true }
 export async function getBulkPlayerDeletionPreviewAction(
   playerIds: string[]
 ): Promise<{ id: string; preview: PlayerDeletionPreview | null }[]> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   const unique = [...new Set(playerIds.filter((id) => id?.trim()))];
   return Promise.all(
     unique.map(async (id) => ({ id, preview: await getPlayerDeletionPreview(id) }))
@@ -48,7 +48,7 @@ export async function deletePlayersAction(playerIds: string[]): Promise<{
   archived: number;
   failed: { id: string; error: string }[];
 }> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   const unique = [...new Set(playerIds.filter((id) => id?.trim()))];
   let deleted = 0;
   let archived = 0;

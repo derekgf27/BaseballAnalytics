@@ -26,6 +26,7 @@ import {
 import type { PitchSequenceEntry } from "@/lib/compute/pitchSequence";
 import { pitchingStatsFromPAs } from "@/lib/compute/pitchingStats";
 import { isDemoId } from "@/lib/db/mockData";
+import { isDemoMode } from "@/lib/demoMode";
 import { isGameFinalized } from "@/lib/gameRecord";
 import { pickCoachDashboardGame, sortGamesForCoachSelect } from "@/lib/coachGamePick";
 import { PitchPadGamePicker } from "./PitchPadGamePicker";
@@ -43,8 +44,11 @@ import {
   CurrentBatterPitchDataCard,
   lobByPitcherFromPas,
   MatchupPitchMixStrip,
+  pitchesByInningForPitcher,
   pitchesThisInningForPitcher,
 } from "@/components/analyst/BattingPitchMixCard";
+import { MatchupGlanceModal } from "@/components/analyst/MatchupGlanceModal";
+import { PitchesByInningModal } from "@/components/analyst/PitchesByInningModal";
 import { pitchTypeGameDetailFromPas } from "@/lib/compute/pitchTypeGameDetail";
 import { PitchTypeStatsModal } from "@/components/coach/PitchTypeStatsModal";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
@@ -57,6 +61,8 @@ import type {
   PitchTrackerPitch,
   PitchTrackerPitchType,
   PlateAppearance,
+  Player,
+  Throws,
 } from "@/lib/types";
 
 function coachLiveAbSyntheticPa(
@@ -216,6 +222,9 @@ async function ensurePitchTrackerGroupOnGame(
   supabase: NonNullable<ReturnType<typeof getSupabaseBrowserClient>>,
   gameId: string
 ): Promise<string> {
+  if (isDemoMode() || isDemoId(gameId)) {
+    return crypto.randomUUID();
+  }
   const { data: row, error: readErr } = await supabase
     .from("games")
     .select("pitch_tracker_group_id")
@@ -345,6 +354,7 @@ async function fetchPitchTrackerSyncFromGame(
 type CoachPitcherSnapshotUi = {
   name: string;
   jersey: string | null;
+  throws: Throws | null;
   line1: string;
 };
 
@@ -1146,6 +1156,8 @@ function CoachPitchPad({
 
   /** Tap a pitch-type chip (Mix cards / sequence) → in-game stats modal for that type. */
   const [statPitchType, setStatPitchType] = useState<PitchTrackerPitchType | null>(null);
+  const [matchupGlanceOpen, setMatchupGlanceOpen] = useState(false);
+  const [pitchesByInningModalOpen, setPitchesByInningModalOpen] = useState(false);
 
   const statPitchTypeDetail = useMemo(() => {
     if (!statPitchType || !panelPitcherId) return null;
@@ -1169,6 +1181,11 @@ function CoachPitchPad({
     setStatPitchType(t);
   }, []);
 
+  const openMatchupGlance = useCallback(() => {
+    if (!batterId || !panelPitcherId) return;
+    setMatchupGlanceOpen(true);
+  }, [batterId, panelPitcherId]);
+
   const ourLineupBoard = useMemo(
     () => buildLineupBoard(ourLineupByPlayerId, batterId, batterSlot),
     [ourLineupByPlayerId, batterId, batterSlot]
@@ -1188,6 +1205,42 @@ function CoachPitchPad({
       "Batter"
     );
   }, [batterId, batterProfile, isOurTeamBatting, ourLineupByPlayerId, opponentLineupByPlayerId]);
+
+  const matchupBatterPlayer = useMemo((): Player | null => {
+    if (!batterId) return null;
+    return {
+      id: batterId,
+      name: batterIntelDisplayName,
+      jersey: batterProfile?.jersey ?? null,
+      positions: [],
+      bats: batterProfile?.bats ?? null,
+    };
+  }, [batterId, batterIntelDisplayName, batterProfile]);
+
+  const matchupPitcherPlayer = useMemo((): Player | null => {
+    if (!panelPitcherId) return null;
+    return {
+      id: panelPitcherId,
+      name: pitchSnap?.name ?? "Pitcher",
+      jersey: pitchSnap?.jersey ?? null,
+      positions: [],
+      throws: pitchSnap?.throws ?? null,
+    };
+  }, [panelPitcherId, pitchSnap]);
+
+  const pitchesByInningRows = useMemo(() => {
+    if (!panelPitcherId) return [];
+    return pitchesByInningForPitcher(
+      gamePitchMixPasMerged,
+      gamePitchMixEventsMerged,
+      panelPitcherId
+    );
+  }, [panelPitcherId, gamePitchMixPasMerged, gamePitchMixEventsMerged]);
+
+  const pitchesByInningTotal = useMemo(
+    () => pitchesByInningRows.reduce((sum, row) => sum + row.pitches, 0),
+    [pitchesByInningRows]
+  );
 
   const pitchTypeBlockReason = useMemo(
     () => coachPitchPadBlocksNewPitchRow(sequenceRowsThisBatter),
@@ -1233,21 +1286,24 @@ function CoachPitchPad({
     setPitchSnapLoading(true);
     try {
       const [{ data: playerRow }, { data: pasRows }] = await Promise.all([
-        supabase.from("players").select("name, jersey").eq("id", snapPitcherId).maybeSingle(),
+        supabase.from("players").select("name, jersey, throws").eq("id", snapPitcherId).maybeSingle(),
         supabase
           .from("plate_appearances")
           .select("*")
           .eq("game_id", gameId)
           .eq("pitcher_id", snapPitcherId),
       ]);
-      const row = playerRow as { name?: string; jersey?: string | null } | null;
+      const row = playerRow as { name?: string; jersey?: string | null; throws?: unknown } | null;
       const name = row && typeof row.name === "string" ? row.name : "Pitcher";
       const jersey = normalizeJersey(row?.jersey ?? null);
+      const throws: Throws | null =
+        row?.throws === "L" || row?.throws === "R" ? row.throws : null;
       const pas = (pasRows ?? []) as PlateAppearance[];
       if (pas.length === 0) {
         setPitchSnap({
           name,
           jersey,
+          throws,
           line1: "No plate appearances logged to this pitcher in this game yet.",
         });
         return;
@@ -1257,14 +1313,14 @@ function CoachPitchPad({
       });
       const s = split?.overall;
       if (!s) {
-        setPitchSnap({ name, jersey, line1: "—" });
+        setPitchSnap({ name, jersey, throws, line1: "—" });
         return;
       }
       const lob = lobByPitcherFromPas(pas).get(snapPitcherId) ?? 0;
       const line1 = `${s.ipDisplay} IP · ${s.h} H · ${s.r} R · ${s.er} ER · ${s.bb} BB · ${s.so} K · ERA ${
         s.ip > 0 ? s.era.toFixed(2) : "—"
       } · WHIP ${s.ip > 0 ? s.whip.toFixed(2) : "—"} · LOB ${lob}`;
-      setPitchSnap({ name, jersey, line1 });
+      setPitchSnap({ name, jersey, throws, line1 });
     } catch {
       setPitchSnap(null);
     } finally {
@@ -1301,6 +1357,10 @@ function CoachPitchPad({
   /** Pitch type only — ball/strike outcomes live on the analyst PA form. Fills first typeless row if Record created it. */
   const logPitch = async (pitch_type: PitchTrackerPitchType) => {
     if (!supabase || !gameId || !groupId || !batterId) return;
+    if (isDemoMode()) {
+      setError("Portfolio demo is read-only.");
+      return;
+    }
     if (pitchButtonsBlocked || pitchLogInFlightRef.current || pitchDockLocked) return;
 
     pitchLogInFlightRef.current = true;
@@ -1452,6 +1512,10 @@ function CoachPitchPad({
 
   const undoLast = async () => {
     if (pitchLogInFlightRef.current || pitchLogBusy) return;
+    if (isDemoMode()) {
+      setError("Portfolio demo is read-only.");
+      return;
+    }
     const pool = batterId ? rows.filter((r) => r.batter_id === batterId) : rows;
     if (!supabase || !groupId || pool.length === 0) return;
 
@@ -1475,6 +1539,10 @@ function CoachPitchPad({
 
   const resetAtBat = async () => {
     if (pitchLogInFlightRef.current || pitchLogBusy) return;
+    if (isDemoMode()) {
+      setError("Portfolio demo is read-only.");
+      return;
+    }
     if (!supabase || !groupId) return;
     if (
       !window.confirm(
@@ -1788,20 +1856,39 @@ function CoachPitchPad({
                   ) : pitchSnap ? (
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3 md:gap-4">
                       <div className="flex shrink-0 flex-wrap items-baseline justify-center gap-x-2 gap-y-0.5 sm:justify-start">
-                        <p className="text-base font-bold leading-tight text-[var(--text)] sm:text-lg">
-                          {pitchSnap.name}
-                        </p>
-                        <span className="text-sm font-semibold tabular-nums text-[var(--text)] sm:text-base">
-                          {pitchSnap.jersey != null ? `#${pitchSnap.jersey}` : "—"}
-                        </span>
-                        <span
-                          className="pitch-pad-accent text-sm font-semibold tabular-nums sm:text-base"
-                          title="Pitches thrown in the current half-inning (saved PAs + live AB)"
+                        {batterId && panelPitcherId ? (
+                          <button
+                            type="button"
+                            onClick={openMatchupGlance}
+                            className="cursor-pointer rounded text-left text-base font-bold leading-tight text-[var(--text)] underline decoration-[var(--accent)]/40 decoration-2 underline-offset-4 transition hover:decoration-[var(--accent)] hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/60 sm:text-lg"
+                            title="View matchup glance"
+                          >
+                            {pitchSnap.name}
+                            {pitchSnap.jersey != null ? (
+                              <span className="font-semibold tabular-nums"> #{pitchSnap.jersey}</span>
+                            ) : null}
+                          </button>
+                        ) : (
+                          <>
+                            <p className="text-base font-bold leading-tight text-[var(--text)] sm:text-lg">
+                              {pitchSnap.name}
+                            </p>
+                            <span className="text-sm font-semibold tabular-nums text-[var(--text)] sm:text-base">
+                              {pitchSnap.jersey != null ? `#${pitchSnap.jersey}` : "—"}
+                            </span>
+                          </>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setPitchesByInningModalOpen(true)}
+                          disabled={pitcherGameIntelLoading}
+                          className="pitch-pad-accent cursor-pointer rounded text-sm font-semibold tabular-nums underline decoration-[var(--accent)]/40 decoration-2 underline-offset-4 transition hover:decoration-[var(--accent)] hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/60 disabled:cursor-default disabled:no-underline sm:text-base"
+                          title="View pitches by inning"
                         >
                           {pitcherGameIntelLoading
                             ? "…"
                             : `${pitcherPitchesThisInning ?? 0} pitches this inning`}
-                        </span>
+                        </button>
                       </div>
                       {pitchSnap.line1 ? (
                         <p className="min-w-0 flex-1 text-center text-sm font-semibold leading-snug text-[var(--text-muted)] sm:text-left sm:text-base">
@@ -1867,6 +1954,9 @@ function CoachPitchPad({
                     coachPad
                     coachPadExpanded
                     onPitchTypeClick={openPitchTypeStats}
+                    onNameClick={
+                      batterId && panelPitcherId ? openMatchupGlance : undefined
+                    }
                   />
                 </div>
               )}
@@ -2046,6 +2136,26 @@ function CoachPitchPad({
           detail={statPitchTypeDetail}
           pitcherName={pitchSnap?.name ?? "Pitcher"}
           onClose={() => setStatPitchType(null)}
+        />
+      ) : null}
+
+      {matchupGlanceOpen ? (
+        <MatchupGlanceModal
+          open
+          batter={matchupBatterPlayer}
+          pitcher={matchupPitcherPlayer}
+          gamePas={gamePitchMixPasMerged}
+          onClose={() => setMatchupGlanceOpen(false)}
+        />
+      ) : null}
+
+      {pitchesByInningModalOpen && panelPitcherId ? (
+        <PitchesByInningModal
+          open
+          pitcherName={pitchSnap?.name ?? "Pitcher"}
+          rows={pitchesByInningRows}
+          totalPitches={pitchesByInningTotal}
+          onClose={() => setPitchesByInningModalOpen(false)}
         />
       ) : null}
     </div>

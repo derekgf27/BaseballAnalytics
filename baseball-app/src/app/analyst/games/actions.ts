@@ -30,7 +30,7 @@ import type {
   PAResult,
   PlateAppearance,
 } from "@/lib/types";
-import { requireAnalystAccess } from "@/lib/auth/requireRole";
+import { requireWritableAnalystAccess } from "@/lib/auth/requireRole";
 
 const VALID_BASE_STATES = new Set<BaseState>([
   "000",
@@ -51,7 +51,7 @@ export async function createGameWithLineupAction(
   opponentSlots?: { player_id: string; position?: string | null }[] | null,
   ourSlotsOverride?: { player_id: string; position?: string | null }[] | null
 ): Promise<Game> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   const created = await createGameWithLineup(game, savedLineupId, opponentSlots, ourSlotsOverride);
   revalidateGamesListCache();
   return created;
@@ -62,7 +62,7 @@ export async function replaceOurGameLineupAction(
   gameId: string,
   slots: { player_id: string; position?: string | null }[]
 ): Promise<boolean> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   const game = await getGame(gameId);
   if (!game) return false;
   await replaceGameLineup(gameId, game.our_side as LineupSide, slots);
@@ -86,7 +86,7 @@ export async function replaceOpponentGameLineupAction(
   gameId: string,
   slots: { player_id: string; position?: string | null }[]
 ): Promise<boolean> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   const game = await getGame(gameId);
   if (!game) return false;
   const oppSide: LineupSide = game.our_side === "home" ? "away" : "home";
@@ -99,7 +99,7 @@ export async function updateGameOnlyAction(
   id: string,
   updates: Partial<Omit<Game, "id" | "created_at">>
 ): Promise<Game | null> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   const updated = await updateGame(id, updates);
   if (updated) revalidateGamesListCache();
   return updated;
@@ -111,7 +111,7 @@ export async function updateGameWithLineupAction(
   game: Omit<Game, "id" | "created_at">,
   lineupId: string | null
 ): Promise<Game | null> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   const updated = await updateGame(gameId, game);
   if (!updated) return null;
   if (lineupId === "__keep__" || lineupId === "" || lineupId == null) return updated;
@@ -137,7 +137,7 @@ export async function updateGameWithLineupAction(
 }
 
 export async function deleteGameAction(gameId: string): Promise<boolean> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   const ok = await deleteGameQuery(gameId);
   if (ok) revalidateGamesListCache();
   return ok;
@@ -189,7 +189,7 @@ export async function fetchOpponentGameLineupSlots(
 
 /** Clear all plate appearances for one game. Returns count deleted. */
 export async function clearPAsForGameAction(gameId: string): Promise<{ ok: boolean; count: number; error?: string }> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   if (isDemoId(gameId)) return { ok: false, count: 0, error: "Cannot clear demo game." };
   try {
     const count = await deletePlateAppearancesByGame(gameId);
@@ -202,7 +202,7 @@ export async function clearPAsForGameAction(gameId: string): Promise<{ ok: boole
 
 /** Clear all plate appearances (all stats). Returns count deleted. */
 export async function clearAllStatsAction(): Promise<{ ok: boolean; count: number; error?: string }> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   try {
     const count = await deleteAllPlateAppearances();
     return { ok: true, count };
@@ -224,7 +224,7 @@ export async function updateGameLogPlateAppearanceAction(
     unearned_runs_scored_player_ids?: string[];
   }
 ): Promise<{ ok: boolean; error?: string; pa?: PlateAppearance }> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   if (isDemoId(gameId) || isDemoId(paId)) {
     return { ok: false, error: "Cannot edit demo game plate appearances." };
   }

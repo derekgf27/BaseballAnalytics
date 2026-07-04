@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { isDemoId } from "@/lib/db/mockData";
+import { dataEditBlockedMessage } from "@/lib/demoMode";
 import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
 import { FlashMessage } from "@/components/shared/FlashMessage";
 import { useFlashMessage } from "@/hooks/useFlashMessage";
@@ -426,7 +427,9 @@ export function RosterPageClient({
 
       {!canEdit && (
         <div className="rounded-lg border border-[var(--border)] p-4 text-[var(--text-muted)]" style={{ background: "var(--warning-dim)" }}>
-          Connect Supabase to add or edit players. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local.
+          {dataEditBlockedMessage(
+            "Connect Supabase to add or edit players. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local."
+          )}
         </div>
       )}
 

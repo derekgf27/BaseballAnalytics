@@ -8,7 +8,7 @@ import {
   getPitchingStatsForPlayers,
   getPitchEventsForPaIds,
 } from "@/lib/db/queries";
-import { hasSupabase } from "@/lib/db/client";
+import { canMutateData } from "@/lib/demoMode";
 import { ratingsFromEvents } from "@/lib/compute";
 import { buildAnalystPlayerSpraySplits } from "@/lib/analystPlayerSpraySplits";
 import { computeAgeYears, formatBirthDateShortUs } from "@/lib/age";
@@ -59,7 +59,7 @@ export default async function PlayerProfilePage({
   ]);
   const spraySplits = buildAnalystPlayerSpraySplits(player, players, pasAsBatter, pasAsPitcher);
 
-  const canEdit = hasSupabase();
+  const canEdit = canMutateData();
   const ageYears = computeAgeYears(player.birth_date);
   const birthdayDisplay =
     player.birth_date != null && player.birth_date !== "" ? formatBirthDateShortUs(player.birth_date) : null;

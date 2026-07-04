@@ -8,6 +8,7 @@ import { getSessionWithRole } from "@/lib/auth/session";
 import { SidebarAuthSession } from "@/components/auth/SidebarAuthSession";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { APP_NAME, APP_TAGLINE } from "@/lib/appBrand";
+import { DemoTourPanel } from "@/components/demo/DemoTourPanel";
 
 function isAuthEnforced(): boolean {
   if (process.env.AUTH_DISABLED === "true") return false;
@@ -51,6 +52,8 @@ export default async function Home() {
           {APP_TAGLINE}
         </p>
       </header>
+
+      <DemoTourPanel />
 
       <nav
         className="flex min-h-0 flex-1 flex-col gap-4 px-4 pb-8 sm:flex-row sm:flex-wrap sm:items-stretch sm:justify-center sm:gap-6"

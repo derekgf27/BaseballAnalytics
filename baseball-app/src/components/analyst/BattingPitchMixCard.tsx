@@ -1357,6 +1357,7 @@ export function BattingPitchMixCard({
   inningHalf,
   onPitchTypeClick,
   onPitchesByInningClick,
+  onNameClick,
   hideTypeMix = false,
   batterBatsById: batterBatsByIdProp,
   pitcherCardsLayout = "compact",
@@ -1383,6 +1384,8 @@ export function BattingPitchMixCard({
   onPitchTypeClick?: (type: PitchTrackerPitchType) => void;
   /** When set, “Pitches this inning” and Rates Pitches open a pitches-by-inning breakdown. */
   onPitchesByInningClick?: (pitcherId: string) => void;
+  /** When set, pitcher name opens matchup glance (Record). */
+  onNameClick?: () => void;
   /** Hide only the pitch-type Mix block (Rates / Contact / 2-strike stay). */
   hideTypeMix?: boolean;
   batterBatsById?: Map<string, Bats | null | undefined>;
@@ -1545,15 +1548,29 @@ export function BattingPitchMixCard({
       ) : highlightCurrent && primaryRow ? (
         <>
           <div className="mb-1.5 flex flex-wrap items-baseline gap-x-4 gap-y-0.5">
-            <p
-              className={`min-w-0 flex-1 ${nameClass}`}
-              title={primaryRow.jersey ? `${primaryRow.name} #${primaryRow.jersey}` : primaryRow.name}
-            >
-              {primaryRow.name}
-              {primaryRow.jersey ? (
-                <span className={`font-bold ${PITCH_MIX_NAME}`}> #{primaryRow.jersey}</span>
-              ) : null}
-            </p>
+            {onNameClick ? (
+              <button
+                type="button"
+                onClick={onNameClick}
+                className={`min-w-0 flex-1 cursor-pointer rounded text-left underline decoration-[var(--accent)]/40 decoration-2 underline-offset-4 transition hover:decoration-[var(--accent)] hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/60 ${nameClass}`}
+                title="View matchup glance"
+              >
+                {primaryRow.name}
+                {primaryRow.jersey ? (
+                  <span className={`font-bold ${PITCH_MIX_NAME}`}> #{primaryRow.jersey}</span>
+                ) : null}
+              </button>
+            ) : (
+              <p
+                className={`min-w-0 flex-1 ${nameClass}`}
+                title={primaryRow.jersey ? `${primaryRow.name} #${primaryRow.jersey}` : primaryRow.name}
+              >
+                {primaryRow.name}
+                {primaryRow.jersey ? (
+                  <span className={`font-bold ${PITCH_MIX_NAME}`}> #{primaryRow.jersey}</span>
+                ) : null}
+              </p>
+            )}
             {pitchesThisInning != null ? (
               onPitchesByInningClick ? (
                 <button
@@ -1840,6 +1857,7 @@ export function CurrentBatterPitchDataCard({
   /** Record: same stat order as pitch pad without other coach-pad chrome. */
   pitchPadLayout = false,
   onPitchTypeClick,
+  onNameClick,
   hideTypeMix = false,
 }: {
   batterName: string;
@@ -1854,6 +1872,8 @@ export function CurrentBatterPitchDataCard({
   pitchPadLayout?: boolean;
   /** When set, Mix type chips open per-pitch-type stats (coach pad). */
   onPitchTypeClick?: (type: PitchTrackerPitchType) => void;
+  /** When set, batter name opens matchup glance (Record). */
+  onNameClick?: () => void;
   /** Hide only the pitch-type Mix block (Rates / Contact / 2-strike stay). */
   hideTypeMix?: boolean;
 }) {
@@ -1904,9 +1924,20 @@ export function CurrentBatterPitchDataCard({
           padExpanded ? "mb-1 shrink-0 gap-y-0.5 md:mb-1.5" : padCoach ? "mb-1.5 gap-y-1 md:mb-2" : "mb-1.5 gap-y-0.5"
         }`}
       >
-        <p className={`min-w-0 flex-1 ${nameClass}`} title={batterName}>
-          {batterName}
-        </p>
+        {onNameClick ? (
+          <button
+            type="button"
+            onClick={onNameClick}
+            className={`min-w-0 flex-1 cursor-pointer rounded text-left underline decoration-[var(--accent)]/40 decoration-2 underline-offset-4 transition hover:decoration-[var(--accent)] hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/60 ${nameClass}`}
+            title="View matchup glance"
+          >
+            {batterName}
+          </button>
+        ) : (
+          <p className={`min-w-0 flex-1 ${nameClass}`} title={batterName}>
+            {batterName}
+          </p>
+        )}
         <p
           className={pitchDataCardHeaderStatClass(compact, padCoach, coachPadDense, padExpanded)}
           title="This game — completed PAs: H-AB, results in order, RBI (current PA on the form is not included)"

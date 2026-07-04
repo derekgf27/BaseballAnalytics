@@ -2,7 +2,7 @@
 
 import { type User } from "@supabase/supabase-js";
 import { parseAppRole, type AppRole } from "@/lib/auth/roles";
-import { requireAdminAccess } from "@/lib/auth/requireRole";
+import { requireWritableAdminAccess } from "@/lib/auth/requireRole";
 import {
   authEmailForUsername,
   displayUsername,
@@ -109,7 +109,7 @@ async function assertCanChangeAdminRole(
 
 export async function listAdminUsersAction(): Promise<ListSuccess | ListFailure> {
   try {
-    await requireAdminAccess();
+    await requireWritableAdminAccess();
     const client = getAdminClient();
     if (!client.ok) {
       return { ok: false, error: client.error, adminConfigured: false };
@@ -180,7 +180,7 @@ export async function createAdminUserAction(input: {
   role: AppRole;
 }): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
   try {
-    await requireAdminAccess();
+    await requireWritableAdminAccess();
     const client = getAdminClient();
     if (!client.ok) return { ok: false, error: client.error };
     const admin = client.admin;
@@ -246,7 +246,7 @@ export async function updateAdminUserAction(input: {
   password?: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    const { userId: actorId } = await requireAdminAccess();
+    const { userId: actorId } = await requireWritableAdminAccess();
     const client = getAdminClient();
     if (!client.ok) return { ok: false, error: client.error };
     const admin = client.admin;
@@ -296,7 +296,7 @@ export async function deleteAdminUserAction(
   userId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    const { userId: actorId } = await requireAdminAccess();
+    const { userId: actorId } = await requireWritableAdminAccess();
     if (userId === actorId) {
       return { ok: false, error: "You cannot delete your own account while signed in." };
     }
@@ -321,7 +321,7 @@ export async function removeAuthOrphanAction(
   userId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    await requireAdminAccess();
+    await requireWritableAdminAccess();
     const client = getAdminClient();
     if (!client.ok) return { ok: false, error: client.error };
     const admin = client.admin;
@@ -344,7 +344,7 @@ export async function removeProfileOrphanAction(
   userId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    await requireAdminAccess();
+    await requireWritableAdminAccess();
     const client = getAdminClient();
     if (!client.ok) return { ok: false, error: client.error };
     const admin = client.admin;

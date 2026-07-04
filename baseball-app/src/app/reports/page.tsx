@@ -1,11 +1,11 @@
-import { hasSupabase } from "@/lib/db/client";
+import { canMutateData } from "@/lib/demoMode";
 import { getCachedGames, getCachedPlayers } from "@/lib/db/cachedQueries";
 import { isClubRosterPlayer, isPitcherPlayer } from "@/lib/opponentUtils";
 import { fetchTeamTrendsPayload } from "@/app/reports/actions";
 import { ReportsHubClientGate } from "./ReportsHubClientGate";
 
 export default async function ReportsPage() {
-  const canEdit = hasSupabase();
+  const canEdit = canMutateData();
   const [games, players, trendsRes] = await Promise.all([
     getCachedGames(),
     getCachedPlayers(),

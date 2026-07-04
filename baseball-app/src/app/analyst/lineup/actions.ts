@@ -8,7 +8,7 @@ import {
   deleteSavedLineup as deleteSavedLineupQuery,
 } from "@/lib/db/queries";
 import type { SavedLineup, SavedLineupWithSlots } from "@/lib/types";
-import { requireAnalystAccess } from "@/lib/auth/requireRole";
+import { requireWritableAnalystAccess } from "@/lib/auth/requireRole";
 
 export async function fetchSavedLineups(): Promise<SavedLineup[]> {
   return getSavedLineups();
@@ -22,7 +22,7 @@ export async function saveLineupTemplate(
   name: string,
   slots: { slot: number; player_id: string; position: string | null }[]
 ): Promise<{ ok: boolean; id?: string; error?: string }> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   try {
     const lineup = await insertSavedLineup(name, slots);
     return { ok: !!lineup, id: lineup?.id };
@@ -32,7 +32,7 @@ export async function saveLineupTemplate(
 }
 
 export async function deleteSavedLineup(id: string): Promise<{ ok: boolean }> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   try {
     await deleteSavedLineupQuery(id);
     return { ok: true };

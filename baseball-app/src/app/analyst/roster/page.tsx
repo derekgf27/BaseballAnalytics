@@ -1,5 +1,5 @@
 import { getCachedPlayers } from "@/lib/db/cachedQueries";
-import { hasSupabase } from "@/lib/db/client";
+import { canMutateData } from "@/lib/demoMode";
 import { isClubRosterPlayer, opponentNameKey } from "@/lib/opponentUtils";
 import { RosterPageClientGate } from "./RosterPageClientGate";
 
@@ -29,7 +29,7 @@ export default async function RosterListPage({
           (p) => p.opponent_team && opponentNameKey(p.opponent_team) === key
         )
       : allPlayers.filter(isClubRosterPlayer);
-  const canEdit = hasSupabase();
+  const canEdit = canMutateData();
   return (
     <RosterPageClientGate
       initialPlayers={players}

@@ -9,6 +9,7 @@ import {
   getBaserunningTotalsForGame,
 } from "@/lib/db/queries";
 import { hasSupabase } from "@/lib/db/client";
+import { canMutateData } from "@/lib/demoMode";
 import { GameReviewClientGate } from "./GameReviewClientGate";
 import { notFound } from "next/navigation";
 import type { GameLineupSlot } from "@/lib/types";
@@ -78,7 +79,7 @@ export default async function GameReviewPage({
     <Suspense fallback={<div className="min-h-[50vh] p-8 text-sm text-[var(--text-muted)]">Loading review…</div>}>
       <GameReviewClientGate
       game={game}
-      canEdit={hasSupabase()}
+      canEdit={canMutateData()}
       pasAll={pas}
       pasAway={pasAway}
       pasHome={pasHome}

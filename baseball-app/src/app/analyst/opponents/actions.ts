@@ -13,10 +13,10 @@ import {
   revalidateTrackedOpponentsCache,
 } from "@/lib/db/revalidateLists";
 import { opponentNameKey, uniqueOpponentNames } from "@/lib/opponentUtils";
-import { requireAnalystAccess } from "@/lib/auth/requireRole";
+import { requireWritableAnalystAccess } from "@/lib/auth/requireRole";
 
 export async function addTrackedOpponentAction(name: string): Promise<{ ok: boolean; error?: string }> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   const trimmed = name.trim().replace(/\s+/g, " ");
   if (!trimmed) return { ok: false, error: "Enter a team name." };
 
@@ -35,7 +35,7 @@ export async function updateTrackedOpponentAction(
   id: string,
   newName: string
 ): Promise<{ ok: boolean; error?: string }> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   const trimmed = newName.trim().replace(/\s+/g, " ");
   if (!trimmed) return { ok: false, error: "Enter a team name." };
 
@@ -51,7 +51,7 @@ export async function updateTrackedOpponentAction(
 }
 
 export async function deleteTrackedOpponentAction(id: string): Promise<{ ok: boolean; error?: string }> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   const result = await deleteTrackedOpponent(id);
   if (result.ok) revalidateTrackedOpponentsCache();
   return result;
@@ -61,7 +61,7 @@ export async function renameOpponentAction(
   originalName: string,
   newName: string
 ): Promise<{ ok: boolean; error?: string }> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   const result = await renameOpponentAcrossData(originalName, newName);
   if (result.ok) {
     revalidateGamesListCache();

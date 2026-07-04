@@ -10,9 +10,10 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { fetchSavedLineups, fetchSavedLineupWithSlots } from "@/app/analyst/lineup/actions";
 import { useTouchOptimizedDndSensors } from "@/lib/dndTouchSensors";
 import { isClubRosterPlayer, isPitcherPlayer } from "@/lib/opponentUtils";
-import type { Player } from "@/lib/types";
+import type { Player, SavedLineup } from "@/lib/types";
 import { comparePlayersByLastNameThenFull } from "@/lib/playerSort";
 import { getPlayerPrimaryPosition } from "@/lib/playerRoster";
 
@@ -310,12 +311,28 @@ export function OpponentLineupModal({
   );
   const [activeId, setActiveId] = useState<string | null>(null);
   const [positionError, setPositionError] = useState<string | null>(null);
+  const [templates, setTemplates] = useState<SavedLineup[]>([]);
+  const [templatesMenuOpen, setTemplatesMenuOpen] = useState(false);
+  const [templateLoading, setTemplateLoading] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setPositionError(null);
+    setTemplatesMenuOpen(false);
+    setTemplateLoading(false);
     setLineup(orderedSlotsToState(initialOrderedSlots, playerMap));
   }, [open, initialOrderedSlots, playerMap]);
+
+  useEffect(() => {
+    if (!open || !isOur) return;
+    let cancelled = false;
+    void fetchSavedLineups().then((rows) => {
+      if (!cancelled) setTemplates(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, isOur]);
 
   const inLineupIds = new Set(lineup.filter((s) => s.player != null).map((s) => s.player!.id));
   const availablePlayers = [...pool.filter((p) => !inLineupIds.has(p.id))].sort(comparePlayersByLastNameThenFull);
@@ -422,6 +439,23 @@ export function OpponentLineupModal({
     onClose();
   }
 
+  async function handleLoadTemplate(templateId: string) {
+    if (!templateId || templateLoading) return;
+    setTemplateLoading(true);
+    setTemplatesMenuOpen(false);
+    const saved = await fetchSavedLineupWithSlots(templateId);
+    setTemplateLoading(false);
+    if (!saved?.slots?.length) {
+      setPositionError("That template has no players.");
+      return;
+    }
+    const ordered = [...saved.slots]
+      .sort((a, b) => a.slot - b.slot)
+      .map((s) => ({ player_id: s.player_id, position: s.position }));
+    setLineup(orderedSlotsToState(ordered, playerMap));
+    setPositionError(null);
+  }
+
   const activePlayer = activeId ? playerMap.get(activeId) ?? null : null;
 
   if (!open) return null;
@@ -441,8 +475,8 @@ export function OpponentLineupModal({
         className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-card)] shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-          <div>
+        <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
+          <div className="min-w-0">
             <h2 id="opp-lineup-title" className="font-display text-sm font-semibold uppercase tracking-wider text-white">
               {isOur ? (lineupTitle?.trim() || "Lineup") : opponentName.trim() ? `Lineup — ${opponentName.trim()}` : "Lineup"}
             </h2>
@@ -452,14 +486,54 @@ export function OpponentLineupModal({
                 : `Click or drag players into batting order. Pool shows hitters tagged for this opponent (pitchers excluded). Use “—” in Pos to clear a spot while swapping positions.`}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]"
-            aria-label="Close"
-          >
-            ✕
-          </button>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {isOur ? (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setTemplatesMenuOpen((v) => !v)}
+                  disabled={templateLoading || templates.length === 0}
+                  className="rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] font-semibold text-[var(--text)] transition hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
+                  title={
+                    templates.length === 0
+                      ? "No templates yet — save one in Analyst → Lineup"
+                      : "Load a saved lineup template"
+                  }
+                  aria-expanded={templatesMenuOpen}
+                  aria-haspopup="listbox"
+                >
+                  {templateLoading ? "…" : "Templates"}
+                </button>
+                {templatesMenuOpen ? (
+                  <ul
+                    role="listbox"
+                    className="absolute right-0 z-10 mt-1 max-h-48 min-w-[10rem] overflow-y-auto rounded-md border border-[var(--border)] bg-[var(--bg-card)] py-1 shadow-lg"
+                  >
+                    {templates.map((t) => (
+                      <li key={t.id}>
+                        <button
+                          type="button"
+                          role="option"
+                          onClick={() => void handleLoadTemplate(t.id)}
+                          className="block w-full px-3 py-1.5 text-left text-xs text-[var(--text)] hover:bg-[var(--bg-elevated)] hover:text-[var(--accent)]"
+                        >
+                          {t.name}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">

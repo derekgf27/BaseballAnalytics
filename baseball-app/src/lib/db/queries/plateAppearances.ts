@@ -57,6 +57,22 @@ export async function getPlateAppearancesByPitcher(pitcherId: string): Promise<P
   return (data ?? []) as PlateAppearance[];
 }
 
+/** All logged PAs for one batter vs one pitcher (career / prior matchups). */
+export async function getPlateAppearancesForBatterVsPitcher(
+  batterId: string,
+  pitcherId: string
+): Promise<PlateAppearance[]> {
+  const supabase = await getSupabase();
+  if (!supabase || isDemoId(batterId) || isDemoId(pitcherId)) return [];
+  const { data } = await supabase
+    .from("plate_appearances")
+    .select(PLATE_APPEARANCE_COLUMNS)
+    .eq("batter_id", batterId)
+    .eq("pitcher_id", pitcherId)
+    .order("created_at", { ascending: false });
+  return (data ?? []) as PlateAppearance[];
+}
+
 /** Fetch all PAs for the given batters (for trend: group by batter_id, take last N per player). */
 
 export async function getPlateAppearancesByBatters(batterIds: string[]): Promise<PlateAppearance[]> {

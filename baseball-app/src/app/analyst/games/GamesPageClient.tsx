@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { isDemoId } from "@/lib/db/mockData";
+import { dataEditBlockedMessage } from "@/lib/demoMode";
 import {
   createGameWithLineupAction,
   updateGameOnlyAction,
@@ -175,7 +176,7 @@ export function GamesPageClient({
 
       {!canEdit && (
         <div className="rounded-lg border border-[var(--border)] p-4 text-[var(--text-muted)]" style={{ background: "var(--warning-dim)" }}>
-          Connect Supabase to add or edit games.
+          {dataEditBlockedMessage("Connect Supabase to add or edit games.")}
         </div>
       )}
 

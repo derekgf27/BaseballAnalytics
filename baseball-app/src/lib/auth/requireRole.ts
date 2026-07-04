@@ -1,6 +1,7 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveUserRole } from "@/lib/auth/profile";
 import { canSeeAnalystPortal, type AppRole } from "@/lib/auth/roles";
+import { assertDemoWritable } from "@/lib/demoMode";
 
 export class AuthError extends Error {
   constructor(message: string) {
@@ -38,6 +39,31 @@ export async function requireAnalystAccess(): Promise<AppRole> {
     throw new AuthError("Analyst access required.");
   }
 
+  return role;
+}
+
+/** Analyst mutations — blocked in portfolio demo mode. */
+export async function requireWritableAnalystAccess(): Promise<AppRole> {
+  assertDemoWritable();
+  return requireAnalystAccess();
+}
+
+/** Coach / shared mutations — blocked in portfolio demo mode. */
+export async function requireWritableAppAccess(): Promise<AppRole> {
+  assertDemoWritable();
+  return requireAppAccess();
+}
+
+/** Admin mutations — blocked in portfolio demo mode. */
+export async function requireWritableAdminAccess(): Promise<{ userId: string; role: AppRole }> {
+  assertDemoWritable();
+  return requireAdminAccess();
+}
+
+/** Any signed-in app role (coach, analyst, admin) — shared modals / read actions. */
+export async function requireAppAccess(): Promise<AppRole> {
+  if (!isAuthEnforced()) return "analyst";
+  const { role } = await requireSignedInRole();
   return role;
 }
 

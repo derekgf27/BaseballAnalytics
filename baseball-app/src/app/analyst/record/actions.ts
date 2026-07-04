@@ -10,6 +10,7 @@ import type {
 } from "@/lib/types";
 import {
   getPlateAppearancesByGame,
+  getPlateAppearancesForBatterVsPitcher,
   getGame,
   getGameLineup,
   insertPlateAppearance,
@@ -27,7 +28,7 @@ import {
 import { mergeTrackerPitchesIntoPitchEvents } from "@/lib/compute/pitchTrackerCount";
 import { isDemoId } from "@/lib/db/mockData";
 import { revalidateGamesListCache } from "@/lib/db/revalidateLists";
-import { requireAnalystAccess } from "@/lib/auth/requireRole";
+import { requireWritableAnalystAccess, requireAppAccess } from "@/lib/auth/requireRole";
 
 export async function fetchPAsForGame(gameId: string): Promise<{
   pas: PlateAppearance[];
@@ -75,7 +76,7 @@ export async function savePlateAppearance(
   pa: Omit<PlateAppearance, "id" | "created_at">,
   pitchLog?: PitchEventDraft[]
 ): Promise<{ ok: boolean; error?: string; pa?: PlateAppearance }> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   try {
     const log = pitchLog?.filter(Boolean) ?? [];
     const inserted =
@@ -94,7 +95,7 @@ export async function linkPitchTrackerGroupToPaAction(
   trackerGroupId: string,
   paId: string
 ): Promise<{ ok: boolean; error?: string }> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   if (!trackerGroupId?.trim() || !paId?.trim()) {
     return { ok: false, error: "Missing tracker group or PA id" };
   }
@@ -110,7 +111,7 @@ export async function linkPitchTrackerGroupToPaAction(
 export async function deletePlateAppearanceAction(
   paId: string
 ): Promise<{ ok: boolean; error?: string }> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   try {
     const ok = await deletePlateAppearanceQuery(paId);
     return { ok };
@@ -126,7 +127,7 @@ export async function fetchBaserunningEventsForGame(gameId: string): Promise<Bas
 export async function saveBaserunningEventAction(
   row: BaserunningEventInsert
 ): Promise<{ ok: boolean; error?: string; event?: BaserunningEvent }> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   try {
     const event = await insertBaserunningEvent(row);
     return { ok: !!event, event: event ?? undefined };
@@ -137,7 +138,7 @@ export async function saveBaserunningEventAction(
 }
 
 export async function deleteBaserunningEventAction(id: string): Promise<{ ok: boolean; error?: string }> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   try {
     const ok = await deleteBaserunningEvent(id);
     return { ok };
@@ -152,7 +153,7 @@ export async function saveRecordGameLineupAction(
   side: LineupSide,
   slots: { player_id: string; position?: string | null }[]
 ): Promise<{ ok: boolean; error?: string }> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   if (isDemoId(gameId)) return { ok: false, error: "Cannot edit demo game." };
   try {
     await replaceGameLineup(gameId, side, slots);
@@ -168,7 +169,7 @@ export async function setGameStartingPitcherIfEmptyAction(
   side: "home" | "away",
   pitcherId: string
 ): Promise<{ ok: boolean; error?: string }> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   if (isDemoId(gameId)) return { ok: false, error: "Cannot edit demo game." };
   const game = await getGame(gameId);
   if (!game) return { ok: false, error: "Game not found." };
@@ -199,7 +200,7 @@ export async function finalizeGameScoreAction(
     losingPitcherId?: string | null;
   }
 ): Promise<{ ok: boolean; error?: string }> {
-  await requireAnalystAccess();
+  await requireWritableAnalystAccess();
   if (isDemoId(gameId)) return { ok: false, error: "Cannot finalize demo game." };
   try {
     const winId = options?.winningPitcherId?.trim() || null;
@@ -220,4 +221,16 @@ export async function finalizeGameScoreAction(
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to finalize game" };
   }
+}
+
+/** Prior + career PAs for batter vs pitcher (Record + coach pitch pad matchup modal). */
+export async function fetchMatchupPriorPasAction(
+  batterId: string,
+  pitcherId: string
+): Promise<PlateAppearance[]> {
+  await requireAppAccess();
+  const b = batterId.trim();
+  const p = pitcherId.trim();
+  if (!b || !p || isDemoId(b) || isDemoId(p)) return [];
+  return getPlateAppearancesForBatterVsPitcher(b, p);
 }

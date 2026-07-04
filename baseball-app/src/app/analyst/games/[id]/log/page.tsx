@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { hasSupabase } from "@/lib/db/client";
+import { canMutateData } from "@/lib/demoMode";
 import { getGame, getPlateAppearancesByGame, getPlayersByIds } from "@/lib/db/queries";
 import { GameLogPageClientGate } from "./GameLogPageClientGate";
 
@@ -22,7 +22,7 @@ export default async function GameLogPage({
       game={game}
       initialPas={pas}
       players={players}
-      canEdit={hasSupabase()}
+      canEdit={canMutateData()}
     />
   );
 }

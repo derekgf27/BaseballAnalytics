@@ -26,6 +26,7 @@ import { isGameFinalized } from "@/lib/gameRecord";
 import { analystGameLogHref, analystGameReviewHref } from "@/lib/analystRoutes";
 import { clearPAsForGameAction } from "@/app/analyst/games/actions";
 import { isDemoId } from "@/lib/db/mockData";
+import { isEntityReadOnly, isDemoMode } from "@/lib/demoMode";
 import { plateAppearancesForPitchingSide } from "@/lib/compute/gamePitchingBox";
 import { totalRunsBottom, totalRunsTop } from "@/lib/compute/boxScore";
 import { lastPaChronological } from "@/lib/compute/plateAppearanceOrder";
@@ -152,6 +153,13 @@ const BattingPitchMixCard = dynamic(
   () =>
     import("@/components/analyst/BattingPitchMixCard").then((m) => ({ default: m.BattingPitchMixCard })),
   { ssr: false, loading: () => <div className="h-28 animate-pulse rounded-lg bg-[var(--bg-elevated)]" /> }
+);
+const MatchupGlanceModal = dynamic(
+  () =>
+    import("@/components/analyst/MatchupGlanceModal").then((m) => ({
+      default: m.MatchupGlanceModal,
+    })),
+  { ssr: false }
 );
 import {
   BATTED_BALL_TYPE_OPTIONS,
@@ -696,7 +704,7 @@ export default function RecordPageClient({
   const syncCoachPitchResultsSeqRef = useRef(0);
   useEffect(() => {
     const sb = getSupabaseBrowserClient();
-    if (!sb || !pitchTrackerGroupId || recordLocked || !selectedGameId || isDemoId(selectedGameId)) {
+    if (!sb || !pitchTrackerGroupId || recordLocked || !selectedGameId || isEntityReadOnly(selectedGameId)) {
       return;
     }
     const groupId = pitchTrackerGroupId;
@@ -989,7 +997,7 @@ export default function RecordPageClient({
       let mergedOrder = currentLineup.order;
       let mergedPositions = currentLineup.positionByPlayerId;
 
-      if (selectedGameId && selectedGame && !isDemoId(selectedGameId)) {
+      if (selectedGameId && selectedGame && !isEntityReadOnly(selectedGameId)) {
         try {
           const merged = applyPlayerToLineupSlot(
             currentLineup.order,
@@ -1050,7 +1058,7 @@ export default function RecordPageClient({
       });
       setPitcherId(player.id);
       setPitcherBySide((prev) => ({ ...prev, [pitchingSide]: player.id }));
-      if (selectedGameId && selectedGame && !isDemoId(selectedGameId)) {
+      if (selectedGameId && selectedGame && !isEntityReadOnly(selectedGameId)) {
         const spResult = await setGameStartingPitcherIfEmptyAction(
           selectedGameId,
           pitchingSide,
@@ -1245,6 +1253,7 @@ export default function RecordPageClient({
   const [pitchesByInningModalPitcherId, setPitchesByInningModalPitcherId] = useState<string | null>(
     null
   );
+  const [matchupGlanceOpen, setMatchupGlanceOpen] = useState(false);
 
   const statPitchTypeDetail = useMemo(() => {
     if (!statPitchType || !pitcherId) return null;
@@ -3298,6 +3307,12 @@ export default function RecordPageClient({
         </div>
       )}
 
+      {selectedGameId && selectedGame && !recordLocked && isDemoMode() && (
+        <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          Portfolio demo — explore the Record UI; saves are disabled.
+        </div>
+      )}
+
       {selectedGameId && selectedGame && !recordLocked && (
         <main
           id="record-pas-main"
@@ -3340,7 +3355,7 @@ export default function RecordPageClient({
                 </span>
                 {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
               </button>
-              {!isDemoId(selectedGameId) && (
+              {!isEntityReadOnly(selectedGameId) && (
                 <button
                   type="button"
                   onClick={() => setFinalizeModalOpen(true)}
@@ -3365,6 +3380,9 @@ export default function RecordPageClient({
                 distributionPitchEvents={distributionPitchEventsForCurrentBatter}
                 compact
                 hideTypeMix={isOurBatterAtPlate}
+                onNameClick={
+                  batterId && pitcherId ? () => setMatchupGlanceOpen(true) : undefined
+                }
               />
               <BattingPitchMixCard
                 pas={pasForPitchMixUnderPitchingTable}
@@ -3378,6 +3396,9 @@ export default function RecordPageClient({
                 onPitchTypeClick={setStatPitchType}
                 onPitchesByInningClick={setPitchesByInningModalPitcherId}
                 hideTypeMix={!isOurPitcherOnMound}
+                onNameClick={
+                  batterId && pitcherId ? () => setMatchupGlanceOpen(true) : undefined
+                }
               />
             </div>
             <div className="flex min-h-0 min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:gap-3">
@@ -4482,7 +4503,7 @@ export default function RecordPageClient({
               saving={saving}
               savePaDisabled={savePaDisabled}
               clearingPAs={clearingPAs}
-              isDemoGame={isDemoId(selectedGameId)}
+              isDemoGame={isEntityReadOnly(selectedGameId)}
               onUndoLastPa={requestUndoLastPA}
               onSubstitution={() => setSubstitutionModalOpen(true)}
               onClearPas={() => setDestructiveConfirm("clearGamePas")}
@@ -4507,7 +4528,7 @@ export default function RecordPageClient({
                       runnerOptions={runnerOptionsForBaseSelector}
                       currentBatterId={batterId}
                       onBaserunning={
-                        selectedGameId && !recordLocked && !isDemoId(selectedGameId)
+                        selectedGameId && !recordLocked && !isEntityReadOnly(selectedGameId)
                           ? handleBaserunning
                           : undefined
                       }
@@ -4547,7 +4568,7 @@ export default function RecordPageClient({
               baserunningByPlayerId={baserunningByPlayerId}
               baserunningEvents={baserunningEvents}
               recordLocked={recordLocked}
-              isDemoGame={isDemoId(selectedGameId)}
+              isDemoGame={isEntityReadOnly(selectedGameId)}
               onDeleteBaserunningEvent={handleDeleteBaserunningEvent}
               pitchingSideForBox={pitchingSideForBox}
               pasForPitchMix={pasForPitchMixUnderPitchingTable}
@@ -4595,6 +4616,16 @@ export default function RecordPageClient({
           totalPitches={pitchesByInningTotal}
           highlightInning={pitchesByInningModalPitcherId === pitcherId ? inning : undefined}
           onClose={() => setPitchesByInningModalPitcherId(null)}
+        />
+      ) : null}
+
+      {matchupGlanceOpen ? (
+        <MatchupGlanceModal
+          open
+          batter={selectedBatter ?? null}
+          pitcher={selectedPitcher ?? null}
+          gamePas={allPAsForGame}
+          onClose={() => setMatchupGlanceOpen(false)}
         />
       ) : null}
 

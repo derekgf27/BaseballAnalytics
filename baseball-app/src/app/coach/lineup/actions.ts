@@ -2,6 +2,7 @@
 
 import { getGameLineup, getSavedLineupWithSlots, replaceGameLineup, deleteSavedLineup } from "@/lib/db/queries";
 import { isDemoId } from "@/lib/db/mockData";
+import { demoMutationBlocked } from "@/lib/demoMode";
 import type { LineupSide } from "@/lib/types";
 
 /** Fetch one side's lineup for a game (coach edit view). */
@@ -30,6 +31,8 @@ export async function saveGameLineupForCoachAction(
   side: LineupSide,
   slots: { player_id: string; position?: string | null }[]
 ): Promise<{ ok: boolean; error?: string }> {
+  const blocked = demoMutationBlocked();
+  if (blocked) return blocked;
   if (isDemoId(gameId)) return { ok: false, error: "Cannot edit demo game." };
   try {
     await replaceGameLineup(gameId, side, slots);
@@ -56,6 +59,7 @@ export async function fetchSavedLineupSlotsForCoach(
 
 /** Delete a saved lineup template (from coach page). */
 export async function deleteSavedLineupForCoach(id: string): Promise<void> {
+  if (demoMutationBlocked()) return;
   if (isDemoId(id)) return;
   await deleteSavedLineup(id);
 }

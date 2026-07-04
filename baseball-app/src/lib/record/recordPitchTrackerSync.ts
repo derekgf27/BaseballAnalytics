@@ -1,8 +1,9 @@
 import { isDemoId } from "@/lib/db/mockData";
+import { isEntityReadOnly } from "@/lib/demoMode";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 export async function persistPitchTrackerGroupToGame(gameId: string, groupId: string) {
-  if (isDemoId(gameId)) return;
+  if (isEntityReadOnly(gameId)) return;
   const sb = getSupabaseBrowserClient();
   if (!sb) return;
   await sb.from("games").update({ pitch_tracker_group_id: groupId }).eq("id", gameId);
@@ -13,7 +14,7 @@ export async function persistPitchTrackerBatterToGame(
   batterId: string | null,
   batterSlot: number | null
 ) {
-  if (isDemoId(gameId)) return;
+  if (isEntityReadOnly(gameId)) return;
   const sb = getSupabaseBrowserClient();
   if (!sb) return;
   const slot =
@@ -31,7 +32,7 @@ export async function persistPitchTrackerBatterToGame(
 }
 
 export async function persistPitchTrackerOutsToGame(gameId: string, outs: number) {
-  if (isDemoId(gameId)) return;
+  if (isEntityReadOnly(gameId)) return;
   const sb = getSupabaseBrowserClient();
   if (!sb) return;
   const o = Math.max(0, Math.min(2, Math.trunc(outs)));
@@ -39,7 +40,7 @@ export async function persistPitchTrackerOutsToGame(gameId: string, outs: number
 }
 
 export async function persistPitchTrackerCountToGame(gameId: string, balls: number, strikes: number) {
-  if (isDemoId(gameId)) return;
+  if (isEntityReadOnly(gameId)) return;
   const sb = getSupabaseBrowserClient();
   if (!sb) return;
   const b = Math.max(0, Math.min(3, Math.trunc(balls)));
@@ -54,7 +55,7 @@ export async function persistPitchTrackerCountToGame(gameId: string, balls: numb
 }
 
 export async function persistPitchTrackerPitcherToGame(gameId: string, pitcherId: string | null) {
-  if (isDemoId(gameId)) return;
+  if (isEntityReadOnly(gameId)) return;
   const sb = getSupabaseBrowserClient();
   if (!sb) return;
   const { error } = await sb.from("games").update({ pitch_tracker_pitcher_id: pitcherId }).eq("id", gameId);
@@ -65,7 +66,7 @@ export async function persistPitchTrackerPitcherToGame(gameId: string, pitcherId
 
 /** Pitcher on the mound for the current PA (opponent when we hit). */
 export async function persistPitchTrackerMoundPitcherToGame(gameId: string, pitcherId: string | null) {
-  if (isDemoId(gameId)) return;
+  if (isEntityReadOnly(gameId)) return;
   const sb = getSupabaseBrowserClient();
   if (!sb) return;
   const { error } = await sb

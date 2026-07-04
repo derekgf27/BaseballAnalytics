@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans, Orbitron, Oswald } from "next/font/google";
 import { APP_NAME, APP_TAGLINE } from "@/lib/appBrand";
+import { DemoModeBanner } from "@/components/demo/DemoModeBanner";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { ThemeScript } from "@/components/theme/ThemeScript";
 import "./globals.css";
@@ -69,6 +70,7 @@ export default function RootLayout({
       <body className={`${ibmPlexSans.className} min-h-screen bg-[var(--bg-base)] text-[var(--text)] antialiased`}>
         <ThemeProvider>
           <div className="flex min-h-screen flex-col">
+            <DemoModeBanner />
             <div className="flex min-h-0 flex-1 flex-col">{children}</div>
           </div>
         </ThemeProvider>

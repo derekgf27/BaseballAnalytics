@@ -1,6 +1,27 @@
 -- Baseball Analytics MVP — Event-first schema
 -- Run in Supabase SQL editor. No aggregates stored; stats derived from events.
 
+-- Players first (games and events reference this table)
+create table if not exists public.players (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  jersey text,
+  positions text[] default '{}',
+  bats text check (bats is null or bats in ('L', 'R', 'S')),
+  throws text check (throws is null or throws in ('L', 'R')),
+  height_in int check (height_in is null or (height_in >= 48 and height_in <= 96)),
+  weight_lb int check (weight_lb is null or (weight_lb >= 80 and weight_lb <= 350)),
+  hometown text,
+  birth_date date,
+  opponent_team text,
+  primary_position text,
+  roster_status text not null default 'active'
+    check (roster_status in ('active', 'injured', 'inactive', 'other')),
+  staff_notes text,
+  is_active boolean default true,
+  created_at timestamptz default now()
+);
+
 -- Games
 create table if not exists public.games (
   id uuid primary key default gen_random_uuid(),
@@ -25,27 +46,6 @@ create table if not exists public.games (
   pitch_tracker_mound_pitcher_id uuid references public.players(id) on delete set null,
   pitch_tracker_balls smallint not null default 0,
   pitch_tracker_strikes smallint not null default 0,
-  created_at timestamptz default now()
-);
-
--- Players (roster; no league IDs)
-create table if not exists public.players (
-  id uuid primary key default gen_random_uuid(),
-  name text not null,
-  jersey text,
-  positions text[] default '{}',
-  bats text check (bats is null or bats in ('L', 'R', 'S')),
-  throws text check (throws is null or throws in ('L', 'R')),
-  height_in int check (height_in is null or (height_in >= 48 and height_in <= 96)),
-  weight_lb int check (weight_lb is null or (weight_lb >= 80 and weight_lb <= 350)),
-  hometown text,
-  birth_date date,
-  opponent_team text,
-  primary_position text,
-  roster_status text not null default 'active'
-    check (roster_status in ('active', 'injured', 'inactive', 'other')),
-  staff_notes text,
-  is_active boolean default true,
   created_at timestamptz default now()
 );
 

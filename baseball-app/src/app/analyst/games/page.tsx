@@ -1,6 +1,6 @@
 import { getCachedGames, getCachedPlayers } from "@/lib/db/cachedQueries";
 import { getTrackedOpponentNames } from "@/lib/db/queries";
-import { hasSupabase } from "@/lib/db/client";
+import { canMutateData } from "@/lib/demoMode";
 import { mergeOpponentNameLists, uniqueOpponentNames } from "@/lib/opponentUtils";
 import { GamesPageClientGate } from "./GamesPageClientGate";
 
@@ -14,7 +14,7 @@ export default async function GamesPage() {
     uniqueOpponentNames(games),
     trackedOpponentNames
   );
-  const canEdit = hasSupabase();
+  const canEdit = canMutateData();
   return (
     <GamesPageClientGate
       initialGames={games}
