@@ -58,14 +58,11 @@ import {
   coachPitchRowByAbIndex as buildCoachPitchRowByAbIndex,
   mapCoachPitchTypesToSequence,
   mergeTrackerPitchesIntoPitchEvents,
-  nextOpenPitchNumberInGroup,
   recordDraftPitchSequenceSummary,
   recordDraftPitchSequenceWithTerminal,
   recordLiveTrackerSyntheticPa,
-  sortCoachPitchRowsForAb,
 } from "@/lib/compute/pitchTrackerCount";
 import {
-  pitchOutcomeToTrackerLogResult,
   pitchTrackerAbbrev,
   pitchTrackerTypeChipClass,
   pitchTrackerTypeLabel,
@@ -73,6 +70,10 @@ import {
 import { useMediaQueryLg } from "@/hooks/useMediaQueryLg";
 import { usePitchTrackerRows } from "@/hooks/usePitchTrackerRows";
 import { usePitchTrackerPadPresence } from "@/hooks/usePitchTrackerPadPresence";
+import {
+  coachPitchRowMatchesAbContext,
+  syncCoachPitchResultsToDb,
+} from "@/lib/record/syncCoachPitchResults";
 import { resolvePitchTrackerPadHealthAlert } from "@/lib/record/pitchTrackerPadHealth";
 import { RecordPitchPadHealthBanner } from "@/components/record/RecordPitchPadHealthBanner";
 import { useRecordKeyboardShortcuts } from "@/hooks/useRecordKeyboardShortcuts";
@@ -281,6 +282,18 @@ interface RecordPageClientProps {
   ) => Promise<{ ok: boolean; error?: string }>;
 }
 
+function coachPitchAbMatchContext(
+  batterId: string | null,
+  pitcherId: string | null,
+  ourSide: string | null | undefined,
+  inningHalf: "top" | "bottom" | null | undefined
+) {
+  const offenseAb =
+    (ourSide === "home" || ourSide === "away") &&
+    battingSideFromHalf(inningHalf ?? "top") === ourSide;
+  return { batterId, pitcherId, offenseAb };
+}
+
 /** While we hit, coach rows may use a different/null `pitcher_id` than Record's mound pitcher. */
 function coachPitchRowMatchesAb(
   row: { batter_id?: string | null; pitcher_id?: string | null },
@@ -289,11 +302,10 @@ function coachPitchRowMatchesAb(
   ourSide: string | null | undefined,
   inningHalf: "top" | "bottom" | null | undefined
 ): boolean {
-  if (batterId && row.batter_id && row.batter_id !== batterId) return false;
-  const offenseAb =
-    (ourSide === "home" || ourSide === "away") &&
-    battingSideFromHalf(inningHalf ?? "top") === ourSide;
-  return offenseAb || !row.pitcher_id || !pitcherId || row.pitcher_id === pitcherId;
+  return coachPitchRowMatchesAbContext(
+    row,
+    coachPitchAbMatchContext(batterId, pitcherId, ourSide, inningHalf)
+  );
 }
 
 export default function RecordPageClient({
@@ -704,74 +716,42 @@ export default function RecordPageClient({
   const syncCoachPitchResultsSeqRef = useRef(0);
   useEffect(() => {
     const sb = getSupabaseBrowserClient();
-    if (!sb || !pitchTrackerGroupId || recordLocked || !selectedGameId || isEntityReadOnly(selectedGameId)) {
+    if (
+      !sb ||
+      !pitchTrackerGroupId ||
+      recordLocked ||
+      !selectedGameId ||
+      isEntityReadOnly(selectedGameId) ||
+      !networkOnline
+    ) {
       return;
     }
     const groupId = pitchTrackerGroupId;
     const log = draftPitchLog;
     const seq = ++syncCoachPitchResultsSeqRef.current;
-    void (async () => {
-      try {
-        const n = log.length;
-        if (n === 0) {
-          const { error } = await sb.from("pitches").update({ result: null }).eq("tracker_group_id", groupId);
-          if (error) console.warn("[Record] Clear coach pitch results:", error.message);
-          const { error: delStubErr } = await sb
-            .from("pitches")
-            .delete()
-            .eq("tracker_group_id", groupId)
-            .is("pitch_type", null);
-          if (delStubErr) console.warn("[Record] Remove PA-only pitch rows:", delStubErr.message);
-        } else {
-          if (!batterId) return;
-          const ourSide = selectedGame?.our_side;
-          const coachRowsForAb = sortCoachPitchRowsForAb(
-            coachPitchRows.filter((r) =>
-              coachPitchRowMatchesAb(r, batterId, pitcherId, ourSide, inningHalf)
-            )
-          );
-          const occupiedPitchNumbers = new Set(coachPitchRows.map((r) => r.pitch_number));
-          for (let i = 0; i < n; i++) {
-            const trackerResult = pitchOutcomeToTrackerLogResult(log[i]!.outcome);
-            const coachRow = coachRowsForAb[i];
-            if (coachRow?.id) {
-              const { error } = await sb.from("pitches").update({ result: trackerResult }).eq("id", coachRow.id);
-              if (error) console.warn("[Record] Sync coach pitch result:", error.message);
-            } else {
-              const pitch_number = nextOpenPitchNumberInGroup(
-                [...occupiedPitchNumbers].map((pitch_number) => ({ pitch_number }))
-              );
-              occupiedPitchNumbers.add(pitch_number);
-              const { error } = await sb.from("pitches").insert({
-                game_id: selectedGameId,
-                at_bat_id: null,
-                tracker_group_id: groupId,
-                pitch_number,
-                pitch_type: null,
-                result: trackerResult,
-                batter_id: batterId,
-                pitcher_id: pitcherId,
-              });
-              if (error) console.warn("[Record] Insert PA-only coach pitch row:", error.message);
-            }
-          }
-          for (let i = n; i < coachRowsForAb.length; i++) {
-            const tail = coachRowsForAb[i]!;
-            const { error: clearErr } = await sb
-              .from("pitches")
-              .update({ result: null })
-              .eq("id", tail.id);
-            if (clearErr) console.warn("[Record] Clear trailing coach pitch results:", clearErr.message);
-            if (tail.pitch_type == null) {
-              const { error: delTailErr } = await sb.from("pitches").delete().eq("id", tail.id);
-              if (delTailErr) console.warn("[Record] Remove trailing PA-only rows:", delTailErr.message);
-            }
-          }
+    const ourSide = selectedGame?.our_side;
+    const abMatch = coachPitchAbMatchContext(batterId, pitcherId, ourSide, inningHalf);
+
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          await syncCoachPitchResultsToDb(sb, {
+            groupId,
+            gameId: selectedGameId,
+            draftLog: log,
+            batterId,
+            pitcherId,
+            abMatch,
+            isAborted: () => seq !== syncCoachPitchResultsSeqRef.current,
+            onWarn: (label, message) => console.warn(`[Record] ${label}:`, message),
+          });
+        } finally {
+          if (seq === syncCoachPitchResultsSeqRef.current) void refreshCoachPitches({ background: true });
         }
-      } finally {
-        if (seq === syncCoachPitchResultsSeqRef.current) void refreshCoachPitches({ background: true });
-      }
-    })();
+      })();
+    }, 200);
+
+    return () => window.clearTimeout(timer);
   }, [
     draftPitchLog,
     pitchTrackerGroupId,
@@ -783,6 +763,7 @@ export default function RecordPageClient({
     coachPitchRows,
     selectedGame?.our_side,
     inningHalf,
+    networkOnline,
   ]);
 
   useEffect(() => {
